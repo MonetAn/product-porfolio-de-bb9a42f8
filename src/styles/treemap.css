@@ -270,7 +270,37 @@
   font-weight: 600;
 }
 
-/* Up button - positioned top right with bold arrow */
+/* Navigate back button - circle with arrow like in Flourish */
+.navigate-back-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  width: 56px;
+  height: 56px;
+  background: hsl(var(--primary));
+  border: 3px solid white;
+  border-radius: 50%;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px -2px rgb(0 0 0 / 0.25);
+  transition: all 0.2s ease;
+  color: white;
+}
+
+.navigate-back-button:hover {
+  background: hsl(var(--primary) / 0.9);
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px -2px rgb(0 0 0 / 0.3);
+}
+
+.navigate-back-button.visible {
+  display: flex;
+}
+
+/* Legacy up-button - keep for compatibility */
 .up-button {
   position: absolute;
   top: 16px;

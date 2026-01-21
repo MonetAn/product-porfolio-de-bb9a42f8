@@ -20,6 +20,8 @@ interface BudgetTreemapProps {
   onUploadClick?: () => void;
   selectedQuarters?: string[];
   onNodeClick?: (node: TreeNode) => void; // For single selection in filter
+  onNavigateBack?: () => void; // For the up arrow button - goes back one filter level
+  canNavigateBack?: boolean; // Whether the back button should be visible
 }
 
 const BudgetTreemap = ({
@@ -31,7 +33,9 @@ const BudgetTreemap = ({
   showInitiatives = false,
   onUploadClick,
   selectedQuarters = [],
-  onNodeClick
+  onNodeClick,
+  onNavigateBack,
+  canNavigateBack = false
 }: BudgetTreemapProps) => {
   // Separate ref for D3-only container - React will NOT touch this
   const d3ContainerRef = useRef<HTMLDivElement>(null);
@@ -334,13 +338,13 @@ const BudgetTreemap = ({
 
   return (
     <div className="treemap-container">
-      {/* Up Button - positioned top-right with bold arrow */}
+      {/* Up Button - circle with arrow, positioned top-right */}
       <button
-        className={`up-button ${showBackButton ? 'visible' : ''}`}
-        onClick={onNavigateUp}
+        className={`navigate-back-button ${canNavigateBack ? 'visible' : ''}`}
+        onClick={onNavigateBack}
         title="Подняться на уровень выше"
       >
-        <ArrowUp size={24} strokeWidth={3} />
+        <ArrowUp size={28} strokeWidth={2.5} />
       </button>
 
       {/* Instruction Hint - React managed */}

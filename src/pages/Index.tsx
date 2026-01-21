@@ -142,12 +142,14 @@ const Index = () => {
     setCurrentRoot(parent);
   };
 
-  // Handle click on treemap node - select single item in filter
+  // Handle click on treemap node - select single item in filter and enable corresponding toggle
   const handleNodeClick = (node: TreeNode) => {
     if (node.isUnit) {
       // Reset teams and select only this unit
       setSelectedTeams([]);
       setSelectedUnits([node.name]);
+      // Auto-enable Teams toggle
+      if (!showTeams) setShowTeams(true);
     } else if (node.isTeam) {
       // Select only this team (keep units as is if single, otherwise reset)
       if (selectedUnits.length > 1) {
@@ -158,8 +160,22 @@ const Index = () => {
         }
       }
       setSelectedTeams([node.name]);
+      // Auto-enable Initiatives toggle
+      if (!showInitiatives) setShowInitiatives(true);
     }
     // For initiatives - do nothing (or could navigate to Gantt in future)
+  };
+
+  // Navigate up one level (for the up arrow button)
+  const handleNavigateBack = () => {
+    if (selectedTeams.length > 0) {
+      // If team is selected, clear it (go back to unit level)
+      setSelectedTeams([]);
+    } else if (selectedUnits.length > 0) {
+      // If unit is selected, clear it (go back to all units)
+      setSelectedUnits([]);
+    }
+    // Don't change toggle states when going back
   };
 
   // View switching
@@ -279,6 +295,8 @@ const Index = () => {
             onUploadClick={() => fileInputRef.current?.click()}
             selectedQuarters={selectedQuarters}
             onNodeClick={handleNodeClick}
+            onNavigateBack={handleNavigateBack}
+            canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0}
           />
         )}
 

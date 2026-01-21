@@ -198,6 +198,8 @@ export interface BuildTreeOptions {
   selectedStakeholders: string[];
   unitFilter: string;
   teamFilter: string;
+  selectedUnits?: string[];
+  selectedTeams?: string[];
 }
 
 export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
@@ -213,7 +215,15 @@ export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions
     if (options.hideSupportInitiatives && isSupport) return;
     if (options.showOnlyOfftrack && !isOffTrack) return;
     if (options.selectedStakeholders.length > 0 && !options.selectedStakeholders.includes(row.stakeholders)) return;
+    
+    // Multi-select filter for units
+    if (options.selectedUnits && options.selectedUnits.length > 0 && !options.selectedUnits.includes(row.unit)) return;
+    // Single unit filter fallback
     if (options.unitFilter && row.unit !== options.unitFilter) return;
+    
+    // Multi-select filter for teams  
+    if (options.selectedTeams && options.selectedTeams.length > 0 && !options.selectedTeams.includes(row.team)) return;
+    // Single team filter fallback
     if (options.teamFilter && row.team !== options.teamFilter) return;
 
     if (!unitMap[row.unit]) {

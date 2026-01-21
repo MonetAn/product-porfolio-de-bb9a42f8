@@ -1,19 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Calendar, HelpCircle } from 'lucide-react';
-import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack } from '@/lib/dataManager';
+import { ChevronDown, Calendar, HelpCircle, Check } from 'lucide-react';
+import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport } from '@/lib/dataManager';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface FilterBarProps {
-  // Breadcrumbs
-  breadcrumbs: string[];
-  onBreadcrumbClick: (index: number) => void;
-  
   // Filters
   units: string[];
   teams: string[];
-  selectedUnit: string;
-  selectedTeam: string;
-  onUnitChange: (unit: string) => void;
-  onTeamChange: (team: string) => void;
+  selectedUnits: string[];
+  selectedTeams: string[];
+  onUnitsChange: (units: string[]) => void;
+  onTeamsChange: (teams: string[]) => void;
   
   // Support/Offtrack toggles
   hideSupport: boolean;
@@ -46,14 +48,12 @@ interface FilterBarProps {
 }
 
 const FilterBar = ({
-  breadcrumbs,
-  onBreadcrumbClick,
   units,
   teams,
-  selectedUnit,
-  selectedTeam,
-  onUnitChange,
-  onTeamChange,
+  selectedUnits,
+  selectedTeams,
+  onUnitsChange,
+  onTeamsChange,
   hideSupport,
   onHideSupportChange,
   showOnlyOfftrack,
@@ -74,37 +74,61 @@ const FilterBar = ({
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
+  const [unitMenuOpen, setUnitMenuOpen] = useState(false);
+  const [teamMenuOpen, setTeamMenuOpen] = useState(false);
+  const [rangeStart, setRangeStart] = useState<string | null>(null);
+  const [hoverQuarter, setHoverQuarter] = useState<string | null>(null);
+  
   const periodRef = useRef<HTMLDivElement>(null);
   const stakeholderRef = useRef<HTMLDivElement>(null);
+  const unitRef = useRef<HTMLDivElement>(null);
+  const teamRef = useRef<HTMLDivElement>(null);
 
   // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (periodRef.current && !periodRef.current.contains(e.target as Node)) {
         setPeriodMenuOpen(false);
+        setRangeStart(null);
       }
       if (stakeholderRef.current && !stakeholderRef.current.contains(e.target as Node)) {
         setStakeholderMenuOpen(false);
+      }
+      if (unitRef.current && !unitRef.current.contains(e.target as Node)) {
+        setUnitMenuOpen(false);
+      }
+      if (teamRef.current && !teamRef.current.contains(e.target as Node)) {
+        setTeamMenuOpen(false);
       }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Calculate totals
+  // Get filtered teams based on selected units
+  const filteredTeams = selectedUnits.length > 0
+    ? teams.filter(t => {
+        const teamsFromUnits = rawData
+          .filter(r => selectedUnits.includes(r.unit))
+          .map(r => r.team);
+        return teamsFromUnits.includes(t);
+      })
+    : teams;
+
+  // Calculate totals based on current filters
   const totals = rawData.reduce(
     (acc, row) => {
       const budget = calculateBudget(row, selectedQuarters);
       if (budget === 0) return acc;
       
-      const isSupport = selectedQuarters.length > 0 && row.quarterlyData[selectedQuarters[selectedQuarters.length - 1]]?.support;
+      const isSupport = isInitiativeSupport(row, selectedQuarters);
       const isOffTrack = isInitiativeOffTrack(row, selectedQuarters);
       
       if (hideSupport && isSupport) return acc;
       if (showOnlyOfftrack && !isOffTrack) return acc;
       if (selectedStakeholders.length > 0 && !selectedStakeholders.includes(row.stakeholders)) return acc;
-      if (selectedUnit && row.unit !== selectedUnit) return acc;
-      if (selectedTeam && row.team !== selectedTeam) return acc;
+      if (selectedUnits.length > 0 && !selectedUnits.includes(row.unit)) return acc;
+      if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return acc;
 
       acc.count++;
       acc.budget += budget;
@@ -120,7 +144,7 @@ const FilterBar = ({
     if (selectedQuarters.length === availableQuarters.length) {
       return availableYears.join('-') + ' (все)';
     }
-    if (selectedQuarters.length <= 3) {
+    if (selectedQuarters.length <= 2) {
       return selectedQuarters.map(q => q.replace('-', ' ')).join(', ');
     }
     return selectedQuarters.length + ' кварталов';
@@ -133,11 +157,72 @@ const FilterBar = ({
     return selectedStakeholders.length + ' стейкхолдеров';
   };
 
-  const toggleQuarter = (q: string) => {
-    if (selectedQuarters.includes(q)) {
-      onQuartersChange(selectedQuarters.filter(x => x !== q));
+  // Unit label
+  const getUnitLabel = () => {
+    if (selectedUnits.length === 0) return 'Все юниты';
+    if (selectedUnits.length === 1) return selectedUnits[0];
+    return selectedUnits.length + ' юнитов';
+  };
+
+  // Team label
+  const getTeamLabel = () => {
+    if (selectedTeams.length === 0) return 'Все команды';
+    if (selectedTeams.length === 1) return selectedTeams[0];
+    return selectedTeams.length + ' команд';
+  };
+
+  // Calculate quarters in range for hover preview
+  const getQuartersInRange = (start: string, end: string): string[] => {
+    const sorted = availableQuarters.sort();
+    const startIdx = sorted.indexOf(start);
+    const endIdx = sorted.indexOf(end);
+    if (startIdx === -1 || endIdx === -1) return [];
+    const [minIdx, maxIdx] = [Math.min(startIdx, endIdx), Math.max(startIdx, endIdx)];
+    return sorted.slice(minIdx, maxIdx + 1);
+  };
+
+  // Handle quarter click for range selection
+  const handleQuarterClick = (q: string) => {
+    if (rangeStart === null) {
+      // First click - start range
+      setRangeStart(q);
+      onQuartersChange([q]);
     } else {
-      onQuartersChange([...selectedQuarters, q].sort());
+      // Second click - complete range
+      const range = getQuartersInRange(rangeStart, q);
+      onQuartersChange(range);
+      setRangeStart(null);
+    }
+  };
+
+  // Check if quarter is in hover range
+  const isInHoverRange = (q: string): boolean => {
+    if (!rangeStart || !hoverQuarter) return false;
+    const range = getQuartersInRange(rangeStart, hoverQuarter);
+    return range.includes(q);
+  };
+
+  const toggleUnit = (u: string) => {
+    if (selectedUnits.includes(u)) {
+      const newUnits = selectedUnits.filter(x => x !== u);
+      onUnitsChange(newUnits);
+      // Clear teams that don't belong to remaining units
+      if (newUnits.length > 0) {
+        const validTeams = rawData
+          .filter(r => newUnits.includes(r.unit))
+          .map(r => r.team);
+        onTeamsChange(selectedTeams.filter(t => validTeams.includes(t)));
+      }
+    } else {
+      onUnitsChange([...selectedUnits, u]);
+    }
+  };
+
+  const toggleTeam = (t: string) => {
+    if (selectedTeams.includes(t)) {
+      onTeamsChange(selectedTeams.filter(x => x !== t));
+    } else {
+      onTeamsChange([...selectedTeams, t]);
     }
   };
 
@@ -153,6 +238,7 @@ const FilterBar = ({
       });
       onQuartersChange(newQuarters.sort());
     }
+    setRangeStart(null);
   };
 
   const toggleStakeholder = (s: string) => {
@@ -164,83 +250,78 @@ const FilterBar = ({
   };
 
   return (
-    <div className="h-10 bg-card border-b border-border flex items-center px-6 fixed top-14 left-0 right-0 z-40 gap-4">
-      {/* Breadcrumbs */}
-      <nav className="flex items-center gap-2 text-sm">
-        {breadcrumbs.map((crumb, index) => (
-          <div key={index} className="flex items-center gap-2">
-            {index < breadcrumbs.length - 1 ? (
-              <>
-                <span
-                  className="text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary hover:text-foreground transition-colors"
-                  onClick={() => onBreadcrumbClick(index)}
-                >
-                  {crumb}
-                </span>
-                <span className="text-muted-foreground">›</span>
-              </>
-            ) : (
-              <span className="text-foreground font-medium px-2 py-1">{crumb}</span>
-            )}
-          </div>
-        ))}
-      </nav>
+    <div className="bg-card border-b border-border fixed top-14 left-0 right-0 z-40">
+      {/* Row 1 - Main Filters */}
+      <div className="h-12 flex items-center px-6 gap-3 border-b border-border/50">
+        {/* Unit multi-select */}
+        <div ref={unitRef} className="relative">
+          <button
+            onClick={() => setUnitMenuOpen(!unitMenuOpen)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground min-w-[140px]"
+          >
+            <span className="truncate">{getUnitLabel()}</span>
+            <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
+          </button>
+          {unitMenuOpen && (
+            <div className="absolute top-full mt-1 left-0 min-w-[220px] max-h-[300px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
+              <div className="flex justify-between p-2 border-b border-border">
+                <button className="text-xs text-primary underline" onClick={() => onUnitsChange([...units])}>Выбрать все</button>
+                <button className="text-xs text-primary underline" onClick={() => { onUnitsChange([]); onTeamsChange([]); }}>Сбросить</button>
+              </div>
+              <div className="max-h-[240px] overflow-y-auto p-1">
+                {units.map(u => (
+                  <div
+                    key={u}
+                    onClick={() => toggleUnit(u)}
+                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-secondary rounded ${selectedUnits.includes(u) ? 'bg-primary/10' : ''}`}
+                  >
+                    <span className={`w-4 h-4 border rounded flex items-center justify-center ${selectedUnits.includes(u) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                      {selectedUnits.includes(u) && <Check size={12} />}
+                    </span>
+                    <span>{u}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 ml-auto">
-        {/* Unit filter */}
-        <select
-          value={selectedUnit}
-          onChange={(e) => onUnitChange(e.target.value)}
-          className="px-3 py-1.5 text-sm border border-border rounded-lg bg-card text-foreground cursor-pointer min-w-[140px] hover:border-muted-foreground"
-        >
-          <option value="">Все Unit</option>
-          {units.map(u => (
-            <option key={u} value={u}>{u}</option>
-          ))}
-        </select>
-
-        {/* Team filter */}
-        <select
-          value={selectedTeam}
-          onChange={(e) => onTeamChange(e.target.value)}
-          className="px-3 py-1.5 text-sm border border-border rounded-lg bg-card text-foreground cursor-pointer min-w-[140px] hover:border-muted-foreground"
-        >
-          <option value="">Все команды</option>
-          {teams.map(t => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
-
-        {/* Hide support toggle */}
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
-          <input
-            type="checkbox"
-            checked={hideSupport}
-            onChange={(e) => onHideSupportChange(e.target.checked)}
-            className="hidden"
-          />
-          <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center text-[10px] ${hideSupport ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-            {hideSupport && '✓'}
-          </span>
-          <span>Скрыть Support</span>
-          <HelpCircle size={12} className="text-muted-foreground" />
-        </label>
-
-        {/* Only offtrack toggle */}
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
-          <input
-            type="checkbox"
-            checked={showOnlyOfftrack}
-            onChange={(e) => onShowOnlyOfftrackChange(e.target.checked)}
-            className="hidden"
-          />
-          <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center text-[10px] ${showOnlyOfftrack ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-            {showOnlyOfftrack && '✓'}
-          </span>
-          <span>Только Off-track</span>
-          <HelpCircle size={12} className="text-muted-foreground" />
-        </label>
+        {/* Team multi-select */}
+        <div ref={teamRef} className="relative">
+          <button
+            onClick={() => setTeamMenuOpen(!teamMenuOpen)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground min-w-[140px]"
+          >
+            <span className="truncate">{getTeamLabel()}</span>
+            <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
+          </button>
+          {teamMenuOpen && (
+            <div className="absolute top-full mt-1 left-0 min-w-[220px] max-h-[300px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
+              <div className="flex justify-between p-2 border-b border-border">
+                <button className="text-xs text-primary underline" onClick={() => onTeamsChange([...filteredTeams])}>Выбрать все</button>
+                <button className="text-xs text-primary underline" onClick={() => onTeamsChange([])}>Сбросить</button>
+              </div>
+              <div className="max-h-[240px] overflow-y-auto p-1">
+                {filteredTeams.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">Нет доступных команд</div>
+                ) : (
+                  filteredTeams.map(t => (
+                    <div
+                      key={t}
+                      onClick={() => toggleTeam(t)}
+                      className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-secondary rounded ${selectedTeams.includes(t) ? 'bg-primary/10' : ''}`}
+                    >
+                      <span className={`w-4 h-4 border rounded flex items-center justify-center ${selectedTeams.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                        {selectedTeams.includes(t) && <Check size={12} />}
+                      </span>
+                      <span>{t}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Stakeholder multi-select */}
         <div ref={stakeholderRef} className="relative">
@@ -249,10 +330,10 @@ const FilterBar = ({
             className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground min-w-[140px]"
           >
             <span className="truncate">{getStakeholderLabel()}</span>
-            <ChevronDown size={14} className="text-muted-foreground" />
+            <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
           </button>
           {stakeholderMenuOpen && (
-            <div className="absolute top-full mt-1 right-0 min-w-[280px] max-h-[300px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
+            <div className="absolute top-full mt-1 left-0 min-w-[280px] max-h-[300px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
               <div className="flex justify-between p-2 border-b border-border">
                 <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([...allStakeholders])}>Выбрать все</button>
                 <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([])}>Сбросить</button>
@@ -264,8 +345,8 @@ const FilterBar = ({
                     onClick={() => toggleStakeholder(s)}
                     className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-secondary rounded ${selectedStakeholders.includes(s) ? 'bg-primary/10' : ''}`}
                   >
-                    <span className={`w-4 h-4 border rounded flex items-center justify-center text-xs ${selectedStakeholders.includes(s) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                      {selectedStakeholders.includes(s) && '✓'}
+                    <span className={`w-4 h-4 border rounded flex items-center justify-center ${selectedStakeholders.includes(s) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                      {selectedStakeholders.includes(s) && <Check size={12} />}
                     </span>
                     <span>{s}</span>
                   </div>
@@ -279,39 +360,55 @@ const FilterBar = ({
         <div ref={periodRef} className="relative">
           <button
             onClick={() => setPeriodMenuOpen(!periodMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground font-medium"
+            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground font-medium whitespace-nowrap"
           >
-            <Calendar size={14} className="text-muted-foreground" />
+            <Calendar size={14} className="text-muted-foreground flex-shrink-0" />
             <span>{getPeriodLabel()}</span>
-            <ChevronDown size={14} className="text-muted-foreground" />
+            <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
           </button>
           {periodMenuOpen && (
-            <div className="absolute top-full mt-1 right-0 min-w-[280px] bg-card border border-border rounded-lg shadow-lg z-50 p-2 animate-in fade-in slide-in-from-top-1">
+            <div className="absolute top-full mt-1 left-0 min-w-[320px] bg-card border border-border rounded-lg shadow-lg z-50 p-3 animate-in fade-in slide-in-from-top-1">
               <div className="flex justify-between mb-2 pb-2 border-b border-border">
-                <button className="text-xs text-primary underline" onClick={() => onQuartersChange([...availableQuarters])}>Выбрать все</button>
-                <button className="text-xs text-primary underline" onClick={() => onQuartersChange([])}>Сбросить</button>
+                <button className="text-xs text-primary underline" onClick={() => { onQuartersChange([...availableQuarters]); setRangeStart(null); }}>Выбрать все</button>
+                <button className="text-xs text-primary underline" onClick={() => { onQuartersChange([]); setRangeStart(null); }}>Сбросить</button>
               </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                {rangeStart ? `Выберите конец диапазона (начало: ${rangeStart.replace('-', ' ')})` : 'Кликните на квартал для начала диапазона'}
+              </p>
               {availableYears.map(year => {
                 const yearQuarters = availableQuarters.filter(q => q.startsWith(year));
+                const allYearSelected = yearQuarters.every(q => selectedQuarters.includes(q));
                 return (
-                  <div key={year} className="mb-2">
+                  <div key={year} className="mb-3">
                     <div
-                      className="flex items-center gap-2 px-2 py-1.5 text-sm font-semibold cursor-pointer rounded hover:bg-secondary"
+                      className="flex items-center gap-2 px-2 py-1.5 text-sm font-semibold cursor-pointer rounded hover:bg-secondary mb-1"
                       onClick={() => toggleYear(year)}
                     >
+                      <span className={`w-4 h-4 border rounded flex items-center justify-center ${allYearSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                        {allYearSelected && <Check size={12} />}
+                      </span>
                       {year}
                     </div>
-                    <div className="flex gap-1 px-2">
+                    <div className="grid grid-cols-4 gap-1 px-2">
                       {yearQuarters.map(q => {
                         const qLabel = q.split('-')[1];
+                        const isSelected = selectedQuarters.includes(q);
+                        const isHovered = isInHoverRange(q);
+                        const isStart = rangeStart === q;
                         return (
                           <button
                             key={q}
-                            onClick={() => toggleQuarter(q)}
-                            className={`flex-1 py-1.5 px-3 text-xs rounded border transition-colors ${
-                              selectedQuarters.includes(q)
-                                ? 'bg-foreground text-background border-foreground'
-                                : 'bg-secondary border-border hover:border-muted-foreground'
+                            onClick={() => handleQuarterClick(q)}
+                            onMouseEnter={() => setHoverQuarter(q)}
+                            onMouseLeave={() => setHoverQuarter(null)}
+                            className={`py-1.5 px-2 text-xs rounded border transition-all ${
+                              isStart
+                                ? 'bg-primary text-primary-foreground border-primary ring-2 ring-primary/30'
+                                : isSelected
+                                  ? 'bg-foreground text-background border-foreground'
+                                  : isHovered
+                                    ? 'bg-primary/30 border-primary/50'
+                                    : 'bg-secondary border-border hover:border-muted-foreground'
                             }`}
                           >
                             {qLabel}
@@ -325,36 +422,83 @@ const FilterBar = ({
             </div>
           )}
         </div>
-      </div>
 
-      {/* Totals */}
-      <div className="flex items-center gap-3 pl-4 border-l border-border">
-        <div className="flex items-center gap-1 px-2 py-1 bg-secondary rounded text-xs font-medium">
-          <span>{totals.count}</span> инициатив
-        </div>
-        <div className="flex items-center gap-1 px-2 py-1 bg-secondary rounded text-xs font-medium">
-          {formatBudget(totals.budget)}
-        </div>
-        <button
-          onClick={onOfftrackClick}
-          className="flex items-center gap-1 px-2 py-1 bg-destructive/10 text-destructive rounded text-xs font-medium cursor-pointer hover:scale-105 transition-transform"
-        >
-          {totals.offtrack} off-track
-        </button>
-      </div>
+        {/* Spacer */}
+        <div className="flex-1" />
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 pl-4 border-l border-border">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <div className="w-4 h-4 relative">
-            <div className="absolute top-0 right-0 border-solid border-[8px] border-transparent border-t-destructive border-r-destructive" style={{ borderWidth: '0 16px 16px 0', borderColor: 'transparent hsl(var(--destructive)) transparent transparent' }} />
+        {/* Totals */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 px-3 py-1.5 bg-secondary rounded-lg text-sm font-medium">
+            <span className="font-bold">{totals.count}</span>
+            <span className="text-muted-foreground">инициатив</span>
           </div>
-          <span>Off-Track</span>
+          <div className="flex items-center gap-1 px-3 py-1.5 bg-secondary rounded-lg text-sm font-medium">
+            <span className="font-bold">{formatBudget(totals.budget)}</span>
+          </div>
+          <button
+            onClick={onOfftrackClick}
+            className="flex items-center gap-1 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-sm font-medium cursor-pointer hover:bg-destructive/20 transition-colors"
+          >
+            <span className="font-bold">{totals.offtrack}</span>
+            <span>off-track</span>
+          </button>
         </div>
       </div>
 
-      {/* Nesting Toggles */}
-      <div className="flex items-center gap-3 pl-4 border-l border-border">
+      {/* Row 2 - Toggles and Legend */}
+      <div className="h-10 flex items-center px-6 gap-4">
+        {/* Hide support toggle with tooltip */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
+                <input
+                  type="checkbox"
+                  checked={hideSupport}
+                  onChange={(e) => onHideSupportChange(e.target.checked)}
+                  className="hidden"
+                />
+                <span className={`w-4 h-4 border rounded flex items-center justify-center ${hideSupport ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                  {hideSupport && <Check size={12} />}
+                </span>
+                <span>Скрыть Support</span>
+                <HelpCircle size={12} className="text-muted-foreground/60" />
+              </label>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-xs">
+              <p>Скрывает инициативы, которые находятся в статусе поддержки на последний квартал выбранного периода</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        {/* Only offtrack toggle with tooltip */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
+                <input
+                  type="checkbox"
+                  checked={showOnlyOfftrack}
+                  onChange={(e) => onShowOnlyOfftrackChange(e.target.checked)}
+                  className="hidden"
+                />
+                <span className={`w-4 h-4 border rounded flex items-center justify-center ${showOnlyOfftrack ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                  {showOnlyOfftrack && <Check size={12} />}
+                </span>
+                <span>Только Off-track</span>
+                <HelpCircle size={12} className="text-muted-foreground/60" />
+              </label>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-xs">
+              <p>Показывает только инициативы, которые имеют статус Off-track на последний квартал выбранного периода</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        {/* Separator */}
+        <div className="w-px h-5 bg-border" />
+
+        {/* Nesting Toggles */}
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
           <input
             type="checkbox"
@@ -362,8 +506,8 @@ const FilterBar = ({
             onChange={(e) => onShowTeamsChange(e.target.checked)}
             className="hidden"
           />
-          <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center text-[10px] ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-            {showTeams && '✓'}
+          <span className={`w-4 h-4 border rounded flex items-center justify-center ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+            {showTeams && <Check size={12} />}
           </span>
           <span>Команды</span>
         </label>
@@ -374,11 +518,31 @@ const FilterBar = ({
             onChange={(e) => onShowInitiativesChange(e.target.checked)}
             className="hidden"
           />
-          <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center text-[10px] ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-            {showInitiatives && '✓'}
+          <span className={`w-4 h-4 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+            {showInitiatives && <Check size={12} />}
           </span>
           <span>Инициативы</span>
         </label>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Legend */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="w-4 h-4 relative">
+              <div 
+                className="absolute top-0 right-0" 
+                style={{ 
+                  borderWidth: '0 16px 16px 0', 
+                  borderStyle: 'solid',
+                  borderColor: 'transparent hsl(var(--destructive)) transparent transparent' 
+                }} 
+              />
+            </div>
+            <span>Off-Track</span>
+          </div>
+        </div>
       </div>
     </div>
   );

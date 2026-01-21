@@ -10,7 +10,6 @@ import {
   formatBudget,
   calculateBudget,
   isInitiativeOffTrack,
-  escapeHtml
 } from '@/lib/dataManager';
 import { toast } from 'sonner';
 
@@ -28,9 +27,9 @@ const Index = () => {
   const [currentRoot, setCurrentRoot] = useState<TreeNode>({ name: 'Все Unit', children: [], isRoot: true });
   const [navigationStack, setNavigationStack] = useState<TreeNode[]>([]);
 
-  // Filter state
-  const [selectedUnit, setSelectedUnit] = useState('');
-  const [selectedTeam, setSelectedTeam] = useState('');
+  // Filter state - changed to multi-select arrays
+  const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [hideSupport, setHideSupport] = useState(false);
   const [showOnlyOfftrack, setShowOnlyOfftrack] = useState(false);
   const [selectedStakeholders, setSelectedStakeholders] = useState<string[]>([]);
@@ -47,27 +46,32 @@ const Index = () => {
 
   // Get unique units and teams
   const units = [...new Set(rawData.map(r => r.unit))].sort();
-  const teams = selectedUnit
-    ? [...new Set(rawData.filter(r => r.unit === selectedUnit && r.team).map(r => r.team))].sort()
-    : [...new Set(rawData.filter(r => r.team).map(r => r.team))].sort();
+  const teams = [...new Set(rawData.filter(r => r.team).map(r => r.team))].sort();
 
   // Build tree whenever filters change
   const rebuildTree = useCallback(() => {
     if (rawData.length === 0) return;
+
+    // For multi-select: if nothing selected, show all
+    const unitFilter = selectedUnits.length === 1 ? selectedUnits[0] : '';
+    const teamFilter = selectedTeams.length === 1 ? selectedTeams[0] : '';
 
     const tree = buildBudgetTree(rawData, {
       selectedQuarters,
       hideSupportInitiatives: hideSupport,
       showOnlyOfftrack,
       selectedStakeholders,
-      unitFilter: selectedUnit,
-      teamFilter: selectedTeam
+      unitFilter,
+      teamFilter,
+      // Pass multi-select for proper filtering
+      selectedUnits,
+      selectedTeams
     });
 
     setPortfolioData(tree);
     setCurrentRoot(tree);
     setNavigationStack([]);
-  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnit, selectedTeam]);
+  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams]);
 
   useEffect(() => {
     rebuildTree();
@@ -97,37 +101,44 @@ const Index = () => {
     event.target.value = '';
   };
 
-  // Navigation
+  // Navigation - drill down into a node
   const drillDown = (node: TreeNode) => {
     if (!node.children) return;
+    
+    // Auto-toggle based on what we're drilling into
+    if (node.isUnit) {
+      // Drilling into a unit - auto-enable Teams
+      if (!showTeams) setShowTeams(true);
+      // Set filter to this unit
+      setSelectedUnits([node.name]);
+    } else if (node.isTeam) {
+      // Drilling into a team - auto-enable Initiatives
+      if (!showInitiatives) setShowInitiatives(true);
+      // Set filter to this team
+      setSelectedTeams([node.name]);
+    }
+    
     setNavigationStack([...navigationStack, currentRoot]);
     setCurrentRoot(node);
   };
 
+  // Navigate up - go back one level and clear corresponding filter
   const navigateUp = () => {
     if (navigationStack.length === 0) return;
     const newStack = [...navigationStack];
     const parent = newStack.pop()!;
+    
+    // Clear the filter of the level we're leaving
+    if (currentRoot.isTeam) {
+      setSelectedTeams([]);
+    } else if (currentRoot.isUnit) {
+      setSelectedUnits([]);
+      setSelectedTeams([]);
+    }
+    
     setNavigationStack(newStack);
     setCurrentRoot(parent);
   };
-
-  const navigateToLevel = (index: number) => {
-    if (index === 0) {
-      setNavigationStack([]);
-      setCurrentRoot(portfolioData);
-    } else {
-      const newStack = navigationStack.slice(0, index);
-      setCurrentRoot(navigationStack[index]);
-      setNavigationStack(newStack);
-    }
-  };
-
-  // Breadcrumbs
-  const breadcrumbs = [
-    ...navigationStack.map(n => n.name),
-    currentRoot.name
-  ];
 
   // View switching
   const handleViewChange = (view: ViewType) => {
@@ -206,16 +217,14 @@ const Index = () => {
         onShortcutsClick={() => setShowShortcuts(true)}
       />
 
-      {/* Filter Bar */}
+      {/* Filter Bar - 2 rows now */}
       <FilterBar
-        breadcrumbs={breadcrumbs}
-        onBreadcrumbClick={navigateToLevel}
         units={units}
         teams={teams}
-        selectedUnit={selectedUnit}
-        selectedTeam={selectedTeam}
-        onUnitChange={(unit) => { setSelectedUnit(unit); setSelectedTeam(''); }}
-        onTeamChange={setSelectedTeam}
+        selectedUnits={selectedUnits}
+        selectedTeams={selectedTeams}
+        onUnitsChange={setSelectedUnits}
+        onTeamsChange={setSelectedTeams}
         hideSupport={hideSupport}
         onHideSupportChange={setHideSupport}
         showOnlyOfftrack={showOnlyOfftrack}
@@ -235,8 +244,8 @@ const Index = () => {
         onOfftrackClick={() => setShowOfftrackModal(true)}
       />
 
-      {/* Main Content */}
-      <main className="mt-24 h-[calc(100vh-96px)] p-4 overflow-hidden">
+      {/* Main Content - adjusted for 2-row filter bar (56 + 40 + 40 = 136px) */}
+      <main className="mt-[120px] h-[calc(100vh-120px)] p-4 overflow-hidden">
         {currentView === 'budget' && (
           <BudgetTreemap
             data={currentRoot}
@@ -246,6 +255,7 @@ const Index = () => {
             showTeams={showTeams}
             showInitiatives={showInitiatives}
             onUploadClick={() => fileInputRef.current?.click()}
+            selectedQuarters={selectedQuarters}
           />
         )}
 
@@ -336,7 +346,7 @@ const Index = () => {
                 ['Вкладка Stakeholders', '2'],
                 ['Вкладка Gantt', '3'],
                 ['Поиск', '/'],
-                ['Назад', 'Esc']
+                ['Наверх / Закрыть', 'Esc']
               ].map(([label, key]) => (
                 <div key={label} className="flex justify-between items-center py-2">
                   <span className="text-sm">{label}</span>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
-import { ChevronLeft, Upload, FileText } from 'lucide-react';
+import { ArrowUp, Upload, FileText } from 'lucide-react';
 import {
   TreeNode,
   formatBudget,
@@ -18,6 +18,7 @@ interface BudgetTreemapProps {
   showTeams?: boolean;
   showInitiatives?: boolean;
   onUploadClick?: () => void;
+  selectedQuarters?: string[];
 }
 
 const BudgetTreemap = ({
@@ -27,7 +28,8 @@ const BudgetTreemap = ({
   showBackButton = false,
   showTeams = false,
   showInitiatives = false,
-  onUploadClick
+  onUploadClick,
+  selectedQuarters = []
 }: BudgetTreemapProps) => {
   // Separate ref for D3-only container - React will NOT touch this
   const d3ContainerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +38,9 @@ const BudgetTreemap = ({
 
   // Check if data is empty
   const isEmpty = !data.children || data.children.length === 0;
+
+  // Get last quarter for status display
+  const lastQuarter = selectedQuarters.length > 0 ? selectedQuarters[selectedQuarters.length - 1] : null;
 
   // ===== TREEMAP RENDERING - EXACTLY FROM HTML PROTOTYPE =====
   const renderTreemap = useCallback(() => {
@@ -98,22 +103,64 @@ const BudgetTreemap = ({
 
     if (!root.children) return;
 
-    // Function to show tooltip
+    // Function to show tooltip - improved version
     const showTooltip = (e: MouseEvent, nodeData: TreeNode, nodeValue: number) => {
       const tooltip = tooltipRef.current;
       if (!tooltip) return;
 
+      const isInitiative = nodeData.isInitiative || (!nodeData.isUnit && !nodeData.isTeam && !nodeData.isRoot && !nodeData.children);
+      
       let html = `<div class="tooltip-header">
-        <div class="tooltip-title">${escapeHtml(nodeData.name)}</div>
-        ${nodeData.offTrack !== undefined ? `<div class="tooltip-status ${nodeData.offTrack ? 'off-track' : 'on-track'}"></div>` : ''}
-      </div>`;
+        <div class="tooltip-title">${escapeHtml(nodeData.name)}</div>`;
+      
+      // Show status only for initiatives
+      if (isInitiative && nodeData.offTrack !== undefined) {
+        html += `<div class="tooltip-status ${nodeData.offTrack ? 'off-track' : 'on-track'}"></div>`;
+      }
+      html += `</div>`;
 
+      // Budget
       html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(nodeValue)}</span></div>`;
 
-      if (nodeData.description) {
-        html += `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid hsl(var(--border)); font-size: 12px; color: hsl(var(--muted-foreground));">${escapeHtml(nodeData.description)}</div>`;
+      // For initiatives - show more details
+      if (isInitiative && nodeData.quarterlyData && lastQuarter) {
+        const qData = nodeData.quarterlyData[lastQuarter];
+        if (qData) {
+          // Support status
+          html += `<div class="tooltip-row"><span class="tooltip-label">Поддержка</span><span class="tooltip-value">${qData.support ? 'Да' : 'Нет'}</span></div>`;
+          
+          // Off-track status
+          html += `<div class="tooltip-row"><span class="tooltip-label">Off-Track</span><span class="tooltip-value ${!qData.onTrack ? 'text-destructive' : ''}">${!qData.onTrack ? 'Да' : 'Нет'}</span></div>`;
+        }
       }
 
+      // Description
+      if (nodeData.description) {
+        html += `<div class="tooltip-description">${escapeHtml(nodeData.description)}</div>`;
+      }
+
+      // Plan/Fact for initiatives
+      if (isInitiative && nodeData.quarterlyData && lastQuarter) {
+        const qData = nodeData.quarterlyData[lastQuarter];
+        if (qData && (qData.metricPlan || qData.metricFact)) {
+          const qLabel = lastQuarter.replace('-', ' ');
+          html += `<div class="tooltip-metrics">`;
+          if (qData.metricPlan) {
+            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">План ${qLabel}</span><span class="tooltip-metric-value">${escapeHtml(qData.metricPlan)}</span></div>`;
+          }
+          if (qData.metricFact) {
+            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">Факт ${qLabel}</span><span class="tooltip-metric-value">${escapeHtml(qData.metricFact)}</span></div>`;
+          }
+          html += `</div>`;
+        }
+
+        // Comment
+        if (qData?.comment) {
+          html += `<div class="tooltip-comment"><span class="tooltip-comment-label">Комментарий:</span> ${escapeHtml(qData.comment)}</div>`;
+        }
+      }
+
+      // Stakeholders
       if (nodeData.stakeholders && nodeData.stakeholders.length > 0) {
         html += `<div class="tooltip-stakeholders">
           <div class="tooltip-stakeholders-label">Стейкхолдеры</div>
@@ -121,8 +168,9 @@ const BudgetTreemap = ({
         </div>`;
       }
 
+      // Drill-down hint for non-leaf nodes
       if (nodeData.children) {
-        html += '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid hsl(var(--border)); font-size: 11px; color: hsl(var(--primary)); font-weight: 500;">Кликните для детализации →</div>';
+        html += '<div class="tooltip-hint">Кликните для детализации →</div>';
       }
 
       tooltip.innerHTML = html;
@@ -269,7 +317,7 @@ const BudgetTreemap = ({
       setShowHint(true);
       setTimeout(() => setShowHint(false), 3000);
     }
-  }, [data, showTeams, showInitiatives, onDrillDown, showBackButton, isEmpty]);
+  }, [data, showTeams, showInitiatives, onDrillDown, showBackButton, isEmpty, lastQuarter]);
 
   // Render on data/size changes
   useEffect(() => {
@@ -295,13 +343,13 @@ const BudgetTreemap = ({
 
   return (
     <div className="treemap-container">
-      {/* Back Button - React managed, outside D3 container */}
+      {/* Up Button - positioned top-right with bold arrow */}
       <button
-        className={`back-button ${showBackButton ? 'visible' : ''}`}
+        className={`up-button ${showBackButton ? 'visible' : ''}`}
         onClick={onNavigateUp}
+        title="Подняться на уровень выше"
       >
-        <ChevronLeft size={16} />
-        Назад
+        <ArrowUp size={24} strokeWidth={3} />
       </button>
 
       {/* Instruction Hint - React managed */}

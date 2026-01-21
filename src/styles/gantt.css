@@ -1,4 +1,4 @@
-/* ===== GANTT VIEW STYLES ===== */
+/* ===== TIMELINE VIEW STYLES ===== */
 
 .gantt-container {
   width: 100%;
@@ -58,7 +58,7 @@
   display: grid;
   grid-template-columns: 320px 1fr;
   border-bottom: 1px solid hsl(var(--border));
-  min-height: 64px;
+  min-height: 96px;
   cursor: pointer;
   transition: background 0.15s ease;
 }
@@ -79,6 +79,7 @@
   justify-content: center;
   border-right: 1px solid hsl(var(--border));
   gap: 2px;
+  position: relative;
 }
 
 .gantt-row-name {
@@ -88,6 +89,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: help;
 }
 
 .gantt-row-team {
@@ -116,9 +118,19 @@
 .gantt-row-timeline {
   position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: flex-start;
   padding: 8px 0;
   min-width: fit-content;
+  gap: 4px;
+}
+
+/* Segment row with bar + details */
+.gantt-segment-row {
+  position: relative;
+  height: 28px;
+  display: flex;
+  align-items: flex-start;
 }
 
 /* Segments */
@@ -140,14 +152,14 @@
   filter: brightness(1.1);
 }
 
-/* Change - Orange */
-.gantt-segment.change {
-  background: hsl(var(--change));
+/* Development - Royal Blue */
+.gantt-segment.development {
+  background: hsl(var(--development));
 }
 
-/* Support - Green */
+/* Support - Grey */
 .gantt-segment.support {
-  background: hsl(var(--support));
+  background: hsl(var(--support-color));
 }
 
 /* Off-track overlay - hatching */
@@ -161,8 +173,8 @@
   );
 }
 
-.gantt-segment.change.off-track {
-  background-color: hsl(var(--change));
+.gantt-segment.development.off-track {
+  background-color: hsl(var(--development));
   background-image: repeating-linear-gradient(
     45deg,
     transparent,
@@ -173,7 +185,7 @@
 }
 
 .gantt-segment.support.off-track {
-  background-color: hsl(var(--support));
+  background-color: hsl(var(--support-color));
   background-image: repeating-linear-gradient(
     45deg,
     transparent,
@@ -181,6 +193,40 @@
     rgba(139, 0, 0, 0.4) 3px,
     rgba(139, 0, 0, 0.4) 6px
   );
+}
+
+/* Quarter details below segment */
+.gantt-quarter-details {
+  display: flex;
+  min-width: fit-content;
+  padding-top: 4px;
+}
+
+.gantt-quarter-detail {
+  min-width: 160px;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+
+.gantt-quarter-detail-content {
+  font-size: 9px;
+  line-height: 1.3;
+  color: hsl(var(--muted-foreground));
+  max-height: 40px;
+  overflow: hidden;
+}
+
+.gantt-quarter-detail-content .detail-label {
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.7);
+}
+
+.gantt-quarter-detail-content .detail-value {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
 }
 
 /* Legend */
@@ -208,16 +254,16 @@
   border-radius: 3px;
 }
 
-.gantt-legend-color.change {
-  background: hsl(var(--change));
+.gantt-legend-color.development {
+  background: hsl(var(--development));
 }
 
 .gantt-legend-color.support {
-  background: hsl(var(--support));
+  background: hsl(var(--support-color));
 }
 
 .gantt-legend-color.hatched {
-  background: hsl(var(--change));
+  background: hsl(var(--development));
   background-image: repeating-linear-gradient(
     45deg,
     transparent,
@@ -272,4 +318,45 @@
 
 .gantt-empty-btn:hover {
   background: hsl(var(--primary) / 0.9);
+}
+
+/* Tooltip for initiative name hover */
+.gantt-name-tooltip {
+  position: absolute;
+  z-index: 100;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  max-width: 300px;
+  pointer-events: none;
+}
+
+.gantt-name-tooltip-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 4px;
+}
+
+.gantt-name-tooltip-description {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.gantt-name-tooltip-stakeholders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.gantt-name-tooltip-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: hsl(var(--secondary));
+  border-radius: 4px;
+  color: hsl(var(--foreground));
 }

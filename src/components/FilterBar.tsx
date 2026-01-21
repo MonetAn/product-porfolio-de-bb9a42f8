@@ -46,7 +46,7 @@ interface FilterBarProps {
   // Off-track modal
   onOfftrackClick: () => void;
   
-  // Hide nesting toggles (for Gantt view)
+  // Hide nesting toggles (for Timeline view)
   hideNestingToggles?: boolean;
 }
 
@@ -217,14 +217,33 @@ const FilterBar = ({
     if (selectedUnits.includes(u)) {
       const newUnits = selectedUnits.filter(x => x !== u);
       onUnitsChange(newUnits);
+      // Clear teams that don't belong to remaining units
       if (newUnits.length > 0) {
         const validTeams = rawData
           .filter(r => newUnits.includes(r.unit))
           .map(r => r.team);
         onTeamsChange(selectedTeams.filter(t => validTeams.includes(t)));
+      } else {
+        // If no units selected, clear teams too
+        onTeamsChange([]);
       }
     } else {
-      onUnitsChange([...selectedUnits, u]);
+      const newUnits = [...selectedUnits, u];
+      onUnitsChange(newUnits);
+      // When adding a new unit, clear team selection from other units
+      // to prevent showing 0 results
+      if (selectedTeams.length > 0) {
+        const validTeamsForNewUnits = rawData
+          .filter(r => newUnits.includes(r.unit))
+          .map(r => r.team);
+        const stillValidTeams = selectedTeams.filter(t => validTeamsForNewUnits.includes(t));
+        // If none of the selected teams belong to new units set, clear teams
+        if (stillValidTeams.length === 0 && selectedUnits.length > 0) {
+          onTeamsChange([]);
+        } else {
+          onTeamsChange(stillValidTeams);
+        }
+      }
     }
   };
 
@@ -479,18 +498,17 @@ const FilterBar = ({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary max-w-[130px]">
                   <input
                     type="checkbox"
                     checked={hideSupport}
                     onChange={(e) => onHideSupportChange(e.target.checked)}
                     className="hidden"
                   />
-                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${hideSupport ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                  <span className={`w-3.5 h-3.5 flex-shrink-0 border rounded flex items-center justify-center ${hideSupport ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
                     {hideSupport && <Check size={10} />}
                   </span>
-                  <span className="whitespace-nowrap">Support</span>
-                  <HelpCircle size={10} className="text-muted-foreground/60" />
+                  <span className="truncate" title="Выключить саппорт">Выкл. саппорт</span>
                 </label>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[200px] text-xs">
@@ -571,6 +589,7 @@ const FilterBar = ({
           <button
             onClick={onOfftrackClick}
             className="flex items-center gap-1 px-2 py-1 bg-destructive/10 text-destructive rounded text-[11px] font-medium cursor-pointer hover:bg-destructive/20 transition-colors whitespace-nowrap"
+            title="Перейти к Off-track инициативам"
           >
             <span className="font-bold">{totals.offtrack}</span>
             <span className="hidden sm:inline">off-track</span>

@@ -1,6 +1,6 @@
 import { Search, Upload, Keyboard } from 'lucide-react';
 
-export type ViewType = 'budget' | 'stakeholders' | 'gantt';
+export type ViewType = 'budget' | 'stakeholders' | 'timeline';
 
 interface HeaderProps {
   currentView: ViewType;
@@ -57,14 +57,14 @@ const Header = ({
         </button>
         <button
           className={`px-4 py-2 text-sm font-medium rounded-lg transition-all relative ${
-            currentView === 'gantt'
+            currentView === 'timeline'
               ? 'text-foreground'
               : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
           }`}
-          onClick={() => onViewChange('gantt')}
+          onClick={() => onViewChange('timeline')}
         >
-          Gantt <kbd className="text-xs text-muted-foreground ml-1">3</kbd>
-          {currentView === 'gantt' && (
+          Timeline <kbd className="text-xs text-muted-foreground ml-1">3</kbd>
+          {currentView === 'timeline' && (
             <span className="absolute -bottom-[9px] left-4 right-4 h-0.5 bg-primary rounded-sm" />
           )}
         </button>

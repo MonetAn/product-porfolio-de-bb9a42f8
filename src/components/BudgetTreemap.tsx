@@ -19,6 +19,7 @@ interface BudgetTreemapProps {
   showInitiatives?: boolean;
   onUploadClick?: () => void;
   selectedQuarters?: string[];
+  onNodeClick?: (node: TreeNode) => void; // For single selection in filter
 }
 
 const BudgetTreemap = ({
@@ -29,7 +30,8 @@ const BudgetTreemap = ({
   showTeams = false,
   showInitiatives = false,
   onUploadClick,
-  selectedQuarters = []
+  selectedQuarters = [],
+  onNodeClick
 }: BudgetTreemapProps) => {
   // Separate ref for D3-only container - React will NOT touch this
   const d3ContainerRef = useRef<HTMLDivElement>(null);
@@ -272,11 +274,11 @@ const BudgetTreemap = ({
         div.appendChild(content);
       }
 
-      // Events
+      // Events - click selects single item in filter
       div.addEventListener('click', (e: MouseEvent) => {
         e.stopPropagation();
-        if (hasChildren && onDrillDown) {
-          onDrillDown(node.data);
+        if (onNodeClick) {
+          onNodeClick(node.data);
         }
       });
 

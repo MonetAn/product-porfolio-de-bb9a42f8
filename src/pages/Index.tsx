@@ -142,6 +142,26 @@ const Index = () => {
     setCurrentRoot(parent);
   };
 
+  // Handle click on treemap node - select single item in filter
+  const handleNodeClick = (node: TreeNode) => {
+    if (node.isUnit) {
+      // Reset teams and select only this unit
+      setSelectedTeams([]);
+      setSelectedUnits([node.name]);
+    } else if (node.isTeam) {
+      // Select only this team (keep units as is if single, otherwise reset)
+      if (selectedUnits.length > 1) {
+        // Find the unit this team belongs to
+        const teamUnit = rawData.find(r => r.team === node.name)?.unit;
+        if (teamUnit) {
+          setSelectedUnits([teamUnit]);
+        }
+      }
+      setSelectedTeams([node.name]);
+    }
+    // For initiatives - do nothing (or could navigate to Gantt in future)
+  };
+
   // View switching
   const handleViewChange = (view: ViewType) => {
     setCurrentView(view);
@@ -246,8 +266,8 @@ const Index = () => {
         onOfftrackClick={() => setShowOfftrackModal(true)}
       />
 
-      {/* Main Content - adjusted for compact filter bar */}
-      <main className="mt-[70px] h-[calc(100vh-70px)] p-4 overflow-hidden">
+      {/* Main Content - adjusted for 2-row filter bar (Header 56px + FilterBar ~88px) */}
+      <main className="mt-[144px] h-[calc(100vh-144px)] p-4 overflow-hidden">
         {currentView === 'budget' && (
           <BudgetTreemap
             data={currentRoot}
@@ -258,6 +278,7 @@ const Index = () => {
             showInitiatives={showInitiatives}
             onUploadClick={() => fileInputRef.current?.click()}
             selectedQuarters={selectedQuarters}
+            onNodeClick={handleNodeClick}
           />
         )}
 

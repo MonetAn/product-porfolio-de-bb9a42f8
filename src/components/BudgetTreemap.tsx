@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
-import { ArrowUp, Upload, FileText } from 'lucide-react';
+import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import {
   TreeNode,
   formatBudget,
@@ -24,6 +24,7 @@ interface BudgetTreemapProps {
   canNavigateBack?: boolean; // Whether the back button should be visible
   onInitiativeClick?: (initiativeName: string) => void; // Navigate to Gantt on initiative click
   onFileDrop?: (file: File) => void; // Handle file drop on empty state
+  hasData?: boolean; // Whether raw data is loaded (to distinguish empty filters vs no data)
 }
 
 const BudgetTreemap = ({
@@ -39,7 +40,8 @@ const BudgetTreemap = ({
   onNavigateBack,
   canNavigateBack = false,
   onInitiativeClick,
-  onFileDrop
+  onFileDrop,
+  hasData = false
 }: BudgetTreemapProps) => {
   // Separate ref for D3-only container - React will NOT touch this
   const d3ContainerRef = useRef<HTMLDivElement>(null);
@@ -406,8 +408,21 @@ const BudgetTreemap = ({
         />
       )}
 
-      {/* Empty/Welcome State - React managed, only shown when empty */}
-      {isEmpty && (
+      {/* Empty state: No initiatives for selected filters */}
+      {isEmpty && hasData && (
+        <div className="welcome-empty-state">
+          <div className="welcome-icon">
+            <Search size={60} />
+          </div>
+          <h1 className="welcome-title">Нет инициатив по выбранным фильтрам</h1>
+          <p className="welcome-subtitle">
+            Попробуйте изменить параметры фильтрации или сбросить фильтры
+          </p>
+        </div>
+      )}
+
+      {/* Empty state: No data loaded - show upload prompt */}
+      {isEmpty && !hasData && (
         <div 
           className={`welcome-empty-state ${isDropHovering ? 'drag-hover' : ''}`}
           onDragEnter={handleDropZoneDragEnter}

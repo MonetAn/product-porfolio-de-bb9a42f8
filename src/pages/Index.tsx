@@ -390,6 +390,7 @@ const Index = () => {
               setCurrentView('timeline');
             }}
             onFileDrop={processCSVFile}
+            hasData={rawData.length > 0}
           />
         )}
 

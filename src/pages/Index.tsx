@@ -42,6 +42,12 @@ const Index = () => {
   const [showInitiatives, setShowInitiatives] = useState(false);
   const [highlightedInitiative, setHighlightedInitiative] = useState<string | null>(null);
 
+  // Cost filter state (Timeline only)
+  const [costSortOrder, setCostSortOrder] = useState<'none' | 'asc' | 'desc'>('none');
+  const [costFilterMin, setCostFilterMin] = useState<number | null>(null);
+  const [costFilterMax, setCostFilterMax] = useState<number | null>(null);
+  const [costType, setCostType] = useState<'period' | 'total'>('period');
+
   // UI state
   const [showSearch, setShowSearch] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -252,6 +258,11 @@ const Index = () => {
     setHideSupport(false);
     setShowOnlyOfftrack(false);
     
+    // Reset cost filters
+    setCostSortOrder('none');
+    setCostFilterMin(null);
+    setCostFilterMax(null);
+    
     // Если период пустой, восстанавливаем все кварталы
     if (selectedQuarters.length === 0) {
       setSelectedQuarters([...availableQuarters]);
@@ -263,7 +274,10 @@ const Index = () => {
                            selectedTeams.length > 0 || 
                            selectedStakeholders.length > 0 ||
                            hideSupport || 
-                           showOnlyOfftrack;
+                           showOnlyOfftrack ||
+                           costSortOrder !== 'none' ||
+                           costFilterMin !== null ||
+                           costFilterMax !== null;
 
   // View switching
   const handleViewChange = (view: ViewType) => {
@@ -398,6 +412,17 @@ const Index = () => {
         hideNestingToggles={currentView === 'timeline'}
         onResetFilters={resetFilters}
         hasActiveFilters={hasActiveFilters}
+        // Cost filter props (Timeline only)
+        costSortOrder={costSortOrder}
+        onCostSortOrderChange={setCostSortOrder}
+        costFilterMin={costFilterMin}
+        costFilterMax={costFilterMax}
+        onCostFilterChange={(min, max) => {
+          setCostFilterMin(min);
+          setCostFilterMax(max);
+        }}
+        costType={costType}
+        onCostTypeChange={setCostType}
       />
 
       {/* Main Content - full height without padding for immersive treemap */}
@@ -453,6 +478,10 @@ const Index = () => {
             onUploadClick={() => fileInputRef.current?.click()}
             highlightedInitiative={highlightedInitiative}
             onResetFilters={resetFilters}
+            costSortOrder={costSortOrder}
+            costFilterMin={costFilterMin}
+            costFilterMax={costFilterMax}
+            costType={costType}
           />
         )}
       </main>

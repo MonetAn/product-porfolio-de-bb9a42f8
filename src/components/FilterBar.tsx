@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw } from 'lucide-react';
+import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw, ArrowUpDown } from 'lucide-react';
 import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport } from '@/lib/dataManager';
 import {
   Tooltip,
@@ -52,6 +52,15 @@ interface FilterBarProps {
   // Reset filters
   onResetFilters?: () => void;
   hasActiveFilters?: boolean;
+  
+  // Cost filter (Timeline only)
+  costSortOrder?: 'none' | 'asc' | 'desc';
+  onCostSortOrderChange?: (order: 'none' | 'asc' | 'desc') => void;
+  costFilterMin?: number | null;
+  costFilterMax?: number | null;
+  onCostFilterChange?: (min: number | null, max: number | null) => void;
+  costType?: 'period' | 'total';
+  onCostTypeChange?: (type: 'period' | 'total') => void;
 }
 
 const FilterBar = ({
@@ -80,7 +89,15 @@ const FilterBar = ({
   onOfftrackClick,
   hideNestingToggles = false,
   onResetFilters,
-  hasActiveFilters = false
+  hasActiveFilters = false,
+  // Cost filter props
+  costSortOrder = 'none',
+  onCostSortOrderChange,
+  costFilterMin = null,
+  costFilterMax = null,
+  onCostFilterChange,
+  costType = 'period',
+  onCostTypeChange
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -89,10 +106,22 @@ const FilterBar = ({
   const [rangeStart, setRangeStart] = useState<string | null>(null);
   const [hoverQuarter, setHoverQuarter] = useState<string | null>(null);
   
+  // Cost filter local state
+  const [costMenuOpen, setCostMenuOpen] = useState(false);
+  const [localMinCost, setLocalMinCost] = useState<string>('');
+  const [localMaxCost, setLocalMaxCost] = useState<string>('');
+  
   const periodRef = useRef<HTMLDivElement>(null);
   const stakeholderRef = useRef<HTMLDivElement>(null);
   const unitRef = useRef<HTMLDivElement>(null);
   const teamRef = useRef<HTMLDivElement>(null);
+  const costRef = useRef<HTMLDivElement>(null);
+  
+  // Sync local cost inputs with props
+  useEffect(() => {
+    setLocalMinCost(costFilterMin !== null ? (costFilterMin / 1000000).toString() : '');
+    setLocalMaxCost(costFilterMax !== null ? (costFilterMax / 1000000).toString() : '');
+  }, [costFilterMin, costFilterMax]);
 
   // Close menus on outside click
   useEffect(() => {
@@ -110,10 +139,44 @@ const FilterBar = ({
       if (teamRef.current && !teamRef.current.contains(e.target as Node)) {
         setTeamMenuOpen(false);
       }
+      if (costRef.current && !costRef.current.contains(e.target as Node)) {
+        setCostMenuOpen(false);
+      }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+  
+  // Cost filter helpers
+  const getCostLabel = () => {
+    const hasCostFilter = costFilterMin !== null || costFilterMax !== null || costSortOrder !== 'none';
+    if (!hasCostFilter) return 'Стоимость';
+    
+    const parts: string[] = [];
+    if (costSortOrder === 'asc') parts.push('↑');
+    if (costSortOrder === 'desc') parts.push('↓');
+    if (costFilterMin !== null || costFilterMax !== null) {
+      const minStr = costFilterMin !== null ? `${(costFilterMin / 1000000).toFixed(1)}M` : '';
+      const maxStr = costFilterMax !== null ? `${(costFilterMax / 1000000).toFixed(1)}M` : '';
+      if (minStr && maxStr) parts.push(`${minStr}-${maxStr}`);
+      else if (minStr) parts.push(`≥${minStr}`);
+      else if (maxStr) parts.push(`≤${maxStr}`);
+    }
+    return parts.length > 0 ? parts.join(' ') : 'Стоимость';
+  };
+  
+  const applyCostFilter = () => {
+    const min = localMinCost ? parseFloat(localMinCost) * 1000000 : null;
+    const max = localMaxCost ? parseFloat(localMaxCost) * 1000000 : null;
+    onCostFilterChange?.(min, max);
+  };
+  
+  const resetCostFilter = () => {
+    setLocalMinCost('');
+    setLocalMaxCost('');
+    onCostFilterChange?.(null, null);
+    onCostSortOrderChange?.('none');
+  };
 
   // Get filtered teams based on selected units
   const filteredTeams = selectedUnits.length > 0
@@ -487,6 +550,120 @@ const FilterBar = ({
               </div>
             )}
           </div>
+
+          {/* Cost filter - only shown for Timeline */}
+          {hideNestingToggles && onCostSortOrderChange && (
+            <div ref={costRef} className="relative">
+              <button
+                onClick={() => setCostMenuOpen(!costMenuOpen)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 border rounded-md text-xs cursor-pointer hover:border-muted-foreground ${
+                  (costFilterMin !== null || costFilterMax !== null || costSortOrder !== 'none') 
+                    ? 'bg-primary/10 border-primary text-primary' 
+                    : 'bg-card border-border'
+                }`}
+              >
+                <ArrowUpDown size={12} className="flex-shrink-0" />
+                <span className="truncate max-w-[100px]">{getCostLabel()}</span>
+                <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
+              </button>
+              {costMenuOpen && (
+                <div className="absolute top-full mt-1 left-0 min-w-[260px] bg-card border border-border rounded-lg shadow-lg z-50 p-3 animate-in fade-in slide-in-from-top-1">
+                  {/* Cost type selector */}
+                  <div className="mb-3">
+                    <div className="text-[10px] text-muted-foreground mb-1.5 font-medium">Тип стоимости</div>
+                    <div className="flex gap-2">
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input
+                          type="radio"
+                          name="costType"
+                          checked={costType === 'period'}
+                          onChange={() => onCostTypeChange?.('period')}
+                          className="w-3 h-3 accent-primary"
+                        />
+                        <span>За период</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input
+                          type="radio"
+                          name="costType"
+                          checked={costType === 'total'}
+                          onChange={() => onCostTypeChange?.('total')}
+                          className="w-3 h-3 accent-primary"
+                        />
+                        <span>Общая</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Sort selector */}
+                  <div className="mb-3">
+                    <div className="text-[10px] text-muted-foreground mb-1.5 font-medium">Сортировка</div>
+                    <div className="flex gap-1">
+                      {[
+                        { value: 'none' as const, label: 'Нет' },
+                        { value: 'asc' as const, label: '↑ По возр.' },
+                        { value: 'desc' as const, label: '↓ По убыв.' }
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => onCostSortOrderChange?.(opt.value)}
+                          className={`px-2 py-1 text-[11px] rounded border transition-colors ${
+                            costSortOrder === opt.value 
+                              ? 'bg-primary text-primary-foreground border-primary' 
+                              : 'bg-secondary border-border hover:border-muted-foreground'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Min/Max filter */}
+                  <div className="mb-3">
+                    <div className="text-[10px] text-muted-foreground mb-1.5 font-medium">Диапазон (млн ₽)</div>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="number"
+                        value={localMinCost}
+                        onChange={(e) => setLocalMinCost(e.target.value)}
+                        placeholder="От"
+                        className="w-20 px-2 py-1 text-xs border border-border rounded bg-background focus:outline-none focus:border-primary"
+                        step="0.1"
+                        min="0"
+                      />
+                      <span className="text-muted-foreground">—</span>
+                      <input
+                        type="number"
+                        value={localMaxCost}
+                        onChange={(e) => setLocalMaxCost(e.target.value)}
+                        placeholder="До"
+                        className="w-20 px-2 py-1 text-xs border border-border rounded bg-background focus:outline-none focus:border-primary"
+                        step="0.1"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 pt-2 border-t border-border">
+                    <button
+                      onClick={applyCostFilter}
+                      className="flex-1 px-2 py-1.5 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+                    >
+                      Применить
+                    </button>
+                    <button
+                      onClick={resetCostFilter}
+                      className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-secondary transition-colors"
+                    >
+                      Сброс
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Separator */}

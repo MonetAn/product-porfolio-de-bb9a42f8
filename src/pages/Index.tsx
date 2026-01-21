@@ -208,7 +208,7 @@ const Index = () => {
       switch (e.key) {
         case '1': handleViewChange('budget'); break;
         case '2': handleViewChange('stakeholders'); break;
-        case '3': handleViewChange('gantt'); break;
+        case '3': handleViewChange('timeline'); break;
         case '/': e.preventDefault(); setShowSearch(true); break;
         case '?': setShowShortcuts(true); break;
         case 'Escape':
@@ -288,8 +288,11 @@ const Index = () => {
         showInitiatives={showInitiatives}
         onShowTeamsChange={setShowTeams}
         onShowInitiativesChange={setShowInitiatives}
-        onOfftrackClick={() => setShowOfftrackModal(true)}
-        hideNestingToggles={currentView === 'gantt'}
+        onOfftrackClick={() => {
+          setShowOnlyOfftrack(true);
+          setCurrentView('timeline');
+        }}
+        hideNestingToggles={currentView === 'timeline'}
       />
 
       {/* Main Content - full height without padding for immersive treemap */}
@@ -309,7 +312,7 @@ const Index = () => {
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0}
             onInitiativeClick={(name) => {
               setHighlightedInitiative(name);
-              setCurrentView('gantt');
+              setCurrentView('timeline');
             }}
           />
         )}
@@ -324,12 +327,12 @@ const Index = () => {
             hasData={rawData.length > 0}
             onInitiativeClick={(name) => {
               setHighlightedInitiative(name);
-              setCurrentView('gantt');
+              setCurrentView('timeline');
             }}
           />
         )}
 
-        {currentView === 'gantt' && (
+        {currentView === 'timeline' && (
           <GanttView
             rawData={rawData}
             selectedQuarters={selectedQuarters}
@@ -381,7 +384,8 @@ const Index = () => {
                     onClick={() => {
                       setShowSearch(false);
                       setSearchQuery('');
-                      toast.success('Найдено: ' + row.initiative);
+                      setHighlightedInitiative(row.initiative);
+                      setCurrentView('timeline');
                     }}
                   >
                     <div className="w-8 h-8 bg-secondary rounded-md flex items-center justify-center text-sm font-medium flex-shrink-0">
@@ -416,7 +420,7 @@ const Index = () => {
               {[
                 ['Вкладка Budget', '1'],
                 ['Вкладка Stakeholders', '2'],
-                ['Вкладка Gantt', '3'],
+                ['Вкладка Timeline', '3'],
                 ['Поиск', '/'],
                 ['Наверх / Закрыть', 'Esc']
               ].map(([label, key]) => (
@@ -465,7 +469,7 @@ const Index = () => {
                     onClick={() => {
                       setShowOfftrackModal(false);
                       setShowOnlyOfftrack(true);
-                      handleViewChange('gantt');
+                      handleViewChange('timeline');
                     }}
                   >
                     <div className="font-medium mb-1">{item.initiative}</div>

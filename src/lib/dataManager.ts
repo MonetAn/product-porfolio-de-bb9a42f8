@@ -201,8 +201,11 @@ export function isInitiativeSupport(row: RawDataRow, selectedQuarters: string[])
 
 export function isInitiativeOffTrack(row: RawDataRow, selectedQuarters: string[]): boolean {
   if (selectedQuarters.length === 0) return false;
-  const lastQ = selectedQuarters[selectedQuarters.length - 1];
-  return row.quarterlyData[lastQ] ? !row.quarterlyData[lastQ].onTrack : false;
+  // Off-track if ANY quarter in selected period was off-track
+  return selectedQuarters.some(q => {
+    const qData = row.quarterlyData[q];
+    return qData && !qData.onTrack;
+  });
 }
 
 // ===== DATA TREE BUILDING =====

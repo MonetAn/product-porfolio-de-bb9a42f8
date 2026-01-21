@@ -118,7 +118,7 @@ const StakeholdersTreemap = ({
       if (nodeData.children) {
         html += '<div class="tooltip-hint">Кликните для детализации →</div>';
       } else if (nodeData.isInitiative) {
-        html += '<div class="tooltip-hint">Кликните для перехода в Gantt →</div>';
+        html += '<div class="tooltip-hint">Кликните для перехода в Timeline →</div>';
       }
 
       tooltip.innerHTML = html;
@@ -181,6 +181,14 @@ const StakeholdersTreemap = ({
         div.classList.add('off-track');
       }
 
+      // Add visual distinction for Team level (depth 2) vs Initiative level (depth 3)
+      if (node.data.isTeam) {
+        div.classList.add('is-team');
+      }
+      if (node.data.isInitiative) {
+        div.classList.add('is-initiative');
+      }
+
       // Color by top-level stakeholder
       let stakeholderName = node.data.name;
       let current: d3.HierarchyRectangularNode<TreeNode> | null = node;
@@ -194,8 +202,13 @@ const StakeholdersTreemap = ({
         div.style.backgroundColor = baseColor;
       } else if (depth === 1) {
         div.style.backgroundColor = adjustBrightness(baseColor, -15);
+      } else if (depth === 2 && node.data.isTeam) {
+        // Teams get a distinct visual treatment - slightly darker with border
+        div.style.backgroundColor = adjustBrightness(baseColor, -25);
+        div.style.borderLeft = '3px solid ' + adjustBrightness(baseColor, 20);
       } else {
-        div.style.backgroundColor = adjustBrightness(baseColor, -30);
+        // Initiatives - darkest
+        div.style.backgroundColor = adjustBrightness(baseColor, -35);
       }
 
       if (depth === 0) {

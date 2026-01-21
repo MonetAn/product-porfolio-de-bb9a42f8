@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { Upload, FileText, Search } from 'lucide-react';
 import {
   RawDataRow,
@@ -38,6 +38,8 @@ const GanttView = ({
   const highlightedRef = useRef<HTMLDivElement>(null);
   const headerTimelineRef = useRef<HTMLDivElement>(null);
   const rowsContainerRef = useRef<HTMLDivElement>(null);
+  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
 
   // Filter data based on current filters
   const filteredData = useMemo(() => {
@@ -78,6 +80,19 @@ const GanttView = ({
   }, []);
 
   const quarterWidth = 160;
+
+  const handleNameMouseEnter = (e: React.MouseEvent, idx: number) => {
+    setHoveredRow(idx);
+    setTooltipPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleNameMouseMove = (e: React.MouseEvent) => {
+    setTooltipPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleNameMouseLeave = () => {
+    setHoveredRow(null);
+  };
 
   // Empty state
   if (rawData.length === 0) {
@@ -151,48 +166,119 @@ const GanttView = ({
               className={`gantt-row ${isHighlighted ? 'highlighted' : ''}`}
             >
               <div className="gantt-row-label">
-                <div className="gantt-row-name">{row.initiative}</div>
+                <div 
+                  className="gantt-row-name"
+                  onMouseEnter={(e) => handleNameMouseEnter(e, idx)}
+                  onMouseMove={handleNameMouseMove}
+                  onMouseLeave={handleNameMouseLeave}
+                >
+                  {row.initiative}
+                </div>
                 <div className="gantt-row-team">{row.unit} › {row.team || 'Без команды'}</div>
                 <div className="gantt-row-costs">
                   <span className="gantt-cost-total">Всего: {formatBudget(totalCost)}</span>
                   {showPeriodCost && (
-                    <span className="gantt-cost-period">Период: {formatBudget(periodCost)}</span>
+                    <span className="gantt-cost-period">За выбранный период: {formatBudget(periodCost)}</span>
                   )}
                 </div>
               </div>
               <div className="gantt-row-timeline" style={{ width: selectedQuarters.length * quarterWidth }}>
-                {selectedQuarters.map((q, qIdx) => {
-                  const qData = row.quarterlyData[q];
-                  if (!qData || qData.budget === 0) return null;
+                {/* Segment bar row */}
+                <div className="gantt-segment-row">
+                  {selectedQuarters.map((q, qIdx) => {
+                    const qData = row.quarterlyData[q];
+                    if (!qData || qData.budget === 0) return null;
 
-                  const isSupport = qData.support;
-                  const isOffTrack = !qData.onTrack;
+                    const isSupport = qData.support;
+                    const isOffTrack = !qData.onTrack;
 
-                  return (
-                    <div
-                      key={q}
-                      className={`gantt-segment ${isSupport ? 'support' : 'change'} ${isOffTrack ? 'off-track' : ''}`}
-                      style={{
-                        left: qIdx * quarterWidth + 4,
-                        width: quarterWidth - 8
-                      }}
-                      title={`${row.initiative}\n${q.replace('-', ' ')}\nБюджет: ${formatBudget(qData.budget)}\nСтатус: ${isSupport ? 'Support' : 'Change'}${isOffTrack ? ' (Off-track)' : ''}`}
-                    >
-                      {formatBudgetShort(qData.budget)}
-                    </div>
-                  );
-                })}
+                    return (
+                      <div
+                        key={q}
+                        className={`gantt-segment ${isSupport ? 'support' : 'development'} ${isOffTrack ? 'off-track' : ''}`}
+                        style={{
+                          left: qIdx * quarterWidth + 4,
+                          width: quarterWidth - 8
+                        }}
+                        title={`${row.initiative}\n${q.replace('-', ' ')}\nБюджет: ${formatBudget(qData.budget)}\nСтатус: ${isSupport ? 'Support' : 'Development'}${isOffTrack ? ' (Off-track)' : ''}`}
+                      >
+                        {formatBudgetShort(qData.budget)}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Quarter details row */}
+                <div className="gantt-quarter-details">
+                  {selectedQuarters.map((q) => {
+                    const qData = row.quarterlyData[q];
+                    if (!qData || qData.budget === 0) {
+                      return <div key={q} className="gantt-quarter-detail" style={{ minWidth: quarterWidth }} />;
+                    }
+
+                    const hasPlan = qData.metricPlan && qData.metricPlan.trim();
+                    const hasFact = qData.metricFact && qData.metricFact.trim();
+                    const hasComment = qData.comment && qData.comment.trim();
+
+                    if (!hasPlan && !hasFact && !hasComment) {
+                      return <div key={q} className="gantt-quarter-detail" style={{ minWidth: quarterWidth }} />;
+                    }
+
+                    return (
+                      <div key={q} className="gantt-quarter-detail" style={{ minWidth: quarterWidth }}>
+                        <div className="gantt-quarter-detail-content">
+                          {hasPlan && (
+                            <span className="detail-value" title={qData.metricPlan}>
+                              <span className="detail-label">П:</span> {qData.metricPlan}
+                            </span>
+                          )}
+                          {hasFact && (
+                            <span className="detail-value" title={qData.metricFact}>
+                              <span className="detail-label">Ф:</span> {qData.metricFact}
+                            </span>
+                          )}
+                          {hasComment && (
+                            <span className="detail-value" title={qData.comment}>
+                              <span className="detail-label">К:</span> {qData.comment}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
+      {/* Tooltip for initiative name hover */}
+      {hoveredRow !== null && filteredData[hoveredRow] && (
+        <div 
+          className="gantt-name-tooltip"
+          style={{
+            left: Math.min(tooltipPosition.x + 16, window.innerWidth - 320),
+            top: tooltipPosition.y + 16
+          }}
+        >
+          <div className="gantt-name-tooltip-title">{filteredData[hoveredRow].initiative}</div>
+          {filteredData[hoveredRow].description && (
+            <div className="gantt-name-tooltip-description">{filteredData[hoveredRow].description}</div>
+          )}
+          {filteredData[hoveredRow].stakeholders && (
+            <div className="gantt-name-tooltip-stakeholders">
+              <span className="gantt-name-tooltip-tag">{filteredData[hoveredRow].stakeholders}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Legend */}
       <div className="gantt-legend">
         <div className="gantt-legend-item">
-          <div className="gantt-legend-color change"></div>
-          <span>Change</span>
+          <div className="gantt-legend-color development"></div>
+          <span>Development</span>
         </div>
         <div className="gantt-legend-item">
           <div className="gantt-legend-color support"></div>

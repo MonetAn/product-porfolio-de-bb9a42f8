@@ -22,6 +22,7 @@ interface BudgetTreemapProps {
   onNodeClick?: (node: TreeNode) => void; // For single selection in filter
   onNavigateBack?: () => void; // For the up arrow button - goes back one filter level
   canNavigateBack?: boolean; // Whether the back button should be visible
+  onInitiativeClick?: (initiativeName: string) => void; // Navigate to Gantt on initiative click
 }
 
 const BudgetTreemap = ({
@@ -35,7 +36,8 @@ const BudgetTreemap = ({
   selectedQuarters = [],
   onNodeClick,
   onNavigateBack,
-  canNavigateBack = false
+  canNavigateBack = false,
+  onInitiativeClick
 }: BudgetTreemapProps) => {
   // Separate ref for D3-only container - React will NOT touch this
   const d3ContainerRef = useRef<HTMLDivElement>(null);
@@ -166,6 +168,8 @@ const BudgetTreemap = ({
       // Drill-down hint for non-leaf nodes
       if (nodeData.children) {
         html += '<div class="tooltip-hint">Кликните для детализации →</div>';
+      } else if (nodeData.isInitiative) {
+        html += '<div class="tooltip-hint">Кликните для перехода в Gantt →</div>';
       }
 
       tooltip.innerHTML = html;
@@ -278,10 +282,13 @@ const BudgetTreemap = ({
         div.appendChild(content);
       }
 
-      // Events - click selects single item in filter
+      // Events - click selects single item in filter or navigates to Gantt for initiatives
       div.addEventListener('click', (e: MouseEvent) => {
         e.stopPropagation();
-        if (onNodeClick) {
+        // If it's an initiative, navigate to Gantt
+        if (node.data.isInitiative && onInitiativeClick) {
+          onInitiativeClick(node.data.name);
+        } else if (onNodeClick) {
           onNodeClick(node.data);
         }
       });
@@ -312,7 +319,7 @@ const BudgetTreemap = ({
       setShowHint(true);
       setTimeout(() => setShowHint(false), 3000);
     }
-  }, [data, showTeams, showInitiatives, onDrillDown, showBackButton, isEmpty, lastQuarter]);
+  }, [data, showTeams, showInitiatives, onDrillDown, showBackButton, isEmpty, lastQuarter, onNodeClick, onInitiativeClick]);
 
   // Render on data/size changes
   useEffect(() => {

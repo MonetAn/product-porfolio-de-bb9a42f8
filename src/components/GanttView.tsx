@@ -36,6 +36,8 @@ const GanttView = ({
   highlightedInitiative
 }: GanttViewProps) => {
   const highlightedRef = useRef<HTMLDivElement>(null);
+  const headerTimelineRef = useRef<HTMLDivElement>(null);
+  const rowsContainerRef = useRef<HTMLDivElement>(null);
 
   // Filter data based on current filters
   const filteredData = useMemo(() => {
@@ -59,6 +61,21 @@ const GanttView = ({
       highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [highlightedInitiative, filteredData]);
+
+  // Sync horizontal scroll between header and rows
+  useEffect(() => {
+    const rowsContainer = rowsContainerRef.current;
+    const headerTimeline = headerTimelineRef.current;
+
+    if (!rowsContainer || !headerTimeline) return;
+
+    const handleScroll = () => {
+      headerTimeline.scrollLeft = rowsContainer.scrollLeft;
+    };
+
+    rowsContainer.addEventListener('scroll', handleScroll);
+    return () => rowsContainer.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const quarterWidth = 160;
 
@@ -87,9 +104,9 @@ const GanttView = ({
         <div className="gantt-header">
           <div className="gantt-timeline-row">
             <div className="gantt-header-label">Инициатива</div>
-            <div className="gantt-timeline-header">
+            <div className="gantt-timeline-header" ref={headerTimelineRef}>
               {selectedQuarters.map(q => (
-                <div key={q} className="gantt-quarter">{q.replace('-', ' ')}</div>
+                <div key={q} className="gantt-quarter" style={{ minWidth: quarterWidth }}>{q.replace('-', ' ')}</div>
               ))}
             </div>
           </div>
@@ -110,16 +127,16 @@ const GanttView = ({
       <div className="gantt-header">
         <div className="gantt-timeline-row">
           <div className="gantt-header-label">Инициатива</div>
-          <div className="gantt-timeline-header">
+          <div className="gantt-timeline-header" ref={headerTimelineRef}>
             {selectedQuarters.map(q => (
-              <div key={q} className="gantt-quarter">{q.replace('-', ' ')}</div>
+              <div key={q} className="gantt-quarter" style={{ minWidth: quarterWidth }}>{q.replace('-', ' ')}</div>
             ))}
           </div>
         </div>
       </div>
 
       {/* Rows */}
-      <div className="gantt-rows">
+      <div className="gantt-rows" ref={rowsContainerRef}>
         {filteredData.map((row, idx) => {
           const totalCost = calculateTotalBudget(row);
           const periodCost = calculateBudget(row, selectedQuarters);

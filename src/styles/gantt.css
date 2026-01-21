@@ -34,7 +34,7 @@
 
 .gantt-timeline-header {
   display: flex;
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .gantt-quarter {

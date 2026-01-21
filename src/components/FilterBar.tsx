@@ -45,6 +45,9 @@ interface FilterBarProps {
   
   // Off-track modal
   onOfftrackClick: () => void;
+  
+  // Hide nesting toggles (for Gantt view)
+  hideNestingToggles?: boolean;
 }
 
 const FilterBar = ({
@@ -70,7 +73,8 @@ const FilterBar = ({
   showInitiatives,
   onShowTeamsChange,
   onShowInitiativesChange,
-  onOfftrackClick
+  onOfftrackClick,
+  hideNestingToggles = false
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -496,33 +500,37 @@ const FilterBar = ({
           </TooltipProvider>
 
           {/* Separator */}
-          <div className="w-px h-4 bg-border" />
+          {!hideNestingToggles && <div className="w-px h-4 bg-border" />}
 
-          {/* Nesting Toggles */}
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-            <input
-              type="checkbox"
-              checked={showTeams}
-              onChange={(e) => onShowTeamsChange(e.target.checked)}
-              className="hidden"
-            />
-            <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-              {showTeams && <Check size={10} />}
-            </span>
-            <span>Команды</span>
-          </label>
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
-            <input
-              type="checkbox"
-              checked={showInitiatives}
-              onChange={(e) => onShowInitiativesChange(e.target.checked)}
-              className="hidden"
-            />
-            <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-              {showInitiatives && <Check size={10} />}
-            </span>
-            <span>Инициативы</span>
-          </label>
+          {/* Nesting Toggles - hidden on Gantt */}
+          {!hideNestingToggles && (
+            <>
+              <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                <input
+                  type="checkbox"
+                  checked={showTeams}
+                  onChange={(e) => onShowTeamsChange(e.target.checked)}
+                  className="hidden"
+                />
+                <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                  {showTeams && <Check size={10} />}
+                </span>
+                <span>Команды</span>
+              </label>
+              <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                <input
+                  type="checkbox"
+                  checked={showInitiatives}
+                  onChange={(e) => onShowInitiativesChange(e.target.checked)}
+                  className="hidden"
+                />
+                <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                  {showInitiatives && <Check size={10} />}
+                </span>
+                <span>Инициативы</span>
+              </label>
+            </>
+          )}
         </div>
 
         {/* Spacer */}

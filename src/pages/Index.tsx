@@ -307,6 +307,10 @@ const Index = () => {
             onNodeClick={handleNodeClick}
             onNavigateBack={handleNavigateBack}
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0}
+            onInitiativeClick={(name) => {
+              setHighlightedInitiative(name);
+              setCurrentView('gantt');
+            }}
           />
         )}
 

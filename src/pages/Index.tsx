@@ -179,7 +179,11 @@ const Index = () => {
   };
 
   // Navigate up one level (for the up arrow button)
-  const handleNavigateBack = () => {
+  const canNavigateBack = selectedTeams.length > 0 || 
+                          selectedUnits.length > 0 || 
+                          selectedStakeholders.length > 0;
+
+  const handleNavigateBack = useCallback(() => {
     if (selectedTeams.length > 0) {
       // If team is selected, clear it (go back to unit level)
       setSelectedTeams([]);
@@ -191,7 +195,7 @@ const Index = () => {
       setSelectedStakeholders([]);
     }
     // Don't change toggle states when going back
-  };
+  }, [selectedTeams.length, selectedUnits.length, selectedStakeholders.length]);
 
   // View switching
   const handleViewChange = (view: ViewType) => {
@@ -226,8 +230,8 @@ const Index = () => {
             setShowShortcuts(false);
           } else if (showOfftrackModal) {
             setShowOfftrackModal(false);
-          } else if (navigationStack.length > 0) {
-            navigateUp();
+          } else if (canNavigateBack) {
+            handleNavigateBack();
           }
           break;
       }
@@ -235,7 +239,7 @@ const Index = () => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showSearch, showShortcuts, showOfftrackModal, navigationStack]);
+  }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack]);
 
   // Search filtered results
   const searchResults = rawData.filter(row => {

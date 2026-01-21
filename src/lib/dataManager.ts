@@ -429,6 +429,13 @@ export function escapeHtml(text: string): string {
 
 // ===== COLOR UTILITIES =====
 const colorPalette = ['#5B8FF9', '#9B7FE8', '#F6903D', '#63DAAB', '#FF85C0', '#7DD3FC', '#FDE047', '#A78BFA'];
+
+// Explicit colors for units that might have hash collisions
+const explicitUnitColors: Record<string, string> = {
+  'FAP': '#F6903D',           // Orange
+  'TechPlatform': '#5B8FF9',  // Blue
+};
+
 const unitColors: Record<string, string> = {};
 
 export function hashString(str: string): number {
@@ -442,8 +449,13 @@ export function hashString(str: string): number {
 
 export function getUnitColor(unitName: string): string {
   if (!unitColors[unitName]) {
-    const hash = hashString(unitName);
-    unitColors[unitName] = colorPalette[hash % colorPalette.length];
+    // Check for explicit color first
+    if (explicitUnitColors[unitName]) {
+      unitColors[unitName] = explicitUnitColors[unitName];
+    } else {
+      const hash = hashString(unitName);
+      unitColors[unitName] = colorPalette[hash % colorPalette.length];
+    }
   }
   return unitColors[unitName];
 }

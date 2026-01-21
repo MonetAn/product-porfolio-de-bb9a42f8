@@ -282,8 +282,8 @@ const Index = () => {
         onOfftrackClick={() => setShowOfftrackModal(true)}
       />
 
-      {/* Main Content - adjusted for 2-row filter bar (Header 56px + FilterBar ~88px) */}
-      <main className="mt-[144px] h-[calc(100vh-144px)] p-4 overflow-hidden">
+      {/* Main Content - full height without padding for immersive treemap */}
+      <main className="mt-[144px] h-[calc(100vh-144px)] overflow-hidden">
         {currentView === 'budget' && (
           <BudgetTreemap
             data={currentRoot}

@@ -29,25 +29,26 @@ const BudgetTreemap = ({
   showInitiatives = false,
   onUploadClick
 }: BudgetTreemapProps) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Separate ref for D3-only container - React will NOT touch this
+  const d3ContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [showHint, setShowHint] = useState(true);
 
+  // Check if data is empty
+  const isEmpty = !data.children || data.children.length === 0;
+
   // ===== TREEMAP RENDERING - EXACTLY FROM HTML PROTOTYPE =====
   const renderTreemap = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const container = d3ContainerRef.current;
+    if (!container || isEmpty) return;
 
     const width = container.clientWidth;
     const height = container.clientHeight;
 
-    // Clear previous content (except back button and hint)
-    Array.from(container.children).forEach(child => {
-      const el = child as HTMLElement;
-      if (!el.classList.contains('back-button') && !el.classList.contains('instruction-hint') && !el.classList.contains('treemap-tooltip')) {
-        container.removeChild(child);
-      }
-    });
+    // Clear ALL previous D3 content - do this safely
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
 
     if (!data.children || data.children.length === 0) {
       return;
@@ -268,23 +269,33 @@ const BudgetTreemap = ({
       setShowHint(true);
       setTimeout(() => setShowHint(false), 3000);
     }
-  }, [data, showTeams, showInitiatives, onDrillDown, showBackButton]);
+  }, [data, showTeams, showInitiatives, onDrillDown, showBackButton, isEmpty]);
 
   // Render on data/size changes
   useEffect(() => {
-    renderTreemap();
+    if (!isEmpty) {
+      // Small delay to ensure container is properly sized
+      const timeoutId = setTimeout(() => {
+        renderTreemap();
+      }, 0);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [renderTreemap, isEmpty]);
 
-    const handleResize = () => renderTreemap();
+  // Handle resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (!isEmpty) {
+        renderTreemap();
+      }
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [renderTreemap]);
-
-  // Check if data is empty
-  const isEmpty = !data.children || data.children.length === 0;
+  }, [renderTreemap, isEmpty]);
 
   return (
-    <div ref={containerRef} className="treemap-container">
-      {/* Back Button */}
+    <div className="treemap-container">
+      {/* Back Button - React managed, outside D3 container */}
       <button
         className={`back-button ${showBackButton ? 'visible' : ''}`}
         onClick={onNavigateUp}
@@ -293,15 +304,29 @@ const BudgetTreemap = ({
         Назад
       </button>
 
-      {/* Instruction Hint */}
+      {/* Instruction Hint - React managed */}
       <div className={`instruction-hint ${showHint && !isEmpty ? 'visible' : ''}`}>
         Кликните на блок для детализации
       </div>
 
-      {/* Tooltip */}
+      {/* Tooltip - React managed, positioned fixed */}
       <div ref={tooltipRef} className="treemap-tooltip" />
 
-      {/* Empty/Welcome State */}
+      {/* D3-only container - React will NOT touch children of this div */}
+      {!isEmpty && (
+        <div 
+          ref={d3ContainerRef} 
+          style={{ 
+            position: 'absolute', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0 
+          }} 
+        />
+      )}
+
+      {/* Empty/Welcome State - React managed, only shown when empty */}
       {isEmpty && (
         <div className="welcome-empty-state">
           <div className="welcome-icon">

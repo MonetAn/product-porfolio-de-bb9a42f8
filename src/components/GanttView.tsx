@@ -31,6 +31,11 @@ interface GanttViewProps {
   onUploadClick?: () => void;
   highlightedInitiative?: string | null;
   onResetFilters?: () => void;
+  // Cost filter props
+  costSortOrder?: 'none' | 'asc' | 'desc';
+  costFilterMin?: number | null;
+  costFilterMax?: number | null;
+  costType?: 'period' | 'total';
 }
 
 const GanttView = ({
@@ -43,7 +48,11 @@ const GanttView = ({
   selectedStakeholders,
   onUploadClick,
   highlightedInitiative,
-  onResetFilters
+  onResetFilters,
+  costSortOrder = 'none',
+  costFilterMin = null,
+  costFilterMax = null,
+  costType = 'period'
 }: GanttViewProps) => {
   const highlightedRef = useRef<HTMLDivElement>(null);
   const headerTimelineRef = useRef<HTMLDivElement>(null);
@@ -56,9 +65,9 @@ const GanttView = ({
 
   // Filter data based on current filters
   const filteredData = useMemo(() => {
-    return rawData.filter(row => {
-      const budget = calculateBudget(row, selectedQuarters);
-      if (budget === 0) return false;
+    let result = rawData.filter(row => {
+      const periodBudget = calculateBudget(row, selectedQuarters);
+      if (periodBudget === 0) return false;
 
       if (hideSupport && isInitiativeSupport(row, selectedQuarters)) return false;
       if (showOnlyOfftrack && !isInitiativeOffTrack(row, selectedQuarters)) return false;
@@ -66,9 +75,33 @@ const GanttView = ({
       if (selectedTeams.length > 0 && !selectedTeams.includes(row.team)) return false;
       if (selectedStakeholders.length > 0 && !selectedStakeholders.includes(row.stakeholders)) return false;
 
+      // Cost filter
+      const costValue = costType === 'period' 
+        ? periodBudget 
+        : calculateTotalBudget(row);
+      
+      if (costFilterMin !== null && costValue < costFilterMin) return false;
+      if (costFilterMax !== null && costValue > costFilterMax) return false;
+
       return true;
     });
-  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedUnits, selectedTeams, selectedStakeholders]);
+
+    // Sort by cost if enabled
+    if (costSortOrder !== 'none') {
+      result = [...result].sort((a, b) => {
+        const costA = costType === 'period' 
+          ? calculateBudget(a, selectedQuarters) 
+          : calculateTotalBudget(a);
+        const costB = costType === 'period' 
+          ? calculateBudget(b, selectedQuarters) 
+          : calculateTotalBudget(b);
+        
+        return costSortOrder === 'asc' ? costA - costB : costB - costA;
+      });
+    }
+
+    return result;
+  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
 
   // Scroll to highlighted initiative
   useEffect(() => {

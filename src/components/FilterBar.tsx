@@ -138,37 +138,46 @@ const FilterBar = ({
     { count: 0, budget: 0, offtrack: 0 }
   );
 
-  // Period label
+  // Period label - shorter version
   const getPeriodLabel = () => {
-    if (selectedQuarters.length === 0) return 'Выберите период';
+    if (selectedQuarters.length === 0) return 'Период';
     if (selectedQuarters.length === availableQuarters.length) {
-      return availableYears.join('-') + ' (все)';
+      return `${availableYears[0]}-${availableYears[availableYears.length - 1]}`;
     }
-    if (selectedQuarters.length <= 2) {
-      return selectedQuarters.map(q => q.replace('-', ' ')).join(', ');
+    if (selectedQuarters.length === 1) {
+      return selectedQuarters[0].replace('-', ' ');
     }
-    return selectedQuarters.length + ' кварталов';
+    return `${selectedQuarters.length} кв.`;
   };
 
-  // Stakeholder label
+  // Stakeholder label - shorter
   const getStakeholderLabel = () => {
-    if (selectedStakeholders.length === 0) return 'Все стейкхолдеры';
-    if (selectedStakeholders.length === 1) return selectedStakeholders[0];
-    return selectedStakeholders.length + ' стейкхолдеров';
+    if (selectedStakeholders.length === 0) return 'Стейкхолдеры';
+    if (selectedStakeholders.length === 1) {
+      const s = selectedStakeholders[0];
+      return s.length > 12 ? s.slice(0, 12) + '...' : s;
+    }
+    return `${selectedStakeholders.length} выбр.`;
   };
 
-  // Unit label
+  // Unit label - shorter
   const getUnitLabel = () => {
-    if (selectedUnits.length === 0) return 'Все юниты';
-    if (selectedUnits.length === 1) return selectedUnits[0];
-    return selectedUnits.length + ' юнитов';
+    if (selectedUnits.length === 0) return 'Юниты';
+    if (selectedUnits.length === 1) {
+      const u = selectedUnits[0];
+      return u.length > 12 ? u.slice(0, 12) + '...' : u;
+    }
+    return `${selectedUnits.length} юнит.`;
   };
 
-  // Team label
+  // Team label - shorter
   const getTeamLabel = () => {
-    if (selectedTeams.length === 0) return 'Все команды';
-    if (selectedTeams.length === 1) return selectedTeams[0];
-    return selectedTeams.length + ' команд';
+    if (selectedTeams.length === 0) return 'Команды';
+    if (selectedTeams.length === 1) {
+      const t = selectedTeams[0];
+      return t.length > 12 ? t.slice(0, 12) + '...' : t;
+    }
+    return `${selectedTeams.length} ком.`;
   };
 
   // Calculate quarters in range for hover preview
@@ -184,11 +193,9 @@ const FilterBar = ({
   // Handle quarter click for range selection
   const handleQuarterClick = (q: string) => {
     if (rangeStart === null) {
-      // First click - start range
       setRangeStart(q);
       onQuartersChange([q]);
     } else {
-      // Second click - complete range
       const range = getQuartersInRange(rangeStart, q);
       onQuartersChange(range);
       setRangeStart(null);
@@ -206,7 +213,6 @@ const FilterBar = ({
     if (selectedUnits.includes(u)) {
       const newUnits = selectedUnits.filter(x => x !== u);
       onUnitsChange(newUnits);
-      // Clear teams that don't belong to remaining units
       if (newUnits.length > 0) {
         const validTeams = rawData
           .filter(r => newUnits.includes(r.unit))
@@ -249,297 +255,315 @@ const FilterBar = ({
     }
   };
 
+  // Format budget for compact display
+  const formatBudgetCompact = (value: number): string => {
+    if (value >= 1000000) {
+      return (value / 1000000).toFixed(1) + 'M';
+    } else if (value >= 1000) {
+      return Math.round(value / 1000) + 'K';
+    }
+    return value.toString();
+  };
+
   return (
     <div className="bg-card border-b border-border fixed top-14 left-0 right-0 z-40">
-      {/* Row 1 - Main Filters */}
-      <div className="h-12 flex items-center px-6 gap-3 border-b border-border/50">
-        {/* Unit multi-select */}
-        <div ref={unitRef} className="relative">
-          <button
-            onClick={() => setUnitMenuOpen(!unitMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground min-w-[140px]"
-          >
-            <span className="truncate">{getUnitLabel()}</span>
-            <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
-          </button>
-          {unitMenuOpen && (
-            <div className="absolute top-full mt-1 left-0 min-w-[220px] max-h-[300px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
-              <div className="flex justify-between p-2 border-b border-border">
-                <button className="text-xs text-primary underline" onClick={() => onUnitsChange([...units])}>Выбрать все</button>
-                <button className="text-xs text-primary underline" onClick={() => { onUnitsChange([]); onTeamsChange([]); }}>Сбросить</button>
-              </div>
-              <div className="max-h-[240px] overflow-y-auto p-1">
-                {units.map(u => (
-                  <div
-                    key={u}
-                    onClick={() => toggleUnit(u)}
-                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-secondary rounded ${selectedUnits.includes(u) ? 'bg-primary/10' : ''}`}
-                  >
-                    <span className={`w-4 h-4 border rounded flex items-center justify-center ${selectedUnits.includes(u) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                      {selectedUnits.includes(u) && <Check size={12} />}
-                    </span>
-                    <span>{u}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Team multi-select */}
-        <div ref={teamRef} className="relative">
-          <button
-            onClick={() => setTeamMenuOpen(!teamMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground min-w-[140px]"
-          >
-            <span className="truncate">{getTeamLabel()}</span>
-            <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
-          </button>
-          {teamMenuOpen && (
-            <div className="absolute top-full mt-1 left-0 min-w-[220px] max-h-[300px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
-              <div className="flex justify-between p-2 border-b border-border">
-                <button className="text-xs text-primary underline" onClick={() => onTeamsChange([...filteredTeams])}>Выбрать все</button>
-                <button className="text-xs text-primary underline" onClick={() => onTeamsChange([])}>Сбросить</button>
-              </div>
-              <div className="max-h-[240px] overflow-y-auto p-1">
-                {filteredTeams.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">Нет доступных команд</div>
-                ) : (
-                  filteredTeams.map(t => (
+      {/* Single responsive row */}
+      <div className="h-auto min-h-[44px] flex flex-wrap items-center px-4 py-2 gap-2">
+        {/* Filters Group */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Unit multi-select */}
+          <div ref={unitRef} className="relative">
+            <button
+              onClick={() => setUnitMenuOpen(!unitMenuOpen)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border rounded-md text-xs cursor-pointer hover:border-muted-foreground"
+            >
+              <span className="truncate max-w-[80px]">{getUnitLabel()}</span>
+              <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
+            </button>
+            {unitMenuOpen && (
+              <div className="absolute top-full mt-1 left-0 min-w-[200px] max-h-[280px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
+                <div className="flex justify-between p-2 border-b border-border">
+                  <button className="text-xs text-primary underline" onClick={() => onUnitsChange([...units])}>Все</button>
+                  <button className="text-xs text-primary underline" onClick={() => { onUnitsChange([]); onTeamsChange([]); }}>Сброс</button>
+                </div>
+                <div className="max-h-[220px] overflow-y-auto p-1">
+                  {units.map(u => (
                     <div
-                      key={t}
-                      onClick={() => toggleTeam(t)}
-                      className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-secondary rounded ${selectedTeams.includes(t) ? 'bg-primary/10' : ''}`}
+                      key={u}
+                      onClick={() => toggleUnit(u)}
+                      className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs hover:bg-secondary rounded ${selectedUnits.includes(u) ? 'bg-primary/10' : ''}`}
                     >
-                      <span className={`w-4 h-4 border rounded flex items-center justify-center ${selectedTeams.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                        {selectedTeams.includes(t) && <Check size={12} />}
+                      <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${selectedUnits.includes(u) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                        {selectedUnits.includes(u) && <Check size={10} />}
                       </span>
-                      <span>{t}</span>
+                      <span className="truncate">{u}</span>
                     </div>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Stakeholder multi-select */}
-        <div ref={stakeholderRef} className="relative">
-          <button
-            onClick={() => setStakeholderMenuOpen(!stakeholderMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground min-w-[140px]"
-          >
-            <span className="truncate">{getStakeholderLabel()}</span>
-            <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
-          </button>
-          {stakeholderMenuOpen && (
-            <div className="absolute top-full mt-1 left-0 min-w-[280px] max-h-[300px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
-              <div className="flex justify-between p-2 border-b border-border">
-                <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([...allStakeholders])}>Выбрать все</button>
-                <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([])}>Сбросить</button>
+          {/* Team multi-select */}
+          <div ref={teamRef} className="relative">
+            <button
+              onClick={() => setTeamMenuOpen(!teamMenuOpen)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border rounded-md text-xs cursor-pointer hover:border-muted-foreground"
+            >
+              <span className="truncate max-w-[80px]">{getTeamLabel()}</span>
+              <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
+            </button>
+            {teamMenuOpen && (
+              <div className="absolute top-full mt-1 left-0 min-w-[200px] max-h-[280px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
+                <div className="flex justify-between p-2 border-b border-border">
+                  <button className="text-xs text-primary underline" onClick={() => onTeamsChange([...filteredTeams])}>Все</button>
+                  <button className="text-xs text-primary underline" onClick={() => onTeamsChange([])}>Сброс</button>
+                </div>
+                <div className="max-h-[220px] overflow-y-auto p-1">
+                  {filteredTeams.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground">Нет команд</div>
+                  ) : (
+                    filteredTeams.map(t => (
+                      <div
+                        key={t}
+                        onClick={() => toggleTeam(t)}
+                        className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs hover:bg-secondary rounded ${selectedTeams.includes(t) ? 'bg-primary/10' : ''}`}
+                      >
+                        <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${selectedTeams.includes(t) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                          {selectedTeams.includes(t) && <Check size={10} />}
+                        </span>
+                        <span className="truncate">{t}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="max-h-[240px] overflow-y-auto p-1">
-                {allStakeholders.map(s => (
-                  <div
-                    key={s}
-                    onClick={() => toggleStakeholder(s)}
-                    className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-secondary rounded ${selectedStakeholders.includes(s) ? 'bg-primary/10' : ''}`}
-                  >
-                    <span className={`w-4 h-4 border rounded flex items-center justify-center ${selectedStakeholders.includes(s) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                      {selectedStakeholders.includes(s) && <Check size={12} />}
-                    </span>
-                    <span>{s}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Period selector */}
-        <div ref={periodRef} className="relative">
-          <button
-            onClick={() => setPeriodMenuOpen(!periodMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg text-sm cursor-pointer hover:border-muted-foreground font-medium whitespace-nowrap"
-          >
-            <Calendar size={14} className="text-muted-foreground flex-shrink-0" />
-            <span>{getPeriodLabel()}</span>
-            <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
-          </button>
-          {periodMenuOpen && (
-            <div className="absolute top-full mt-1 left-0 min-w-[320px] bg-card border border-border rounded-lg shadow-lg z-50 p-3 animate-in fade-in slide-in-from-top-1">
-              <div className="flex justify-between mb-2 pb-2 border-b border-border">
-                <button className="text-xs text-primary underline" onClick={() => { onQuartersChange([...availableQuarters]); setRangeStart(null); }}>Выбрать все</button>
-                <button className="text-xs text-primary underline" onClick={() => { onQuartersChange([]); setRangeStart(null); }}>Сбросить</button>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                {rangeStart ? `Выберите конец диапазона (начало: ${rangeStart.replace('-', ' ')})` : 'Кликните на квартал для начала диапазона'}
-              </p>
-              {availableYears.map(year => {
-                const yearQuarters = availableQuarters.filter(q => q.startsWith(year));
-                const allYearSelected = yearQuarters.every(q => selectedQuarters.includes(q));
-                return (
-                  <div key={year} className="mb-3">
+          {/* Stakeholder multi-select */}
+          <div ref={stakeholderRef} className="relative">
+            <button
+              onClick={() => setStakeholderMenuOpen(!stakeholderMenuOpen)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border rounded-md text-xs cursor-pointer hover:border-muted-foreground"
+            >
+              <span className="truncate max-w-[80px]">{getStakeholderLabel()}</span>
+              <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
+            </button>
+            {stakeholderMenuOpen && (
+              <div className="absolute top-full mt-1 left-0 min-w-[240px] max-h-[280px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
+                <div className="flex justify-between p-2 border-b border-border">
+                  <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([...allStakeholders])}>Все</button>
+                  <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([])}>Сброс</button>
+                </div>
+                <div className="max-h-[220px] overflow-y-auto p-1">
+                  {allStakeholders.map(s => (
                     <div
-                      className="flex items-center gap-2 px-2 py-1.5 text-sm font-semibold cursor-pointer rounded hover:bg-secondary mb-1"
-                      onClick={() => toggleYear(year)}
+                      key={s}
+                      onClick={() => toggleStakeholder(s)}
+                      className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs hover:bg-secondary rounded ${selectedStakeholders.includes(s) ? 'bg-primary/10' : ''}`}
                     >
-                      <span className={`w-4 h-4 border rounded flex items-center justify-center ${allYearSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                        {allYearSelected && <Check size={12} />}
+                      <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${selectedStakeholders.includes(s) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                        {selectedStakeholders.includes(s) && <Check size={10} />}
                       </span>
-                      {year}
+                      <span className="truncate">{s}</span>
                     </div>
-                    <div className="grid grid-cols-4 gap-1 px-2">
-                      {yearQuarters.map(q => {
-                        const qLabel = q.split('-')[1];
-                        const isSelected = selectedQuarters.includes(q);
-                        const isHovered = isInHoverRange(q);
-                        const isStart = rangeStart === q;
-                        return (
-                          <button
-                            key={q}
-                            onClick={() => handleQuarterClick(q)}
-                            onMouseEnter={() => setHoverQuarter(q)}
-                            onMouseLeave={() => setHoverQuarter(null)}
-                            className={`py-1.5 px-2 text-xs rounded border transition-all ${
-                              isStart
-                                ? 'bg-primary text-primary-foreground border-primary ring-2 ring-primary/30'
-                                : isSelected
-                                  ? 'bg-foreground text-background border-foreground'
-                                  : isHovered
-                                    ? 'bg-primary/30 border-primary/50'
-                                    : 'bg-secondary border-border hover:border-muted-foreground'
-                            }`}
-                          >
-                            {qLabel}
-                          </button>
-                        );
-                      })}
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Period selector */}
+          <div ref={periodRef} className="relative">
+            <button
+              onClick={() => setPeriodMenuOpen(!periodMenuOpen)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border rounded-md text-xs cursor-pointer hover:border-muted-foreground font-medium"
+            >
+              <Calendar size={12} className="text-muted-foreground flex-shrink-0" />
+              <span className="truncate max-w-[80px]">{getPeriodLabel()}</span>
+              <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
+            </button>
+            {periodMenuOpen && (
+              <div className="absolute top-full mt-1 left-0 min-w-[300px] bg-card border border-border rounded-lg shadow-lg z-50 p-2 animate-in fade-in slide-in-from-top-1">
+                <div className="flex justify-between mb-2 pb-2 border-b border-border">
+                  <button className="text-xs text-primary underline" onClick={() => { onQuartersChange([...availableQuarters]); setRangeStart(null); }}>Все</button>
+                  <button className="text-xs text-primary underline" onClick={() => { onQuartersChange([]); setRangeStart(null); }}>Сброс</button>
+                </div>
+                <p className="text-[10px] text-muted-foreground mb-2">
+                  {rangeStart ? `Конец: ${rangeStart.replace('-', ' ')}` : 'Клик = начало диапазона'}
+                </p>
+                {availableYears.map(year => {
+                  const yearQuarters = availableQuarters.filter(q => q.startsWith(year));
+                  const allYearSelected = yearQuarters.every(q => selectedQuarters.includes(q));
+                  return (
+                    <div key={year} className="mb-2">
+                      <div
+                        className="flex items-center gap-1.5 px-1.5 py-1 text-xs font-semibold cursor-pointer rounded hover:bg-secondary"
+                        onClick={() => toggleYear(year)}
+                      >
+                        <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${allYearSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                          {allYearSelected && <Check size={10} />}
+                        </span>
+                        {year}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 px-1.5 mt-1">
+                        {yearQuarters.map(q => {
+                          const qLabel = q.split('-')[1];
+                          const isSelected = selectedQuarters.includes(q);
+                          const isHovered = isInHoverRange(q);
+                          const isStart = rangeStart === q;
+                          return (
+                            <button
+                              key={q}
+                              onClick={() => handleQuarterClick(q)}
+                              onMouseEnter={() => setHoverQuarter(q)}
+                              onMouseLeave={() => setHoverQuarter(null)}
+                              className={`py-1 px-1.5 text-[10px] rounded border transition-all ${
+                                isStart
+                                  ? 'bg-primary text-primary-foreground border-primary ring-1 ring-primary/30'
+                                  : isSelected
+                                    ? 'bg-foreground text-background border-foreground'
+                                    : isHovered
+                                      ? 'bg-primary/30 border-primary/50'
+                                      : 'bg-secondary border-border hover:border-muted-foreground'
+                              }`}
+                            >
+                              {qLabel}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Separator */}
+        <div className="w-px h-5 bg-border hidden sm:block" />
+
+        {/* Toggles Group */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Hide support toggle with tooltip */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={hideSupport}
+                    onChange={(e) => onHideSupportChange(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${hideSupport ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                    {hideSupport && <Check size={10} />}
+                  </span>
+                  <span className="whitespace-nowrap">Support</span>
+                  <HelpCircle size={10} className="text-muted-foreground/60" />
+                </label>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[200px] text-xs">
+                Скрывает инициативы в статусе поддержки
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Only offtrack toggle with tooltip */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyOfftrack}
+                    onChange={(e) => onShowOnlyOfftrackChange(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showOnlyOfftrack ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                    {showOnlyOfftrack && <Check size={10} />}
+                  </span>
+                  <span className="whitespace-nowrap">Off-track</span>
+                  <HelpCircle size={10} className="text-muted-foreground/60" />
+                </label>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[200px] text-xs">
+                Показывает только Off-track инициативы
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Separator */}
+          <div className="w-px h-4 bg-border" />
+
+          {/* Nesting Toggles */}
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+            <input
+              type="checkbox"
+              checked={showTeams}
+              onChange={(e) => onShowTeamsChange(e.target.checked)}
+              className="hidden"
+            />
+            <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+              {showTeams && <Check size={10} />}
+            </span>
+            <span>Команды</span>
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer px-1.5 py-1 rounded hover:bg-secondary">
+            <input
+              type="checkbox"
+              checked={showInitiatives}
+              onChange={(e) => onShowInitiativesChange(e.target.checked)}
+              className="hidden"
+            />
+            <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+              {showInitiatives && <Check size={10} />}
+            </span>
+            <span>Инициативы</span>
+          </label>
         </div>
 
         {/* Spacer */}
-        <div className="flex-1" />
+        <div className="flex-1 min-w-[8px]" />
 
-        {/* Totals */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 px-3 py-1.5 bg-secondary rounded-lg text-sm font-medium">
-            <span className="font-bold">{totals.count}</span>
-            <span className="text-muted-foreground">инициатив</span>
+        {/* KPIs - compact */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
+            <span className="font-bold">{totals.count}</span> иниц.
           </div>
-          <div className="flex items-center gap-1 px-3 py-1.5 bg-secondary rounded-lg text-sm font-medium">
-            <span className="font-bold">{formatBudget(totals.budget)}</span>
+          <div className="px-2 py-1 bg-secondary rounded text-[11px] font-bold whitespace-nowrap">
+            {formatBudgetCompact(totals.budget)} ₽
           </div>
           <button
             onClick={onOfftrackClick}
-            className="flex items-center gap-1 px-3 py-1.5 bg-destructive/10 text-destructive rounded-lg text-sm font-medium cursor-pointer hover:bg-destructive/20 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 bg-destructive/10 text-destructive rounded text-[11px] font-medium cursor-pointer hover:bg-destructive/20 transition-colors whitespace-nowrap"
           >
             <span className="font-bold">{totals.offtrack}</span>
-            <span>off-track</span>
+            <span className="hidden sm:inline">off-track</span>
+            <div 
+              className="w-2.5 h-2.5 sm:hidden" 
+              style={{ 
+                borderWidth: '0 10px 10px 0', 
+                borderStyle: 'solid',
+                borderColor: 'transparent hsl(var(--destructive)) transparent transparent' 
+              }} 
+            />
           </button>
         </div>
-      </div>
 
-      {/* Row 2 - Toggles and Legend */}
-      <div className="h-10 flex items-center px-6 gap-4">
-        {/* Hide support toggle with tooltip */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
-                <input
-                  type="checkbox"
-                  checked={hideSupport}
-                  onChange={(e) => onHideSupportChange(e.target.checked)}
-                  className="hidden"
-                />
-                <span className={`w-4 h-4 border rounded flex items-center justify-center ${hideSupport ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                  {hideSupport && <Check size={12} />}
-                </span>
-                <span>Скрыть Support</span>
-                <HelpCircle size={12} className="text-muted-foreground/60" />
-              </label>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-xs">
-              <p>Скрывает инициативы, которые находятся в статусе поддержки на последний квартал выбранного периода</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* Only offtrack toggle with tooltip */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
-                <input
-                  type="checkbox"
-                  checked={showOnlyOfftrack}
-                  onChange={(e) => onShowOnlyOfftrackChange(e.target.checked)}
-                  className="hidden"
-                />
-                <span className={`w-4 h-4 border rounded flex items-center justify-center ${showOnlyOfftrack ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                  {showOnlyOfftrack && <Check size={12} />}
-                </span>
-                <span>Только Off-track</span>
-                <HelpCircle size={12} className="text-muted-foreground/60" />
-              </label>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-xs">
-              <p>Показывает только инициативы, которые имеют статус Off-track на последний квартал выбранного периода</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* Separator */}
-        <div className="w-px h-5 bg-border" />
-
-        {/* Nesting Toggles */}
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
-          <input
-            type="checkbox"
-            checked={showTeams}
-            onChange={(e) => onShowTeamsChange(e.target.checked)}
-            className="hidden"
-          />
-          <span className={`w-4 h-4 border rounded flex items-center justify-center ${showTeams ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-            {showTeams && <Check size={12} />}
-          </span>
-          <span>Команды</span>
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer px-2 py-1 rounded hover:bg-secondary">
-          <input
-            type="checkbox"
-            checked={showInitiatives}
-            onChange={(e) => onShowInitiativesChange(e.target.checked)}
-            className="hidden"
-          />
-          <span className={`w-4 h-4 border rounded flex items-center justify-center ${showInitiatives ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-            {showInitiatives && <Check size={12} />}
-          </span>
-          <span>Инициативы</span>
-        </label>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Legend */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <div className="w-4 h-4 relative">
-              <div 
-                className="absolute top-0 right-0" 
-                style={{ 
-                  borderWidth: '0 16px 16px 0', 
-                  borderStyle: 'solid',
-                  borderColor: 'transparent hsl(var(--destructive)) transparent transparent' 
-                }} 
-              />
-            </div>
+        {/* Legend - hidden on small screens */}
+        <div className="hidden lg:flex items-center gap-1.5 pl-2 border-l border-border flex-shrink-0">
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <div 
+              className="w-3 h-3" 
+              style={{ 
+                borderWidth: '0 12px 12px 0', 
+                borderStyle: 'solid',
+                borderColor: 'transparent hsl(var(--destructive)) transparent transparent' 
+              }} 
+            />
             <span>Off-Track</span>
           </div>
         </div>

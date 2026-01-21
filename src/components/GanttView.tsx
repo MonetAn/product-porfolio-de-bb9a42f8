@@ -30,6 +30,7 @@ interface GanttViewProps {
   selectedStakeholders: string[];
   onUploadClick?: () => void;
   highlightedInitiative?: string | null;
+  onResetFilters?: () => void;
 }
 
 const GanttView = ({
@@ -41,7 +42,8 @@ const GanttView = ({
   selectedTeams,
   selectedStakeholders,
   onUploadClick,
-  highlightedInitiative
+  highlightedInitiative,
+  onResetFilters
 }: GanttViewProps) => {
   const highlightedRef = useRef<HTMLDivElement>(null);
   const headerTimelineRef = useRef<HTMLDivElement>(null);
@@ -191,6 +193,14 @@ const GanttView = ({
             <Search size={32} />
           </div>
           <div className="gantt-empty-text">Нет инициатив по выбранным фильтрам</div>
+          {onResetFilters && (
+            <button 
+              onClick={onResetFilters}
+              className="mt-4 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
+            >
+              Сбросить фильтры
+            </button>
+          )}
         </div>
       </div>
     );

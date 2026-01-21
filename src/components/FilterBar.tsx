@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Calendar, HelpCircle, Check } from 'lucide-react';
+import { ChevronDown, Calendar, HelpCircle, Check, RotateCcw } from 'lucide-react';
 import { formatBudget, RawDataRow, calculateBudget, isInitiativeOffTrack, isInitiativeSupport } from '@/lib/dataManager';
 import {
   Tooltip,
@@ -48,6 +48,10 @@ interface FilterBarProps {
   
   // Hide nesting toggles (for Timeline view)
   hideNestingToggles?: boolean;
+  
+  // Reset filters
+  onResetFilters?: () => void;
+  hasActiveFilters?: boolean;
 }
 
 const FilterBar = ({
@@ -74,7 +78,9 @@ const FilterBar = ({
   onShowTeamsChange,
   onShowInitiativesChange,
   onOfftrackClick,
-  hideNestingToggles = false
+  hideNestingToggles = false,
+  onResetFilters,
+  hasActiveFilters = false
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -535,6 +541,21 @@ const FilterBar = ({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {/* Reset Filters Button - only visible when filters are active */}
+          {hasActiveFilters && onResetFilters && (
+            <>
+              <div className="w-px h-4 bg-border" />
+              <button
+                onClick={onResetFilters}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors"
+                title="Сбросить все фильтры (Shift+R)"
+              >
+                <RotateCcw size={12} />
+                <span className="hidden sm:inline">Сброс</span>
+              </button>
+            </>
+          )}
 
           {/* Separator */}
           {!hideNestingToggles && <div className="w-px h-4 bg-border" />}

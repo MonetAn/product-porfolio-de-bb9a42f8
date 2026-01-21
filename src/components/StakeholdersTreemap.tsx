@@ -18,6 +18,7 @@ interface StakeholdersTreemapProps {
   selectedQuarters?: string[];
   hasData?: boolean; // true if rawData.length > 0
   onInitiativeClick?: (initiativeName: string) => void;
+  onResetFilters?: () => void;
 }
 
 // Separate color palette for stakeholders
@@ -39,7 +40,8 @@ const StakeholdersTreemap = ({
   canNavigateBack = false,
   selectedQuarters = [],
   hasData = false,
-  onInitiativeClick
+  onInitiativeClick,
+  onResetFilters
 }: StakeholdersTreemapProps) => {
   const d3ContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -342,6 +344,14 @@ const StakeholdersTreemap = ({
           <p className="welcome-subtitle">
             Попробуйте изменить параметры фильтрации или сбросить фильтры
           </p>
+          {onResetFilters && (
+            <button 
+              onClick={onResetFilters}
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
+            >
+              Сбросить фильтры
+            </button>
+          )}
         </div>
       )}
 

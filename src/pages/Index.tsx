@@ -244,6 +244,22 @@ const Index = () => {
     // Don't change toggle states when going back
   }, [selectedTeams.length, selectedUnits.length, selectedStakeholders.length]);
 
+  // Reset all filters (except period and nesting toggles)
+  const resetFilters = useCallback(() => {
+    setSelectedUnits([]);
+    setSelectedTeams([]);
+    setSelectedStakeholders([]);
+    setHideSupport(false);
+    setShowOnlyOfftrack(false);
+  }, []);
+
+  // Check if any filter is active
+  const hasActiveFilters = selectedUnits.length > 0 || 
+                           selectedTeams.length > 0 || 
+                           selectedStakeholders.length > 0 ||
+                           hideSupport || 
+                           showOnlyOfftrack;
+
   // View switching
   const handleViewChange = (view: ViewType) => {
     setCurrentView(view);
@@ -269,6 +285,13 @@ const Index = () => {
         case '3': handleViewChange('timeline'); break;
         case '/': e.preventDefault(); setShowSearch(true); break;
         case '?': setShowShortcuts(true); break;
+        case 'r':
+        case 'R':
+          if (e.shiftKey && hasActiveFilters) {
+            e.preventDefault();
+            resetFilters();
+          }
+          break;
         case 'Escape':
           if (showSearch) {
             setShowSearch(false);
@@ -286,7 +309,7 @@ const Index = () => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack]);
+  }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack, hasActiveFilters, resetFilters]);
 
   // Search filtered results
   const searchResults = rawData.filter(row => {
@@ -368,6 +391,8 @@ const Index = () => {
           setCurrentView('timeline');
         }}
         hideNestingToggles={currentView === 'timeline'}
+        onResetFilters={resetFilters}
+        hasActiveFilters={hasActiveFilters}
       />
 
       {/* Main Content - full height without padding for immersive treemap */}
@@ -391,6 +416,7 @@ const Index = () => {
             }}
             onFileDrop={processCSVFile}
             hasData={rawData.length > 0}
+            onResetFilters={resetFilters}
           />
         )}
 
@@ -406,6 +432,7 @@ const Index = () => {
               setHighlightedInitiative(name);
               setCurrentView('timeline');
             }}
+            onResetFilters={resetFilters}
           />
         )}
 
@@ -420,6 +447,7 @@ const Index = () => {
             selectedStakeholders={selectedStakeholders}
             onUploadClick={() => fileInputRef.current?.click()}
             highlightedInitiative={highlightedInitiative}
+            onResetFilters={resetFilters}
           />
         )}
       </main>
@@ -499,6 +527,7 @@ const Index = () => {
                 ['Вкладка Stakeholders', '2'],
                 ['Вкладка Timeline', '3'],
                 ['Поиск', '/'],
+                ['Сбросить фильтры', 'Shift+R'],
                 ['Наверх / Закрыть', 'Esc']
               ].map(([label, key]) => (
                 <div key={label} className="flex justify-between items-center py-2">

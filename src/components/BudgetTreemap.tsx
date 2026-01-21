@@ -25,6 +25,7 @@ interface BudgetTreemapProps {
   onInitiativeClick?: (initiativeName: string) => void; // Navigate to Gantt on initiative click
   onFileDrop?: (file: File) => void; // Handle file drop on empty state
   hasData?: boolean; // Whether raw data is loaded (to distinguish empty filters vs no data)
+  onResetFilters?: () => void; // Reset all filters
 }
 
 const BudgetTreemap = ({
@@ -41,7 +42,8 @@ const BudgetTreemap = ({
   canNavigateBack = false,
   onInitiativeClick,
   onFileDrop,
-  hasData = false
+  hasData = false,
+  onResetFilters
 }: BudgetTreemapProps) => {
   // Separate ref for D3-only container - React will NOT touch this
   const d3ContainerRef = useRef<HTMLDivElement>(null);
@@ -418,6 +420,14 @@ const BudgetTreemap = ({
           <p className="welcome-subtitle">
             Попробуйте изменить параметры фильтрации или сбросить фильтры
           </p>
+          {onResetFilters && (
+            <button 
+              onClick={onResetFilters}
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
+            >
+              Сбросить фильтры
+            </button>
+          )}
         </div>
       )}
 

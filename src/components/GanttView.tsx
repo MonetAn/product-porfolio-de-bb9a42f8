@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { Upload, FileText, Search } from 'lucide-react';
+import { Upload, FileText, Search, MoreHorizontal } from 'lucide-react';
 import {
   RawDataRow,
   calculateBudget,
@@ -11,6 +11,14 @@ import {
   formatBudget
 } from '@/lib/dataManager';
 import '@/styles/gantt.css';
+
+interface QuarterPopupData {
+  row: RawDataRow;
+  quarter: string;
+  x: number;
+  y: number;
+  pinned: boolean;
+}
 
 interface GanttViewProps {
   rawData: RawDataRow[];
@@ -40,6 +48,9 @@ const GanttView = ({
   const rowsContainerRef = useRef<HTMLDivElement>(null);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [quarterPopup, setQuarterPopup] = useState<QuarterPopupData | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const popupRef = useRef<HTMLDivElement>(null);
 
   // Filter data based on current filters
   const filteredData = useMemo(() => {
@@ -79,6 +90,18 @@ const GanttView = ({
     return () => rowsContainer.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Close popup on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (quarterPopup?.pinned && popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setQuarterPopup(null);
+        setExpandedSections({});
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [quarterPopup]);
+
   const quarterWidth = 160;
 
   const handleNameMouseEnter = (e: React.MouseEvent, idx: number) => {
@@ -92,6 +115,43 @@ const GanttView = ({
 
   const handleNameMouseLeave = () => {
     setHoveredRow(null);
+  };
+
+  const handleSegmentMouseEnter = (e: React.MouseEvent, row: RawDataRow, quarter: string) => {
+    if (quarterPopup?.pinned) return;
+    setQuarterPopup({
+      row,
+      quarter,
+      x: e.clientX,
+      y: e.clientY,
+      pinned: false
+    });
+  };
+
+  const handleSegmentMouseMove = (e: React.MouseEvent) => {
+    if (quarterPopup?.pinned) return;
+    setQuarterPopup(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+  };
+
+  const handleSegmentMouseLeave = () => {
+    if (quarterPopup?.pinned) return;
+    setQuarterPopup(null);
+  };
+
+  const handleSegmentClick = (e: React.MouseEvent, row: RawDataRow, quarter: string) => {
+    e.stopPropagation();
+    setQuarterPopup({
+      row,
+      quarter,
+      x: e.clientX,
+      y: e.clientY,
+      pinned: true
+    });
+    setExpandedSections({});
+  };
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   // Empty state
@@ -135,6 +195,155 @@ const GanttView = ({
       </div>
     );
   }
+
+  const renderQuarterPopup = () => {
+    if (!quarterPopup) return null;
+
+    const { row, quarter, x, y, pinned } = quarterPopup;
+    const qData = row.quarterlyData[quarter];
+    if (!qData) return null;
+
+    const isSupport = qData.support;
+    const isOffTrack = !qData.onTrack;
+    const descriptionLong = row.description && row.description.length > 150;
+    const planLong = qData.metricPlan && qData.metricPlan.length > 100;
+    const factLong = qData.metricFact && qData.metricFact.length > 100;
+    const commentLong = qData.comment && qData.comment.length > 100;
+
+    // Position calculation
+    const padding = 16;
+    let posX = x + padding;
+    let posY = y + padding;
+
+    // Adjust for viewport edges
+    if (typeof window !== 'undefined') {
+      if (posX + 360 > window.innerWidth - padding) {
+        posX = x - 360 - padding;
+      }
+      if (posY + 300 > window.innerHeight - padding) {
+        posY = Math.max(padding, window.innerHeight - 400 - padding);
+      }
+    }
+
+    return (
+      <div
+        ref={popupRef}
+        className={`gantt-quarter-popup ${pinned ? 'pinned' : ''}`}
+        style={{
+          left: posX,
+          top: posY,
+          pointerEvents: pinned ? 'auto' : 'none'
+        }}
+      >
+        <div className="gantt-quarter-popup-header">
+          <div className="gantt-quarter-popup-title">{row.initiative}</div>
+          <div className="gantt-quarter-popup-quarter">{quarter.replace('-', ' ')}</div>
+        </div>
+
+        <div className="gantt-quarter-popup-status">
+          <span className={`gantt-quarter-popup-badge ${isSupport ? 'support' : 'development'}`}>
+            {isSupport ? 'Support' : 'Development'}
+          </span>
+          {isOffTrack && (
+            <span className="gantt-quarter-popup-badge off-track">Off-track</span>
+          )}
+        </div>
+
+        <div className="gantt-quarter-popup-budget">
+          Бюджет: {formatBudget(qData.budget)}
+        </div>
+
+        {row.description && (
+          <div className="gantt-quarter-popup-section">
+            <div className="gantt-quarter-popup-label">Описание</div>
+            <div 
+              className={`gantt-quarter-popup-text ${descriptionLong && !expandedSections['description'] ? 'truncated' : ''} ${descriptionLong ? 'expandable' : ''}`}
+              onClick={() => descriptionLong && toggleSection('description')}
+            >
+              {expandedSections['description'] || !descriptionLong 
+                ? row.description 
+                : row.description.slice(0, 150)}
+            </div>
+            {descriptionLong && (
+              <button className="gantt-quarter-popup-expand" onClick={() => toggleSection('description')}>
+                <MoreHorizontal size={12} />
+                {expandedSections['description'] ? 'Свернуть' : 'Показать полностью'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {qData.metricPlan && (
+          <div className="gantt-quarter-popup-section">
+            <div className="gantt-quarter-popup-label">План</div>
+            <div 
+              className={`gantt-quarter-popup-text ${planLong && !expandedSections['plan'] ? 'truncated' : ''}`}
+              onClick={() => planLong && toggleSection('plan')}
+            >
+              {expandedSections['plan'] || !planLong ? qData.metricPlan : qData.metricPlan.slice(0, 100)}
+            </div>
+            {planLong && (
+              <button className="gantt-quarter-popup-expand" onClick={() => toggleSection('plan')}>
+                <MoreHorizontal size={12} />
+                {expandedSections['plan'] ? 'Свернуть' : 'Показать полностью'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {qData.metricFact && (
+          <div className="gantt-quarter-popup-section">
+            <div className="gantt-quarter-popup-label">Факт</div>
+            <div 
+              className={`gantt-quarter-popup-text ${factLong && !expandedSections['fact'] ? 'truncated' : ''}`}
+              onClick={() => factLong && toggleSection('fact')}
+            >
+              {expandedSections['fact'] || !factLong ? qData.metricFact : qData.metricFact.slice(0, 100)}
+            </div>
+            {factLong && (
+              <button className="gantt-quarter-popup-expand" onClick={() => toggleSection('fact')}>
+                <MoreHorizontal size={12} />
+                {expandedSections['fact'] ? 'Свернуть' : 'Показать полностью'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {qData.comment && (
+          <div className="gantt-quarter-popup-section">
+            <div className="gantt-quarter-popup-label">Комментарий</div>
+            <div 
+              className={`gantt-quarter-popup-text ${commentLong && !expandedSections['comment'] ? 'truncated' : ''}`}
+              onClick={() => commentLong && toggleSection('comment')}
+            >
+              {expandedSections['comment'] || !commentLong ? qData.comment : qData.comment.slice(0, 100)}
+            </div>
+            {commentLong && (
+              <button className="gantt-quarter-popup-expand" onClick={() => toggleSection('comment')}>
+                <MoreHorizontal size={12} />
+                {expandedSections['comment'] ? 'Свернуть' : 'Показать полностью'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {row.stakeholders && (
+          <div className="gantt-quarter-popup-section">
+            <div className="gantt-quarter-popup-label">Стейкхолдеры</div>
+            <div className="gantt-quarter-popup-stakeholders">
+              <span className="gantt-quarter-popup-tag">{row.stakeholders}</span>
+            </div>
+          </div>
+        )}
+
+        {!pinned && (
+          <div style={{ fontSize: '10px', color: 'hsl(var(--muted-foreground))', marginTop: '8px', textAlign: 'center' }}>
+            Кликните для детального просмотра
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="gantt-container">
@@ -200,7 +409,10 @@ const GanttView = ({
                           left: qIdx * quarterWidth + 4,
                           width: quarterWidth - 8
                         }}
-                        title={`${row.initiative}\n${q.replace('-', ' ')}\nБюджет: ${formatBudget(qData.budget)}\nСтатус: ${isSupport ? 'Support' : 'Development'}${isOffTrack ? ' (Off-track)' : ''}`}
+                        onMouseEnter={(e) => handleSegmentMouseEnter(e, row, q)}
+                        onMouseMove={handleSegmentMouseMove}
+                        onMouseLeave={handleSegmentMouseLeave}
+                        onClick={(e) => handleSegmentClick(e, row, q)}
                       >
                         {formatBudgetShort(qData.budget)}
                       </div>
@@ -208,7 +420,7 @@ const GanttView = ({
                   })}
                 </div>
                 
-                {/* Quarter details row */}
+                {/* Quarter details row - shortened */}
                 <div className="gantt-quarter-details">
                   {selectedQuarters.map((q) => {
                     const qData = row.quarterlyData[q];
@@ -229,17 +441,17 @@ const GanttView = ({
                         <div className="gantt-quarter-detail-content">
                           {hasPlan && (
                             <span className="detail-value" title={qData.metricPlan}>
-                              <span className="detail-label">П:</span> {qData.metricPlan}
+                              <span className="detail-label">П:</span> {qData.metricPlan?.slice(0, 20)}{qData.metricPlan && qData.metricPlan.length > 20 ? '...' : ''}
                             </span>
                           )}
                           {hasFact && (
                             <span className="detail-value" title={qData.metricFact}>
-                              <span className="detail-label">Ф:</span> {qData.metricFact}
+                              <span className="detail-label">Ф:</span> {qData.metricFact?.slice(0, 20)}{qData.metricFact && qData.metricFact.length > 20 ? '...' : ''}
                             </span>
                           )}
                           {hasComment && (
                             <span className="detail-value" title={qData.comment}>
-                              <span className="detail-label">К:</span> {qData.comment}
+                              <span className="detail-label">К:</span> {qData.comment?.slice(0, 20)}{qData.comment && qData.comment.length > 20 ? '...' : ''}
                             </span>
                           )}
                         </div>
@@ -258,7 +470,7 @@ const GanttView = ({
         <div 
           className="gantt-name-tooltip"
           style={{
-            left: Math.min(tooltipPosition.x + 16, window.innerWidth - 320),
+            left: Math.min(tooltipPosition.x + 16, window.innerWidth - 420),
             top: tooltipPosition.y + 16
           }}
         >
@@ -273,6 +485,9 @@ const GanttView = ({
           )}
         </div>
       )}
+
+      {/* Quarter detail popup */}
+      {renderQuarterPopup()}
 
       {/* Legend */}
       <div className="gantt-legend">

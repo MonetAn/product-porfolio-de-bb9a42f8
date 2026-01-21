@@ -263,7 +263,8 @@
 }
 
 .gantt-legend-color.hatched {
-  background: hsl(var(--development));
+  background: white;
+  border: 1px solid hsl(var(--border));
   background-image: repeating-linear-gradient(
     45deg,
     transparent,
@@ -322,29 +323,33 @@
 
 /* Tooltip for initiative name hover */
 .gantt-name-tooltip {
-  position: absolute;
+  position: fixed;
   z-index: 100;
   background: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-  padding: 8px 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  max-width: 300px;
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  max-width: 400px;
   pointer-events: none;
 }
 
 .gantt-name-tooltip-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: hsl(var(--foreground));
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .gantt-name-tooltip-description {
-  font-size: 11px;
+  font-size: 12px;
   color: hsl(var(--muted-foreground));
-  margin-bottom: 6px;
-  line-height: 1.4;
+  margin-bottom: 10px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .gantt-name-tooltip-stakeholders {
@@ -354,8 +359,168 @@
 }
 
 .gantt-name-tooltip-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: hsl(var(--secondary));
+  border-radius: 4px;
+  color: hsl(var(--foreground));
+}
+
+/* Quarter detail card popup */
+.gantt-quarter-popup {
+  position: fixed;
+  z-index: 200;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  max-width: 360px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.gantt-quarter-popup.pinned {
+  pointer-events: auto;
+}
+
+.gantt-quarter-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.gantt-quarter-popup-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  flex: 1;
+}
+
+.gantt-quarter-popup-quarter {
+  font-size: 11px;
+  color: hsl(var(--primary));
+  font-weight: 500;
+  padding: 2px 8px;
+  background: hsl(var(--primary) / 0.1);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.gantt-quarter-popup-status {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.gantt-quarter-popup-badge {
   font-size: 10px;
   padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.gantt-quarter-popup-badge.development {
+  background: hsl(var(--development) / 0.2);
+  color: hsl(var(--development));
+}
+
+.gantt-quarter-popup-badge.support {
+  background: hsl(var(--support-color) / 0.2);
+  color: hsl(var(--support-color));
+}
+
+.gantt-quarter-popup-badge.off-track {
+  background: hsl(var(--destructive) / 0.2);
+  color: hsl(var(--destructive));
+}
+
+.gantt-quarter-popup-budget {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: hsl(var(--secondary));
+  border-radius: 6px;
+}
+
+.gantt-quarter-popup-section {
+  margin-bottom: 12px;
+}
+
+.gantt-quarter-popup-section:last-child {
+  margin-bottom: 0;
+}
+
+.gantt-quarter-popup-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.gantt-quarter-popup-text {
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.gantt-quarter-popup-text.expandable {
+  cursor: pointer;
+  position: relative;
+}
+
+.gantt-quarter-popup-text.truncated {
+  max-height: 60px;
+  overflow: hidden;
+}
+
+.gantt-quarter-popup-text.truncated::after {
+  content: '... показать больше';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(90deg, transparent, hsl(var(--popover)) 20%);
+  padding-left: 40px;
+  color: hsl(var(--primary));
+  font-size: 11px;
+}
+
+.gantt-quarter-popup-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  padding: 4px 8px;
+  background: hsl(var(--primary) / 0.1);
+  border-radius: 4px;
+  border: none;
+}
+
+.gantt-quarter-popup-expand:hover {
+  background: hsl(var(--primary) / 0.2);
+}
+
+.gantt-quarter-popup-stakeholders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.gantt-quarter-popup-tag {
+  font-size: 11px;
+  padding: 3px 8px;
   background: hsl(var(--secondary));
   border-radius: 4px;
   color: hsl(var(--foreground));

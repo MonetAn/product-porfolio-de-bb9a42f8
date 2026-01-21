@@ -169,7 +169,7 @@ const BudgetTreemap = ({
       if (nodeData.children) {
         html += '<div class="tooltip-hint">Кликните для детализации →</div>';
       } else if (nodeData.isInitiative) {
-        html += '<div class="tooltip-hint">Кликните для перехода в Gantt →</div>';
+        html += '<div class="tooltip-hint">Кликните для перехода в таймлайн →</div>';
       }
 
       tooltip.innerHTML = html;

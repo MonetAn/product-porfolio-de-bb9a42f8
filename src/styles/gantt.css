@@ -479,7 +479,9 @@
 }
 
 .gantt-quarter-popup-label .expand-icon {
-  opacity: 0.6;
+  opacity: 0.7;
+  transition: transform 0.2s ease, opacity 0.15s ease;
+  flex-shrink: 0;
 }
 
 .gantt-quarter-popup.pinned .gantt-quarter-popup-label:hover .expand-icon {
@@ -501,13 +503,14 @@
 }
 
 .gantt-quarter-popup-text.truncated::after {
-  content: '…';
+  content: '';
   position: absolute;
   bottom: 0;
+  left: 0;
   right: 0;
-  background: hsl(var(--popover));
-  padding-left: 4px;
-  color: hsl(var(--muted-foreground));
+  height: 24px;
+  background: linear-gradient(to bottom, transparent, hsl(var(--popover)));
+  pointer-events: none;
 }
 
 .gantt-quarter-popup-expand {

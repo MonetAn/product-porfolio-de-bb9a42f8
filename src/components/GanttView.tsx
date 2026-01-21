@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { Upload, FileText, Search, MoreHorizontal } from 'lucide-react';
+import { Upload, FileText, Search, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   RawDataRow,
   calculateBudget,
@@ -304,7 +304,9 @@ const GanttView = ({
             >
               Описание
               {pinned && descriptionLong && (
-                <MoreHorizontal size={12} className="expand-icon" />
+                expandedSections['description'] 
+                  ? <ChevronUp size={12} className="expand-icon" />
+                  : <ChevronDown size={12} className="expand-icon" />
               )}
             </div>
             <div 
@@ -325,7 +327,9 @@ const GanttView = ({
             >
               План
               {pinned && planLong && (
-                <MoreHorizontal size={12} className="expand-icon" />
+                expandedSections['plan'] 
+                  ? <ChevronUp size={12} className="expand-icon" />
+                  : <ChevronDown size={12} className="expand-icon" />
               )}
             </div>
             <div 
@@ -346,7 +350,9 @@ const GanttView = ({
             >
               Факт
               {pinned && factLong && (
-                <MoreHorizontal size={12} className="expand-icon" />
+                expandedSections['fact'] 
+                  ? <ChevronUp size={12} className="expand-icon" />
+                  : <ChevronDown size={12} className="expand-icon" />
               )}
             </div>
             <div 
@@ -367,7 +373,9 @@ const GanttView = ({
             >
               Комментарий
               {pinned && commentLong && (
-                <MoreHorizontal size={12} className="expand-icon" />
+                expandedSections['comment'] 
+                  ? <ChevronUp size={12} className="expand-icon" />
+                  : <ChevronDown size={12} className="expand-icon" />
               )}
             </div>
             <div 

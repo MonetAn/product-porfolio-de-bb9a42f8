@@ -156,12 +156,12 @@ const FilterBar = ({
 
   // Stakeholder label - shorter
   const getStakeholderLabel = () => {
-    if (selectedStakeholders.length === 0) return 'Стейкхолдеры';
+    if (selectedStakeholders.length === 0) return 'Стейкх.';
     if (selectedStakeholders.length === 1) {
       const s = selectedStakeholders[0];
-      return s.length > 12 ? s.slice(0, 12) + '...' : s;
+      return s.length > 10 ? s.slice(0, 10) + '…' : s;
     }
-    return `${selectedStakeholders.length} выбр.`;
+    return `${selectedStakeholders.length} стейкх.`;
   };
 
   // Unit label - shorter

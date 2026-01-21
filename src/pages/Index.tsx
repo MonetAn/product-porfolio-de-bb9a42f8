@@ -152,7 +152,11 @@ const Index = () => {
 
   // Handle click on treemap node - select single item in filter and enable corresponding toggle
   const handleNodeClick = (node: TreeNode) => {
-    if (node.isUnit) {
+    if (node.isStakeholder) {
+      // Clicking a stakeholder - filter by this stakeholder and enable Teams toggle
+      setSelectedStakeholders([node.name]);
+      if (!showTeams) setShowTeams(true);
+    } else if (node.isUnit) {
       // Reset teams and select only this unit
       setSelectedTeams([]);
       setSelectedUnits([node.name]);
@@ -182,6 +186,9 @@ const Index = () => {
     } else if (selectedUnits.length > 0) {
       // If unit is selected, clear it (go back to all units)
       setSelectedUnits([]);
+    } else if (selectedStakeholders.length > 0) {
+      // If stakeholder is selected, clear it (go back to all stakeholders)
+      setSelectedStakeholders([]);
     }
     // Don't change toggle states when going back
   };
@@ -322,7 +329,7 @@ const Index = () => {
             data={stakeholdersData}
             onNodeClick={handleNodeClick}
             onNavigateBack={handleNavigateBack}
-            canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0}
+            canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}
             selectedQuarters={selectedQuarters}
             hasData={rawData.length > 0}
             onInitiativeClick={(name) => {

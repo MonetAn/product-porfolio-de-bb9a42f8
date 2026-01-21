@@ -361,18 +361,42 @@ const FilterBar = ({
                   <button className="text-xs text-primary underline" onClick={() => onStakeholdersChange([])}>Сброс</button>
                 </div>
                 <div className="max-h-[220px] overflow-y-auto p-1">
-                  {allStakeholders.map(s => (
-                    <div
-                      key={s}
-                      onClick={() => toggleStakeholder(s)}
-                      className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs hover:bg-secondary rounded ${selectedStakeholders.includes(s) ? 'bg-primary/10' : ''}`}
-                    >
-                      <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${selectedStakeholders.includes(s) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
-                        {selectedStakeholders.includes(s) && <Check size={10} />}
-                      </span>
-                      <span className="truncate">{s}</span>
-                    </div>
-                  ))}
+                  {(() => {
+                    // Get stakeholders that have projects matching current unit/team filters
+                    const relevantStakeholders = new Set<string>();
+                    rawData.forEach(row => {
+                      const matchesUnit = selectedUnits.length === 0 || selectedUnits.includes(row.unit);
+                      const matchesTeam = selectedTeams.length === 0 || selectedTeams.includes(row.team);
+                      if (matchesUnit && matchesTeam && row.stakeholders) {
+                        relevantStakeholders.add(row.stakeholders);
+                      }
+                    });
+                    
+                    // Sort: relevant first, then irrelevant
+                    const sortedStakeholders = [...allStakeholders].sort((a, b) => {
+                      const aRelevant = relevantStakeholders.has(a);
+                      const bRelevant = relevantStakeholders.has(b);
+                      if (aRelevant && !bRelevant) return -1;
+                      if (!aRelevant && bRelevant) return 1;
+                      return a.localeCompare(b);
+                    });
+                    
+                    return sortedStakeholders.map(s => {
+                      const isRelevant = relevantStakeholders.has(s);
+                      return (
+                        <div
+                          key={s}
+                          onClick={() => toggleStakeholder(s)}
+                          className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer text-xs hover:bg-secondary rounded ${selectedStakeholders.includes(s) ? 'bg-primary/10' : ''} ${!isRelevant ? 'opacity-40' : ''}`}
+                        >
+                          <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center ${selectedStakeholders.includes(s) ? 'bg-primary border-primary text-primary-foreground' : 'border-border'}`}>
+                            {selectedStakeholders.includes(s) && <Check size={10} />}
+                          </span>
+                          <span className="truncate">{s}</span>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             )}

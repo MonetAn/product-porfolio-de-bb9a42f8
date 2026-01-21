@@ -464,6 +464,28 @@
   margin-bottom: 4px;
 }
 
+.gantt-quarter-popup-label.expandable-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gantt-quarter-popup.pinned .gantt-quarter-popup-label.expandable-header {
+  cursor: pointer;
+}
+
+.gantt-quarter-popup.pinned .gantt-quarter-popup-label.expandable-header:hover {
+  color: hsl(var(--primary));
+}
+
+.gantt-quarter-popup-label .expand-icon {
+  opacity: 0.6;
+}
+
+.gantt-quarter-popup.pinned .gantt-quarter-popup-label:hover .expand-icon {
+  opacity: 1;
+}
+
 .gantt-quarter-popup-text {
   font-size: 12px;
   color: hsl(var(--foreground));
@@ -472,25 +494,20 @@
   word-wrap: break-word;
 }
 
-.gantt-quarter-popup-text.expandable {
-  cursor: pointer;
-  position: relative;
-}
-
 .gantt-quarter-popup-text.truncated {
   max-height: 60px;
   overflow: hidden;
+  position: relative;
 }
 
 .gantt-quarter-popup-text.truncated::after {
-  content: '... показать больше';
+  content: '…';
   position: absolute;
   bottom: 0;
   right: 0;
-  background: linear-gradient(90deg, transparent, hsl(var(--popover)) 20%);
-  padding-left: 40px;
-  color: hsl(var(--primary));
-  font-size: 11px;
+  background: hsl(var(--popover));
+  padding-left: 4px;
+  color: hsl(var(--muted-foreground));
 }
 
 .gantt-quarter-popup-expand {

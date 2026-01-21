@@ -255,75 +255,85 @@ const GanttView = ({
 
         {row.description && (
           <div className="gantt-quarter-popup-section">
-            <div className="gantt-quarter-popup-label">Описание</div>
             <div 
-              className={`gantt-quarter-popup-text ${descriptionLong && !expandedSections['description'] ? 'truncated' : ''} ${descriptionLong ? 'expandable' : ''}`}
-              onClick={() => descriptionLong && toggleSection('description')}
+              className="gantt-quarter-popup-label expandable-header"
+              onClick={() => pinned && descriptionLong && toggleSection('description')}
+            >
+              Описание
+              {pinned && descriptionLong && (
+                <MoreHorizontal size={12} className="expand-icon" />
+              )}
+            </div>
+            <div 
+              className={`gantt-quarter-popup-text ${!expandedSections['description'] && descriptionLong ? 'truncated' : ''}`}
             >
               {expandedSections['description'] || !descriptionLong 
                 ? row.description 
-                : row.description.slice(0, 150)}
+                : row.description.slice(0, 150) + '…'}
             </div>
-            {descriptionLong && (
-              <button className="gantt-quarter-popup-expand" onClick={() => toggleSection('description')}>
-                <MoreHorizontal size={12} />
-                {expandedSections['description'] ? 'Свернуть' : 'Показать полностью'}
-              </button>
-            )}
           </div>
         )}
 
         {qData.metricPlan && (
           <div className="gantt-quarter-popup-section">
-            <div className="gantt-quarter-popup-label">План</div>
             <div 
-              className={`gantt-quarter-popup-text ${planLong && !expandedSections['plan'] ? 'truncated' : ''}`}
-              onClick={() => planLong && toggleSection('plan')}
+              className="gantt-quarter-popup-label expandable-header"
+              onClick={() => pinned && planLong && toggleSection('plan')}
             >
-              {expandedSections['plan'] || !planLong ? qData.metricPlan : qData.metricPlan.slice(0, 100)}
+              План
+              {pinned && planLong && (
+                <MoreHorizontal size={12} className="expand-icon" />
+              )}
             </div>
-            {planLong && (
-              <button className="gantt-quarter-popup-expand" onClick={() => toggleSection('plan')}>
-                <MoreHorizontal size={12} />
-                {expandedSections['plan'] ? 'Свернуть' : 'Показать полностью'}
-              </button>
-            )}
+            <div 
+              className={`gantt-quarter-popup-text ${!expandedSections['plan'] && planLong ? 'truncated' : ''}`}
+            >
+              {expandedSections['plan'] || !planLong 
+                ? qData.metricPlan 
+                : qData.metricPlan.slice(0, 100) + '…'}
+            </div>
           </div>
         )}
 
         {qData.metricFact && (
           <div className="gantt-quarter-popup-section">
-            <div className="gantt-quarter-popup-label">Факт</div>
             <div 
-              className={`gantt-quarter-popup-text ${factLong && !expandedSections['fact'] ? 'truncated' : ''}`}
-              onClick={() => factLong && toggleSection('fact')}
+              className="gantt-quarter-popup-label expandable-header"
+              onClick={() => pinned && factLong && toggleSection('fact')}
             >
-              {expandedSections['fact'] || !factLong ? qData.metricFact : qData.metricFact.slice(0, 100)}
+              Факт
+              {pinned && factLong && (
+                <MoreHorizontal size={12} className="expand-icon" />
+              )}
             </div>
-            {factLong && (
-              <button className="gantt-quarter-popup-expand" onClick={() => toggleSection('fact')}>
-                <MoreHorizontal size={12} />
-                {expandedSections['fact'] ? 'Свернуть' : 'Показать полностью'}
-              </button>
-            )}
+            <div 
+              className={`gantt-quarter-popup-text ${!expandedSections['fact'] && factLong ? 'truncated' : ''}`}
+            >
+              {expandedSections['fact'] || !factLong 
+                ? qData.metricFact 
+                : qData.metricFact.slice(0, 100) + '…'}
+            </div>
           </div>
         )}
 
         {qData.comment && (
           <div className="gantt-quarter-popup-section">
-            <div className="gantt-quarter-popup-label">Комментарий</div>
             <div 
-              className={`gantt-quarter-popup-text ${commentLong && !expandedSections['comment'] ? 'truncated' : ''}`}
-              onClick={() => commentLong && toggleSection('comment')}
+              className="gantt-quarter-popup-label expandable-header"
+              onClick={() => pinned && commentLong && toggleSection('comment')}
             >
-              {expandedSections['comment'] || !commentLong ? qData.comment : qData.comment.slice(0, 100)}
+              Комментарий
+              {pinned && commentLong && (
+                <MoreHorizontal size={12} className="expand-icon" />
+              )}
             </div>
-            {commentLong && (
-              <button className="gantt-quarter-popup-expand" onClick={() => toggleSection('comment')}>
-                <MoreHorizontal size={12} />
-                {expandedSections['comment'] ? 'Свернуть' : 'Показать полностью'}
-              </button>
-            )}
+            <div 
+              className={`gantt-quarter-popup-text ${!expandedSections['comment'] && commentLong ? 'truncated' : ''}`}
+            >
+              {expandedSections['comment'] || !commentLong 
+                ? qData.comment 
+                : qData.comment.slice(0, 100) + '…'}
+            </div>
           </div>
         )}
 
@@ -465,7 +475,7 @@ const GanttView = ({
         })}
       </div>
 
-      {/* Tooltip for initiative name hover */}
+      {/* Tooltip for initiative name hover - stakeholders only, no description */}
       {hoveredRow !== null && filteredData[hoveredRow] && (
         <div 
           className="gantt-name-tooltip"
@@ -475,9 +485,6 @@ const GanttView = ({
           }}
         >
           <div className="gantt-name-tooltip-title">{filteredData[hoveredRow].initiative}</div>
-          {filteredData[hoveredRow].description && (
-            <div className="gantt-name-tooltip-description">{filteredData[hoveredRow].description}</div>
-          )}
           {filteredData[hoveredRow].stakeholders && (
             <div className="gantt-name-tooltip-stakeholders">
               <span className="gantt-name-tooltip-tag">{filteredData[hoveredRow].stakeholders}</span>

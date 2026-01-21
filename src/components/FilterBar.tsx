@@ -230,20 +230,14 @@ const FilterBar = ({
     } else {
       const newUnits = [...selectedUnits, u];
       onUnitsChange(newUnits);
-      // When adding a new unit, clear team selection from other units
-      // to prevent showing 0 results
-      if (selectedTeams.length > 0) {
-        const validTeamsForNewUnits = rawData
-          .filter(r => newUnits.includes(r.unit))
-          .map(r => r.team);
-        const stillValidTeams = selectedTeams.filter(t => validTeamsForNewUnits.includes(t));
-        // If none of the selected teams belong to new units set, clear teams
-        if (stillValidTeams.length === 0 && selectedUnits.length > 0) {
-          onTeamsChange([]);
-        } else {
-          onTeamsChange(stillValidTeams);
-        }
-      }
+      // When adding a unit, auto-select all teams from that unit
+      const teamsFromNewUnit = [...new Set(rawData
+        .filter(r => r.unit === u)
+        .map(r => r.team)
+        .filter(Boolean))];
+      // Add new unit's teams to existing selection
+      const newTeams = [...new Set([...selectedTeams, ...teamsFromNewUnit])];
+      onTeamsChange(newTeams);
     }
   };
 

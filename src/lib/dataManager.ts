@@ -200,31 +200,123 @@ export interface BuildTreeOptions {
   teamFilter: string;
   selectedUnits?: string[];
   selectedTeams?: string[];
+  // NEW: control tree structure based on toggles
+  showTeams?: boolean;
+  showInitiatives?: boolean;
 }
 
 export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
+  const showTeams = options.showTeams ?? false;
+  const showInitiatives = options.showInitiatives ?? false;
+
+  // Different tree structures based on toggle combination:
+  // 1. Nothing selected -> Units only (with aggregated value)
+  // 2. Only Teams -> Units -> Teams (with aggregated values)
+  // 3. Teams + Initiatives -> Units -> Teams -> Initiatives
+  // 4. Only Initiatives -> Units -> Initiatives directly (skip teams)
+
+  if (!showTeams && !showInitiatives) {
+    // Case 1: Only Units - aggregate all to unit level
+    return buildUnitsOnlyTree(rawData, options);
+  } else if (showTeams && !showInitiatives) {
+    // Case 2: Units -> Teams (aggregate initiatives into teams)
+    return buildUnitsTeamsTree(rawData, options);
+  } else if (showTeams && showInitiatives) {
+    // Case 3: Full hierarchy Units -> Teams -> Initiatives
+    return buildFullTree(rawData, options);
+  } else {
+    // Case 4: Units -> Initiatives directly (skip teams)
+    return buildUnitsInitiativesTree(rawData, options);
+  }
+}
+
+// Helper: filter row based on options
+function shouldIncludeRow(row: RawDataRow, options: BuildTreeOptions, budget: number): boolean {
+  if (budget === 0) return false;
+
+  const isSupport = isInitiativeSupport(row, options.selectedQuarters);
+  const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
+
+  if (options.hideSupportInitiatives && isSupport) return false;
+  if (options.showOnlyOfftrack && !isOffTrack) return false;
+  if (options.selectedStakeholders.length > 0 && !options.selectedStakeholders.includes(row.stakeholders)) return false;
+  if (options.selectedUnits && options.selectedUnits.length > 0 && !options.selectedUnits.includes(row.unit)) return false;
+  if (options.unitFilter && row.unit !== options.unitFilter) return false;
+  if (options.selectedTeams && options.selectedTeams.length > 0 && !options.selectedTeams.includes(row.team)) return false;
+  if (options.teamFilter && row.team !== options.teamFilter) return false;
+
+  return true;
+}
+
+// Case 1: Only Units with aggregated values
+function buildUnitsOnlyTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
+  const unitMap: Record<string, { name: string; value: number; isUnit: boolean; children: TreeNode[] }> = {};
+
+  rawData.forEach(row => {
+    const budget = calculateBudget(row, options.selectedQuarters);
+    if (!shouldIncludeRow(row, options, budget)) return;
+
+    if (!unitMap[row.unit]) {
+      unitMap[row.unit] = { name: row.unit, value: 0, isUnit: true, children: [] };
+    }
+    unitMap[row.unit].value += budget;
+  });
+
+  const children = Object.values(unitMap).filter(u => u.value > 0);
+  return { name: 'Все Unit', children, isRoot: true };
+}
+
+// Case 2: Units -> Teams with aggregated values
+function buildUnitsTeamsTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
+  const unitMap: Record<string, { 
+    name: string; 
+    children: TreeNode[]; 
+    teamMap: Record<string, { name: string; value: number; isTeam: boolean; children: TreeNode[] }>; 
+    isUnit: boolean 
+  }> = {};
+
+  rawData.forEach(row => {
+    const budget = calculateBudget(row, options.selectedQuarters);
+    if (!shouldIncludeRow(row, options, budget)) return;
+
+    if (!unitMap[row.unit]) {
+      unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true };
+    }
+
+    const unit = unitMap[row.unit];
+    const teamName = row.team || 'Без команды';
+
+    if (!unit.teamMap[teamName]) {
+      unit.teamMap[teamName] = { name: teamName, value: 0, isTeam: true, children: [] };
+      unit.children.push(unit.teamMap[teamName]);
+    }
+
+    unit.teamMap[teamName].value += budget;
+  });
+
+  const children = Object.values(unitMap)
+    .map(unit => {
+      const { teamMap, ...rest } = unit;
+      return {
+        ...rest,
+        children: rest.children.filter((team: TreeNode) => (team.value || 0) > 0)
+      };
+    })
+    .filter(unit => unit.children.length > 0);
+
+  return { name: 'Все Unit', children, isRoot: true };
+}
+
+// Case 3: Full hierarchy Units -> Teams -> Initiatives
+function buildFullTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
   const unitMap: Record<string, { name: string; children: TreeNode[]; teamMap: Record<string, TreeNode>; isUnit: boolean }> = {};
 
   rawData.forEach(row => {
     const budget = calculateBudget(row, options.selectedQuarters);
-    if (budget === 0) return;
+    if (!shouldIncludeRow(row, options, budget)) return;
 
     const isSupport = isInitiativeSupport(row, options.selectedQuarters);
     const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
-
-    if (options.hideSupportInitiatives && isSupport) return;
-    if (options.showOnlyOfftrack && !isOffTrack) return;
-    if (options.selectedStakeholders.length > 0 && !options.selectedStakeholders.includes(row.stakeholders)) return;
-    
-    // Multi-select filter for units
-    if (options.selectedUnits && options.selectedUnits.length > 0 && !options.selectedUnits.includes(row.unit)) return;
-    // Single unit filter fallback
-    if (options.unitFilter && row.unit !== options.unitFilter) return;
-    
-    // Multi-select filter for teams  
-    if (options.selectedTeams && options.selectedTeams.length > 0 && !options.selectedTeams.includes(row.team)) return;
-    // Single team filter fallback
-    if (options.teamFilter && row.team !== options.teamFilter) return;
 
     if (!unitMap[row.unit]) {
       unitMap[row.unit] = { name: row.unit, children: [], teamMap: {}, isUnit: true };
@@ -260,6 +352,37 @@ export function buildBudgetTree(rawData: RawDataRow[], options: BuildTreeOptions
     })
     .filter(unit => unit.children.length > 0);
 
+  return { name: 'Все Unit', children, isRoot: true };
+}
+
+// Case 4: Units -> Initiatives directly (skip teams)
+function buildUnitsInitiativesTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
+  const unitMap: Record<string, { name: string; children: TreeNode[]; isUnit: boolean }> = {};
+
+  rawData.forEach(row => {
+    const budget = calculateBudget(row, options.selectedQuarters);
+    if (!shouldIncludeRow(row, options, budget)) return;
+
+    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
+    const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
+
+    if (!unitMap[row.unit]) {
+      unitMap[row.unit] = { name: row.unit, children: [], isUnit: true };
+    }
+
+    unitMap[row.unit].children.push({
+      name: row.initiative,
+      value: budget,
+      description: row.description,
+      stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
+      support: isSupport,
+      offTrack: isOffTrack,
+      quarterlyData: row.quarterlyData,
+      isInitiative: true
+    });
+  });
+
+  const children = Object.values(unitMap).filter(unit => unit.children.length > 0);
   return { name: 'Все Unit', children, isRoot: true };
 }
 

@@ -59,31 +59,20 @@ const BudgetTreemap = ({
       return;
     }
 
-    // Determine render depth based on toggle state
-    const isInsideUnit = data.isUnit;
-    const isInsideTeam = data.isTeam;
-
-    let renderDepth = 1;
-    if (data.isRoot || (!isInsideUnit && !isInsideTeam)) {
-      if (showTeams && showInitiatives) {
-        renderDepth = 3;
-      } else if (showTeams) {
-        renderDepth = 2;
-      } else if (showInitiatives) {
-        renderDepth = 2;
-      } else {
-        renderDepth = 1;
-      }
-    } else if (data.isUnit || isInsideUnit) {
-      if (showTeams && showInitiatives) {
-        renderDepth = 2;
-      } else if (showTeams) {
-        renderDepth = 1;
-      } else if (showInitiatives) {
-        renderDepth = 2;
-      } else {
-        renderDepth = 1;
-      }
+    // Determine render depth - show all levels in the tree
+    // The tree structure is now built correctly based on showTeams/showInitiatives
+    // so we just need to render whatever depth exists
+    let renderDepth = 3; // Default to show all levels
+    
+    // If we're at root and showing full tree, show 3 levels
+    // If we're inside a unit, show 2 more levels
+    // If we're inside a team, show 1 more level
+    if (data.isTeam) {
+      renderDepth = 1; // Show just initiatives
+    } else if (data.isUnit) {
+      renderDepth = 2; // Show teams + initiatives (if they exist)
+    } else {
+      renderDepth = 3; // Show units + teams + initiatives (whatever exists)
     }
 
     // Create hierarchy

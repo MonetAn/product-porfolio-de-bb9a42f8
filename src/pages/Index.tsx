@@ -63,15 +63,17 @@ const Index = () => {
       selectedStakeholders,
       unitFilter,
       teamFilter,
-      // Pass multi-select for proper filtering
       selectedUnits,
-      selectedTeams
+      selectedTeams,
+      // NEW: pass toggle state for tree structure
+      showTeams,
+      showInitiatives
     });
 
     setPortfolioData(tree);
     setCurrentRoot(tree);
     setNavigationStack([]);
-  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams]);
+  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, showTeams, showInitiatives]);
 
   useEffect(() => {
     rebuildTree();

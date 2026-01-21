@@ -2,9 +2,12 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import Header, { ViewType } from '@/components/Header';
 import FilterBar from '@/components/FilterBar';
 import BudgetTreemap from '@/components/BudgetTreemap';
+import StakeholdersTreemap from '@/components/StakeholdersTreemap';
+import GanttView from '@/components/GanttView';
 import {
   parseCSV,
   buildBudgetTree,
+  buildStakeholdersTree,
   RawDataRow,
   TreeNode,
   formatBudget,
@@ -24,6 +27,7 @@ const Index = () => {
   // View state
   const [currentView, setCurrentView] = useState<ViewType>('budget');
   const [portfolioData, setPortfolioData] = useState<TreeNode>({ name: 'Все Unit', children: [], isRoot: true });
+  const [stakeholdersData, setStakeholdersData] = useState<TreeNode>({ name: 'Все стейкхолдеры', children: [], isRoot: true });
   const [currentRoot, setCurrentRoot] = useState<TreeNode>({ name: 'Все Unit', children: [], isRoot: true });
   const [navigationStack, setNavigationStack] = useState<TreeNode[]>([]);
 
@@ -56,7 +60,7 @@ const Index = () => {
     const unitFilter = selectedUnits.length === 1 ? selectedUnits[0] : '';
     const teamFilter = selectedTeams.length === 1 ? selectedTeams[0] : '';
 
-    const tree = buildBudgetTree(rawData, {
+    const options = {
       selectedQuarters,
       hideSupportInitiatives: hideSupport,
       showOnlyOfftrack,
@@ -65,15 +69,18 @@ const Index = () => {
       teamFilter,
       selectedUnits,
       selectedTeams,
-      // NEW: pass toggle state for tree structure
       showTeams,
       showInitiatives
-    });
+    };
+
+    const tree = buildBudgetTree(rawData, options);
+    const stakeholdersTree = buildStakeholdersTree(rawData, options);
 
     setPortfolioData(tree);
-    setCurrentRoot(tree);
+    setStakeholdersData(stakeholdersTree);
+    setCurrentRoot(currentView === 'stakeholders' ? stakeholdersTree : tree);
     setNavigationStack([]);
-  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, showTeams, showInitiatives]);
+  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, showTeams, showInitiatives, currentView]);
 
   useEffect(() => {
     rebuildTree();
@@ -301,15 +308,27 @@ const Index = () => {
         )}
 
         {currentView === 'stakeholders' && (
-          <div className="w-full h-full bg-card rounded-lg flex items-center justify-center text-muted-foreground">
-            Stakeholders view - Coming soon
-          </div>
+          <StakeholdersTreemap
+            data={stakeholdersData}
+            onNodeClick={handleNodeClick}
+            onNavigateBack={handleNavigateBack}
+            canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0}
+            onUploadClick={() => fileInputRef.current?.click()}
+            selectedQuarters={selectedQuarters}
+          />
         )}
 
         {currentView === 'gantt' && (
-          <div className="w-full h-full bg-card rounded-lg flex items-center justify-center text-muted-foreground">
-            Gantt view - Coming soon
-          </div>
+          <GanttView
+            rawData={rawData}
+            selectedQuarters={selectedQuarters}
+            hideSupport={hideSupport}
+            showOnlyOfftrack={showOnlyOfftrack}
+            selectedUnits={selectedUnits}
+            selectedTeams={selectedTeams}
+            selectedStakeholders={selectedStakeholders}
+            onUploadClick={() => fileInputRef.current?.click()}
+          />
         )}
       </main>
 

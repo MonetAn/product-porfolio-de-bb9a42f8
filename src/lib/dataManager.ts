@@ -30,6 +30,7 @@ export interface TreeNode {
   isTeam?: boolean;
   isInitiative?: boolean;
   isRoot?: boolean;
+  isStakeholder?: boolean;
 }
 
 // ===== CSV PARSING =====
@@ -440,4 +441,89 @@ export function adjustBrightness(hex: string, percent: number): string {
   const G = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amt));
   const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
   return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+}
+
+// ===== STAKEHOLDERS TREE BUILDING =====
+export function buildStakeholdersTree(rawData: RawDataRow[], options: BuildTreeOptions): TreeNode {
+  const stakeholderMap: Record<string, { 
+    name: string; 
+    children: TreeNode[]; 
+    unitMap: Record<string, { 
+      name: string; 
+      children: TreeNode[]; 
+      teamMap: Record<string, TreeNode>;
+      isUnit: boolean;
+    }>;
+    isStakeholder: boolean;
+  }> = {};
+
+  rawData.forEach(row => {
+    const budget = calculateBudget(row, options.selectedQuarters);
+    if (!shouldIncludeRow(row, options, budget)) return;
+
+    const stakeholderKey = row.stakeholders || 'Без стейкхолдера';
+    const isSupport = isInitiativeSupport(row, options.selectedQuarters);
+    const isOffTrack = isInitiativeOffTrack(row, options.selectedQuarters);
+
+    if (!stakeholderMap[stakeholderKey]) {
+      stakeholderMap[stakeholderKey] = { 
+        name: stakeholderKey, 
+        children: [], 
+        unitMap: {},
+        isStakeholder: true 
+      };
+    }
+
+    const stakeholder = stakeholderMap[stakeholderKey];
+
+    if (!stakeholder.unitMap[row.unit]) {
+      stakeholder.unitMap[row.unit] = { 
+        name: row.unit, 
+        children: [], 
+        teamMap: {},
+        isUnit: true 
+      };
+      stakeholder.children.push(stakeholder.unitMap[row.unit]);
+    }
+
+    const unit = stakeholder.unitMap[row.unit];
+    const teamName = row.team || 'Без команды';
+
+    if (!unit.teamMap[teamName]) {
+      unit.teamMap[teamName] = { name: teamName, children: [], isTeam: true };
+      unit.children.push(unit.teamMap[teamName]);
+    }
+
+    unit.teamMap[teamName].children!.push({
+      name: row.initiative,
+      value: budget,
+      description: row.description,
+      stakeholders: row.stakeholders ? row.stakeholders.split(', ') : [],
+      support: isSupport,
+      offTrack: isOffTrack,
+      quarterlyData: row.quarterlyData,
+      isInitiative: true
+    });
+  });
+
+  // Clean up helper maps and filter empty nodes
+  const children = Object.values(stakeholderMap)
+    .map(sh => {
+      const { unitMap, ...rest } = sh;
+      return {
+        ...rest,
+        children: rest.children
+          .map(unit => {
+            const { teamMap, ...unitRest } = unit as typeof stakeholderMap[string]['unitMap'][string];
+            return {
+              ...unitRest,
+              children: unitRest.children.filter(team => team.children && team.children.length > 0)
+            };
+          })
+          .filter(unit => unit.children.length > 0)
+      };
+    })
+    .filter(sh => sh.children.length > 0);
+
+  return { name: 'Все стейкхолдеры', children, isRoot: true };
 }

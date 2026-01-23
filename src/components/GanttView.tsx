@@ -67,11 +67,32 @@ const GanttView = ({
   const [quarterPopup, setQuarterPopup] = useState<QuarterPopupData | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const popupRef = useRef<HTMLDivElement>(null);
+  const [quarterPopupSize, setQuarterPopupSize] = useState<{ width: number; height: number } | null>(null);
   
   // Name popup state
   const [namePopup, setNamePopup] = useState<NamePopupData | null>(null);
   const [nameExpandedSections, setNameExpandedSections] = useState<Record<string, boolean>>({});
   const namePopupRef = useRef<HTMLDivElement>(null);
+  const [namePopupSize, setNamePopupSize] = useState<{ width: number; height: number } | null>(null);
+
+  // Measure tooltip sizes after render
+  useEffect(() => {
+    if (popupRef.current && quarterPopup) {
+      const rect = popupRef.current.getBoundingClientRect();
+      if (!quarterPopupSize || quarterPopupSize.width !== rect.width || quarterPopupSize.height !== rect.height) {
+        setQuarterPopupSize({ width: rect.width, height: rect.height });
+      }
+    }
+  }, [quarterPopup, expandedSections]);
+
+  useEffect(() => {
+    if (namePopupRef.current && namePopup) {
+      const rect = namePopupRef.current.getBoundingClientRect();
+      if (!namePopupSize || namePopupSize.width !== rect.width || namePopupSize.height !== rect.height) {
+        setNamePopupSize({ width: rect.width, height: rect.height });
+      }
+    }
+  }, [namePopup, nameExpandedSections]);
 
   // Filter data based on current filters
   const filteredData = useMemo(() => {
@@ -291,10 +312,10 @@ const GanttView = ({
     const factLong = qData.metricFact && qData.metricFact.length > 100;
     const commentLong = qData.comment && qData.comment.length > 100;
 
-    // Position calculation with flip logic
+    // Dynamic sizing: use measured size or fallback
     const padding = 16;
-    const tooltipWidth = 360;
-    const tooltipHeight = 400;
+    const tooltipWidth = quarterPopupSize?.width || 360;
+    const tooltipHeight = quarterPopupSize?.height || 400;
 
     let posX: number;
     let posY: number;
@@ -449,10 +470,10 @@ const GanttView = ({
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
     const descriptionLong = row.description && row.description.length > 150;
 
-    // Position calculation with flip logic
+    // Dynamic sizing: use measured size or fallback
     const padding = 16;
-    const tooltipWidth = 360;
-    const tooltipHeight = 400;
+    const tooltipWidth = namePopupSize?.width || 360;
+    const tooltipHeight = namePopupSize?.height || 400;
 
     let posX: number;
     let posY: number;

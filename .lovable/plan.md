@@ -1,62 +1,69 @@
 
-# План: Автовыбор команд при клике на юнит в treemap
+# План: Исправление навигации "назад" при провале в юнит
 
 ## Проблема
 
-При клике на юнит в treemap:
-1. Выбирается только юнит, команды не выбираются
-2. Если потом выбрать другой юнит через фильтр, первый юнит "пропадает"
-
-Причина: `handleNodeClick` в Index.tsx очищает команды (`setSelectedTeams([])`) вместо выбора всех команд юнита.
+После клика на юнит в treemap выбираются и юнит, и все его команды. При нажатии кнопки "назад":
+1. Сначала очищаются только команды
+2. Юнит остаётся выбранным
+3. Требуется два нажатия "назад" для полного выхода
+4. Визуально это выглядит как "меняется верхняя панель" без изменения treemap
 
 ## Решение
 
-При клике на юнит в treemap автоматически выбирать все его команды (аналогично логике в `toggleUnit` из FilterBar).
+При нажатии "назад", если выбран один юнит и его команды — сбрасывать их одновременно (одним действием).
 
 ## Файл для изменения
 
-| Файл | Строки | Изменение |
-|------|--------|-----------|
-| `src/pages/Index.tsx` | 236-241 | Добавить выбор всех команд юнита |
+| Файл | Изменение |
+|------|-----------|
+| `src/pages/Index.tsx` | Изменить логику `handleNavigateBack` |
 
 ## Техническая реализация
 
-### Index.tsx — функция `handleNodeClick`
+### Текущий код (строки 270-282):
 
-**Было (строки 236-241):**
 ```typescript
-} else if (node.isUnit) {
-  // Reset teams and select only this unit
-  setSelectedTeams([]);
-  setSelectedUnits([node.name]);
-  // Auto-enable Teams toggle
-  if (!showTeams) setShowTeams(true);
-}
+const handleNavigateBack = useCallback(() => {
+  if (selectedTeams.length > 0) {
+    setSelectedTeams([]);
+  } else if (selectedUnits.length > 0) {
+    setSelectedUnits([]);
+  } else if (selectedStakeholders.length > 0) {
+    setSelectedStakeholders([]);
+  }
+}, [selectedTeams.length, selectedUnits.length, selectedStakeholders.length]);
 ```
 
-**Станет:**
+### Новый код:
+
 ```typescript
-} else if (node.isUnit) {
-  // Select this unit and all its teams
-  setSelectedUnits([node.name]);
-  // Auto-select all teams from this unit
-  const teamsFromUnit = [...new Set(
-    rawData
-      .filter(r => r.unit === node.name)
-      .map(r => r.team)
-      .filter(Boolean)
-  )];
-  setSelectedTeams(teamsFromUnit);
-  // Auto-enable Teams toggle
-  if (!showTeams) setShowTeams(true);
-}
+const handleNavigateBack = useCallback(() => {
+  if (selectedTeams.length > 0) {
+    // If teams are selected with a single unit, clear both at once
+    // (this is the typical "drilled into unit" state)
+    if (selectedUnits.length === 1) {
+      setSelectedTeams([]);
+      setSelectedUnits([]);
+    } else {
+      // Multiple units selected - just clear teams
+      setSelectedTeams([]);
+    }
+  } else if (selectedUnits.length > 0) {
+    setSelectedUnits([]);
+  } else if (selectedStakeholders.length > 0) {
+    setSelectedStakeholders([]);
+  }
+}, [selectedTeams.length, selectedUnits.length, selectedStakeholders.length]);
 ```
 
 ## Результат
 
 | Сценарий | До | После |
 |----------|-----|-------|
-| Клик на юнит "Data" | Units: [Data], Teams: [] | Units: [Data], Teams: [Team1, Team2, ...] |
-| Затем выбор юнита "Growth" через фильтр | Добавятся Teams из Growth | Работает корректно |
+| Клик на юнит → Назад | 2 нажатия (команды, потом юнит) | 1 нажатие (оба сразу) |
+| Выбор нескольких юнитов в фильтре → Назад | Сбрасываются команды, потом юниты | Без изменений |
 
-Это унифицирует поведение: клик на юнит в treemap и выбор юнита в dropdown будут работать одинаково.
+## Альтернативный вариант
+
+Если нужно сохранить двухшаговую навигацию (сначала команды, потом юнит), можно оставить текущую логику, но добавить визуальную обратную связь, чтобы было понятно, что сброс произошёл.

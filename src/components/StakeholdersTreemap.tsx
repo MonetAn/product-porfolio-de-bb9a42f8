@@ -116,11 +116,9 @@ const StakeholdersTreemap = ({
         html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
       }
 
-      if (nodeData.description) {
-        html += `<div class="tooltip-description">${escapeHtml(nodeData.description)}</div>`;
-      }
+      // Description removed from treemap tooltips for consistency
 
-      // Plan/Fact for initiatives - show last quarter with full label
+      // Plan/Fact for initiatives - truncated, last quarter
       if (isInitiative && nodeData.quarterlyData && lastQuarter) {
         const qData = nodeData.quarterlyData[lastQuarter];
         if (qData && (qData.metricPlan || qData.metricFact)) {
@@ -128,10 +126,16 @@ const StakeholdersTreemap = ({
           const qLabel = `${quarter} ${year}`;
           html += `<div class="tooltip-metrics">`;
           if (qData.metricPlan) {
-            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">План за последний квартал периода (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(qData.metricPlan)}</span></div>`;
+            const truncatedPlan = qData.metricPlan.length > 100 
+              ? qData.metricPlan.slice(0, 100) + '…' 
+              : qData.metricPlan;
+            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">План (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(truncatedPlan)}</span></div>`;
           }
           if (qData.metricFact) {
-            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">Факт за последний квартал периода (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(qData.metricFact)}</span></div>`;
+            const truncatedFact = qData.metricFact.length > 100 
+              ? qData.metricFact.slice(0, 100) + '…' 
+              : qData.metricFact;
+            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">Факт (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(truncatedFact)}</span></div>`;
           }
           html += `</div>`;
         }
@@ -160,15 +164,30 @@ const StakeholdersTreemap = ({
       if (!tooltip) return;
 
       const padding = 16;
+      const rect = tooltip.getBoundingClientRect();
+      const tooltipWidth = rect.width;
+      const tooltipHeight = rect.height;
+      
+      // Start with position to the right and below cursor
       let x = e.clientX + padding;
       let y = e.clientY + padding;
 
-      const rect = tooltip.getBoundingClientRect();
-      if (x + rect.width > window.innerWidth - padding) {
-        x = e.clientX - rect.width - padding;
+      // Flip horizontally if overflows right edge
+      if (x + tooltipWidth > window.innerWidth - padding) {
+        x = e.clientX - tooltipWidth - padding;
       }
-      if (y + rect.height > window.innerHeight - padding) {
-        y = e.clientY - rect.height - padding;
+      // Clamp to left edge if still overflows
+      if (x < padding) {
+        x = padding;
+      }
+
+      // Flip vertically if overflows bottom edge
+      if (y + tooltipHeight > window.innerHeight - padding) {
+        y = e.clientY - tooltipHeight - padding;
+      }
+      // Clamp to top edge if flipped position goes above viewport
+      if (y < padding) {
+        y = padding;
       }
 
       tooltip.style.left = x + 'px';

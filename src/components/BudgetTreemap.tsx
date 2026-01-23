@@ -229,15 +229,30 @@ const BudgetTreemap = ({
       if (!tooltip) return;
 
       const padding = 16;
+      const rect = tooltip.getBoundingClientRect();
+      const tooltipWidth = rect.width;
+      const tooltipHeight = rect.height;
+      
+      // Start with position to the right and below cursor
       let x = e.clientX + padding;
       let y = e.clientY + padding;
 
-      const rect = tooltip.getBoundingClientRect();
-      if (x + rect.width > window.innerWidth - padding) {
-        x = e.clientX - rect.width - padding;
+      // Flip horizontally if overflows right edge
+      if (x + tooltipWidth > window.innerWidth - padding) {
+        x = e.clientX - tooltipWidth - padding;
       }
-      if (y + rect.height > window.innerHeight - padding) {
-        y = e.clientY - rect.height - padding;
+      // Clamp to left edge if still overflows
+      if (x < padding) {
+        x = padding;
+      }
+
+      // Flip vertically if overflows bottom edge
+      if (y + tooltipHeight > window.innerHeight - padding) {
+        y = e.clientY - tooltipHeight - padding;
+      }
+      // Clamp to top edge if flipped position goes above viewport
+      if (y < padding) {
+        y = padding;
       }
 
       tooltip.style.left = x + 'px';

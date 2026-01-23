@@ -352,6 +352,10 @@ const Index = () => {
             setShowOfftrackModal(false);
           } else if (canNavigateBack) {
             handleNavigateBack();
+          } else if (showTeams || showInitiatives) {
+            // At top level, reset nesting toggles
+            setShowTeams(false);
+            setShowInitiatives(false);
           }
           break;
       }
@@ -359,7 +363,7 @@ const Index = () => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack, hasActiveFilters, resetFilters]);
+  }, [showSearch, showShortcuts, showOfftrackModal, canNavigateBack, handleNavigateBack, hasActiveFilters, resetFilters, showTeams, showInitiatives]);
 
   // Search filtered results
   const searchResults = rawData.filter(row => {

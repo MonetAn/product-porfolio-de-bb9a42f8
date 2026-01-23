@@ -82,7 +82,10 @@ const StakeholdersTreemap = ({
 
     if (!root.children) return;
 
-    const showTooltip = (e: MouseEvent, nodeData: TreeNode, nodeValue: number) => {
+    // Total value for percentage calculation
+    const totalValue = root.value || 1;
+
+    const showTooltip = (e: MouseEvent, nodeData: TreeNode, nodeValue: number, stakeholderValue: number) => {
       const tooltip = tooltipRef.current;
       if (!tooltip) return;
 
@@ -97,6 +100,14 @@ const StakeholdersTreemap = ({
       html += `</div>`;
 
       html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(nodeValue)}</span></div>`;
+
+      // Percentage of Stakeholder
+      const percentOfStakeholder = stakeholderValue > 0 ? ((nodeValue / stakeholderValue) * 100).toFixed(1) : '100.0';
+      html += `<div class="tooltip-row"><span class="tooltip-label">% от Стейкхолдера</span><span class="tooltip-value">${percentOfStakeholder}%</span></div>`;
+
+      // Percentage of Total
+      const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
+      html += `<div class="tooltip-row"><span class="tooltip-label">% от Всего</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
 
       if (nodeData.description) {
         html += `<div class="tooltip-description">${escapeHtml(nodeData.description)}</div>`;
@@ -263,7 +274,13 @@ const StakeholdersTreemap = ({
 
       div.addEventListener('mouseenter', (e: MouseEvent) => {
         e.stopPropagation();
-        showTooltip(e, node.data, node.value || 0);
+        // Find stakeholder value for percentage calculation
+        let stakeholderNode: d3.HierarchyRectangularNode<TreeNode> = node;
+        while (stakeholderNode.parent && stakeholderNode.depth > 1) {
+          stakeholderNode = stakeholderNode.parent;
+        }
+        const stakeholderValue = stakeholderNode.value || node.value || 0;
+        showTooltip(e, node.data, node.value || 0, stakeholderValue);
       });
 
       div.addEventListener('mousemove', (e: MouseEvent) => moveTooltip(e));

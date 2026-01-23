@@ -144,8 +144,11 @@ const BudgetTreemap = ({
 
     if (!root.children) return;
 
+    // Total value for percentage calculation
+    const totalValue = root.value || 1;
+
     // Function to show tooltip - improved version
-    const showTooltip = (e: MouseEvent, nodeData: TreeNode, nodeValue: number) => {
+    const showTooltip = (e: MouseEvent, nodeData: TreeNode, nodeValue: number, unitValue: number) => {
       const tooltip = tooltipRef.current;
       if (!tooltip) return;
 
@@ -162,6 +165,14 @@ const BudgetTreemap = ({
 
       // Budget
       html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(nodeValue)}</span></div>`;
+
+      // Percentage of Unit
+      const percentOfUnit = unitValue > 0 ? ((nodeValue / unitValue) * 100).toFixed(1) : '100.0';
+      html += `<div class="tooltip-row"><span class="tooltip-label">% от Юнита</span><span class="tooltip-value">${percentOfUnit}%</span></div>`;
+
+      // Percentage of Total
+      const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
+      html += `<div class="tooltip-row"><span class="tooltip-label">% от Всего</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
 
       // Description
       if (nodeData.description) {
@@ -329,7 +340,13 @@ const BudgetTreemap = ({
 
       div.addEventListener('mouseenter', (e: MouseEvent) => {
         e.stopPropagation();
-        showTooltip(e, node.data, node.value || 0);
+        // Find unit value for percentage calculation
+        let unitNode: d3.HierarchyRectangularNode<TreeNode> = node;
+        while (unitNode.parent && unitNode.depth > 1) {
+          unitNode = unitNode.parent;
+        }
+        const unitValue = unitNode.value || node.value || 0;
+        showTooltip(e, node.data, node.value || 0, unitValue);
       });
 
       div.addEventListener('mousemove', (e: MouseEvent) => moveTooltip(e));

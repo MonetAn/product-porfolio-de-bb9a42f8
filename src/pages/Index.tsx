@@ -234,9 +234,16 @@ const Index = () => {
       setSelectedStakeholders([node.name]);
       if (!showTeams) setShowTeams(true);
     } else if (node.isUnit) {
-      // Reset teams and select only this unit
-      setSelectedTeams([]);
+      // Select this unit and all its teams
       setSelectedUnits([node.name]);
+      // Auto-select all teams from this unit
+      const teamsFromUnit = [...new Set(
+        rawData
+          .filter(r => r.unit === node.name)
+          .map(r => r.team)
+          .filter(Boolean)
+      )];
+      setSelectedTeams(teamsFromUnit);
       // Auto-enable Teams toggle
       if (!showTeams) setShowTeams(true);
     } else if (node.isTeam) {

@@ -269,8 +269,15 @@ const Index = () => {
 
   const handleNavigateBack = useCallback(() => {
     if (selectedTeams.length > 0) {
-      // If team is selected, clear it (go back to unit level)
-      setSelectedTeams([]);
+      // If teams are selected with a single unit, clear both at once
+      // (this is the typical "drilled into unit" state)
+      if (selectedUnits.length === 1) {
+        setSelectedTeams([]);
+        setSelectedUnits([]);
+      } else {
+        // Multiple units selected - just clear teams
+        setSelectedTeams([]);
+      }
     } else if (selectedUnits.length > 0) {
       // If unit is selected, clear it (go back to all units)
       setSelectedUnits([]);

@@ -291,18 +291,32 @@ const GanttView = ({
     const factLong = qData.metricFact && qData.metricFact.length > 100;
     const commentLong = qData.comment && qData.comment.length > 100;
 
-    // Position calculation
+    // Position calculation with smart flip + clamp
     const padding = 16;
+    const tooltipWidth = 360;
+    const tooltipHeight = 400;
+
+    // Start with position to the right and below cursor
     let posX = x + padding;
     let posY = y + padding;
 
-    // Adjust for viewport edges
     if (typeof window !== 'undefined') {
-      if (posX + 360 > window.innerWidth - padding) {
-        posX = x - 360 - padding;
+      // Flip horizontally if overflows right edge
+      if (posX + tooltipWidth > window.innerWidth - padding) {
+        posX = x - tooltipWidth - padding;
       }
-      if (posY + 300 > window.innerHeight - padding) {
-        posY = Math.max(padding, window.innerHeight - 400 - padding);
+      // Clamp to left edge if still overflows
+      if (posX < padding) {
+        posX = padding;
+      }
+
+      // Flip vertically if overflows bottom edge
+      if (posY + tooltipHeight > window.innerHeight - padding) {
+        posY = y - tooltipHeight - padding;
+      }
+      // Clamp to top edge if still overflows
+      if (posY < padding) {
+        posY = padding;
       }
     }
 
@@ -431,17 +445,32 @@ const GanttView = ({
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
     const descriptionLong = row.description && row.description.length > 150;
 
-    // Position calculation
+    // Position calculation with smart flip + clamp
     const padding = 16;
+    const tooltipWidth = 360;
+    const tooltipHeight = 400;
+
+    // Start with position to the right and below cursor
     let posX = x + padding;
     let posY = y + padding;
 
     if (typeof window !== 'undefined') {
-      if (posX + 360 > window.innerWidth - padding) {
-        posX = x - 360 - padding;
+      // Flip horizontally if overflows right edge
+      if (posX + tooltipWidth > window.innerWidth - padding) {
+        posX = x - tooltipWidth - padding;
       }
-      if (posY + 300 > window.innerHeight - padding) {
-        posY = Math.max(padding, window.innerHeight - 400 - padding);
+      // Clamp to left edge if still overflows
+      if (posX < padding) {
+        posX = padding;
+      }
+
+      // Flip vertically if overflows bottom edge
+      if (posY + tooltipHeight > window.innerHeight - padding) {
+        posY = y - tooltipHeight - padding;
+      }
+      // Clamp to top edge if still overflows
+      if (posY < padding) {
+        posY = padding;
       }
     }
 

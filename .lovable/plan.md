@@ -1,94 +1,74 @@
 
 
-# План: Скрыть "% от бюджета на экране" при выборе одного юнита
+# План: Двухстрочный лейбл для "% от бюджета"
 
-## Почему это нужно
+## Визуальный результат
 
-Когда выбран только 1 юнит:
-- Для самого юнита: "% от бюджета на экране" = 100% (бесполезно)
-- Для дочерних элементов: "% от бюджета на экране" = "% от Юнита" (дублирование)
+```
+Бюджет ─────────────────── 45.2 млн ₽
+% от Юнита ────────────────── 13.6%
+% от бюджета ─────────────────  2.5%
+  выбранного на экране
+```
 
-В обоих случаях эта метрика не несёт дополнительной информации.
-
-## Решение
-
-Передать количество выбранных юнитов в компонент и показывать "% от бюджета на экране" только если выбрано 0 (все) или больше 1 юнита.
+Основной лейбл: "% от бюджета" — стандартный размер (13px)
+Подпись: "выбранного на экране" — мелкий шрифт (10px), светло-серый, отступ слева
 
 ## Файлы для изменения
 
 | Файл | Изменение |
 |------|-----------|
-| `src/components/BudgetTreemap.tsx` | Добавить prop `selectedUnitsCount`, условие отображения |
+| `src/styles/treemap.css` | Добавить стили для `.tooltip-label-sub` |
+| `src/components/BudgetTreemap.tsx` | Изменить HTML структуру строки |
 | `src/components/StakeholdersTreemap.tsx` | Аналогичные изменения |
-| `src/pages/Index.tsx` | Передать `selectedUnitsCount={selectedUnits.length}` в оба treemap |
 
 ## Техническая реализация
 
-### 1. BudgetTreemap.tsx
+### 1. CSS (treemap.css)
 
-**Добавить prop:**
-```typescript
-interface BudgetTreemapProps {
-  // ... существующие props
-  selectedUnitsCount?: number; // Количество выбранных юнитов
+Добавить новые стили после `.tooltip-label` (строка ~185):
+
+```css
+/* Two-line label with subtitle */
+.tooltip-label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tooltip-label-sub {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground) / 0.7);
+  padding-left: 2px;
 }
 ```
 
-**Изменить условие отображения (строки 175-176):**
+### 2. BudgetTreemap.tsx (строки 179-182)
+
+Изменить HTML с:
 ```typescript
-// Показывать "% от бюджета на экране" только если выбрано 0 или >1 юнитов
-const showPercentOfTotal = selectedUnitsCount === undefined || 
-                           selectedUnitsCount === 0 || 
-                           selectedUnitsCount > 1;
-
-if (showPercentOfTotal) {
-  const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
-  html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
-}
+html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
 ```
 
-### 2. StakeholdersTreemap.tsx
-
-Аналогичные изменения с учётом того, что там группировка по стейкхолдерам, но логика та же.
-
-### 3. Index.tsx
-
-**Передать prop в BudgetTreemap (строка ~455):**
+На:
 ```typescript
-<BudgetTreemap
-  // ... существующие props
-  selectedUnitsCount={selectedUnits.length}
-/>
+html += `<div class="tooltip-row">
+  <span class="tooltip-label tooltip-label-group">
+    <span>% от бюджета</span>
+    <span class="tooltip-label-sub">выбранного на экране</span>
+  </span>
+  <span class="tooltip-value">${percentOfTotal}%</span>
+</div>`;
 ```
 
-**Передать prop в StakeholdersTreemap (строка ~476):**
-```typescript
-<StakeholdersTreemap
-  // ... существующие props
-  selectedUnitsCount={selectedUnits.length}
-/>
-```
+### 3. StakeholdersTreemap.tsx
 
-## Логика отображения (итоговая)
+Аналогичные изменения в функции `showTooltip`.
 
-| Выбрано юнитов | % от Юнита | % от бюджета на экране |
-|----------------|------------|------------------------|
-| 0 (все) | Показать (если не 100%) | Показать |
-| 1 | Показать (если не 100%) | Скрыть |
-| 2+ | Показать (если не 100%) | Показать |
+## Альтернативные варианты текста подписи
 
-## Результат
-
-**При выборе 1 юнита — tooltip инициативы:**
-```
-Бюджет           45.2 млн ₽
-% от Юнита       13.6%
-```
-
-**При выборе нескольких юнитов — tooltip инициативы:**
-```
-Бюджет                      45.2 млн ₽
-% от Юнита                  13.6%
-% от бюджета на экране      2.5%
-```
+Если "выбранного на экране" не подходит, можно использовать:
+- "от выбранных юнитов"
+- "отображаемого"
+- "по фильтру"
 

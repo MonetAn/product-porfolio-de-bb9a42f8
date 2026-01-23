@@ -1,74 +1,62 @@
 
+# План: Автовыбор команд при клике на юнит в treemap
 
-# План: Двухстрочный лейбл для "% от бюджета"
+## Проблема
 
-## Визуальный результат
+При клике на юнит в treemap:
+1. Выбирается только юнит, команды не выбираются
+2. Если потом выбрать другой юнит через фильтр, первый юнит "пропадает"
 
-```
-Бюджет ─────────────────── 45.2 млн ₽
-% от Юнита ────────────────── 13.6%
-% от бюджета ─────────────────  2.5%
-  выбранного на экране
-```
+Причина: `handleNodeClick` в Index.tsx очищает команды (`setSelectedTeams([])`) вместо выбора всех команд юнита.
 
-Основной лейбл: "% от бюджета" — стандартный размер (13px)
-Подпись: "выбранного на экране" — мелкий шрифт (10px), светло-серый, отступ слева
+## Решение
 
-## Файлы для изменения
+При клике на юнит в treemap автоматически выбирать все его команды (аналогично логике в `toggleUnit` из FilterBar).
 
-| Файл | Изменение |
-|------|-----------|
-| `src/styles/treemap.css` | Добавить стили для `.tooltip-label-sub` |
-| `src/components/BudgetTreemap.tsx` | Изменить HTML структуру строки |
-| `src/components/StakeholdersTreemap.tsx` | Аналогичные изменения |
+## Файл для изменения
+
+| Файл | Строки | Изменение |
+|------|--------|-----------|
+| `src/pages/Index.tsx` | 236-241 | Добавить выбор всех команд юнита |
 
 ## Техническая реализация
 
-### 1. CSS (treemap.css)
+### Index.tsx — функция `handleNodeClick`
 
-Добавить новые стили после `.tooltip-label` (строка ~185):
-
-```css
-/* Two-line label with subtitle */
-.tooltip-label-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.tooltip-label-sub {
-  font-size: 10px;
-  color: hsl(var(--muted-foreground) / 0.7);
-  padding-left: 2px;
+**Было (строки 236-241):**
+```typescript
+} else if (node.isUnit) {
+  // Reset teams and select only this unit
+  setSelectedTeams([]);
+  setSelectedUnits([node.name]);
+  // Auto-enable Teams toggle
+  if (!showTeams) setShowTeams(true);
 }
 ```
 
-### 2. BudgetTreemap.tsx (строки 179-182)
-
-Изменить HTML с:
+**Станет:**
 ```typescript
-html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
+} else if (node.isUnit) {
+  // Select this unit and all its teams
+  setSelectedUnits([node.name]);
+  // Auto-select all teams from this unit
+  const teamsFromUnit = [...new Set(
+    rawData
+      .filter(r => r.unit === node.name)
+      .map(r => r.team)
+      .filter(Boolean)
+  )];
+  setSelectedTeams(teamsFromUnit);
+  // Auto-enable Teams toggle
+  if (!showTeams) setShowTeams(true);
+}
 ```
 
-На:
-```typescript
-html += `<div class="tooltip-row">
-  <span class="tooltip-label tooltip-label-group">
-    <span>% от бюджета</span>
-    <span class="tooltip-label-sub">выбранного на экране</span>
-  </span>
-  <span class="tooltip-value">${percentOfTotal}%</span>
-</div>`;
-```
+## Результат
 
-### 3. StakeholdersTreemap.tsx
+| Сценарий | До | После |
+|----------|-----|-------|
+| Клик на юнит "Data" | Units: [Data], Teams: [] | Units: [Data], Teams: [Team1, Team2, ...] |
+| Затем выбор юнита "Growth" через фильтр | Добавятся Teams из Growth | Работает корректно |
 
-Аналогичные изменения в функции `showTooltip`.
-
-## Альтернативные варианты текста подписи
-
-Если "выбранного на экране" не подходит, можно использовать:
-- "от выбранных юнитов"
-- "отображаемого"
-- "по фильтру"
-
+Это унифицирует поведение: клик на юнит в treemap и выбор юнита в dropdown будут работать одинаково.

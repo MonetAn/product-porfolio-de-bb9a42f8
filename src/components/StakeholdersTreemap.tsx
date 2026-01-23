@@ -101,13 +101,15 @@ const StakeholdersTreemap = ({
 
       html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(nodeValue)}</span></div>`;
 
-      // Percentage of Stakeholder
-      const percentOfStakeholder = stakeholderValue > 0 ? ((nodeValue / stakeholderValue) * 100).toFixed(1) : '100.0';
-      html += `<div class="tooltip-row"><span class="tooltip-label">% от Стейкхолдера</span><span class="tooltip-value">${percentOfStakeholder}%</span></div>`;
+      // Percentage of Stakeholder - show only for child elements (not for stakeholders themselves)
+      if (nodeValue !== stakeholderValue) {
+        const percentOfStakeholder = stakeholderValue > 0 ? ((nodeValue / stakeholderValue) * 100).toFixed(1) : '100.0';
+        html += `<div class="tooltip-row"><span class="tooltip-label">% от Стейкхолдера</span><span class="tooltip-value">${percentOfStakeholder}%</span></div>`;
+      }
 
       // Percentage of Total
       const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
-      html += `<div class="tooltip-row"><span class="tooltip-label">% от Всего</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
+      html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
 
       if (nodeData.description) {
         html += `<div class="tooltip-description">${escapeHtml(nodeData.description)}</div>`;

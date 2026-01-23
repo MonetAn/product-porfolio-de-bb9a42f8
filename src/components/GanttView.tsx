@@ -291,33 +291,29 @@ const GanttView = ({
     const factLong = qData.metricFact && qData.metricFact.length > 100;
     const commentLong = qData.comment && qData.comment.length > 100;
 
-    // Position calculation with smart flip + clamp
+    // Position calculation with smart positioning
     const padding = 16;
     const tooltipWidth = 360;
     const tooltipHeight = 400;
 
-    // Start with position to the right and below cursor
+    // Start with position to the right of cursor
     let posX = x + padding;
     let posY = y + padding;
 
     if (typeof window !== 'undefined') {
-      // Flip horizontally if overflows right edge
+      // If overflows right edge, anchor to right edge of viewport
       if (posX + tooltipWidth > window.innerWidth - padding) {
-        posX = x - tooltipWidth - padding;
+        posX = window.innerWidth - tooltipWidth - padding;
       }
-      // Clamp to left edge if still overflows
-      if (posX < padding) {
-        posX = padding;
-      }
+      // Clamp to left edge
+      posX = Math.max(padding, posX);
 
-      // Flip vertically if overflows bottom edge
+      // If overflows bottom edge, anchor to bottom edge of viewport
       if (posY + tooltipHeight > window.innerHeight - padding) {
-        posY = y - tooltipHeight - padding;
+        posY = window.innerHeight - tooltipHeight - padding;
       }
-      // Clamp to top edge if still overflows
-      if (posY < padding) {
-        posY = padding;
-      }
+      // Clamp to top edge
+      posY = Math.max(padding, posY);
     }
 
     return (
@@ -445,33 +441,29 @@ const GanttView = ({
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
     const descriptionLong = row.description && row.description.length > 150;
 
-    // Position calculation with smart flip + clamp
+    // Position calculation with smart positioning
     const padding = 16;
     const tooltipWidth = 360;
     const tooltipHeight = 400;
 
-    // Start with position to the right and below cursor
+    // Start with position to the right of cursor
     let posX = x + padding;
     let posY = y + padding;
 
     if (typeof window !== 'undefined') {
-      // Flip horizontally if overflows right edge
+      // If overflows right edge, anchor to right edge of viewport
       if (posX + tooltipWidth > window.innerWidth - padding) {
-        posX = x - tooltipWidth - padding;
+        posX = window.innerWidth - tooltipWidth - padding;
       }
-      // Clamp to left edge if still overflows
-      if (posX < padding) {
-        posX = padding;
-      }
+      // Clamp to left edge
+      posX = Math.max(padding, posX);
 
-      // Flip vertically if overflows bottom edge
+      // If overflows bottom edge, anchor to bottom edge of viewport
       if (posY + tooltipHeight > window.innerHeight - padding) {
-        posY = y - tooltipHeight - padding;
+        posY = window.innerHeight - tooltipHeight - padding;
       }
-      // Clamp to top edge if still overflows
-      if (posY < padding) {
-        posY = padding;
-      }
+      // Clamp to top edge
+      posY = Math.max(padding, posY);
     }
 
     return (

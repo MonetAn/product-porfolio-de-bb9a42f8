@@ -187,6 +187,19 @@
   font-weight: 500;
 }
 
+/* Two-line label with subtitle */
+.tooltip-label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tooltip-label-sub {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground) / 0.7);
+  padding-left: 2px;
+}
+
 .tooltip-stakeholders {
   margin-top: 12px;
   padding-top: 12px;

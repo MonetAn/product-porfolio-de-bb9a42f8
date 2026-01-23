@@ -178,7 +178,7 @@ const BudgetTreemap = ({
       const showPercentOfTotal = selectedUnitsCount === 0 || selectedUnitsCount > 1;
       if (showPercentOfTotal) {
         const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
-        html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
+        html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
       }
 
       // Description

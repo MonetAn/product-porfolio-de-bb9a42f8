@@ -471,6 +471,7 @@ const Index = () => {
             onFileDrop={processCSVFile}
             hasData={rawData.length > 0}
             onResetFilters={resetFilters}
+            selectedUnitsCount={selectedUnits.length}
           />
         )}
 
@@ -487,6 +488,7 @@ const Index = () => {
               setCurrentView('timeline');
             }}
             onResetFilters={resetFilters}
+            selectedUnitsCount={selectedUnits.length}
           />
         )}
 

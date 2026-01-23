@@ -26,6 +26,7 @@ interface BudgetTreemapProps {
   onFileDrop?: (file: File) => void; // Handle file drop on empty state
   hasData?: boolean; // Whether raw data is loaded (to distinguish empty filters vs no data)
   onResetFilters?: () => void; // Reset all filters
+  selectedUnitsCount?: number; // Number of selected units (0 = all)
 }
 
 const BudgetTreemap = ({
@@ -43,7 +44,8 @@ const BudgetTreemap = ({
   onInitiativeClick,
   onFileDrop,
   hasData = false,
-  onResetFilters
+  onResetFilters,
+  selectedUnitsCount = 0
 }: BudgetTreemapProps) => {
   // Separate ref for D3-only container - React will NOT touch this
   const d3ContainerRef = useRef<HTMLDivElement>(null);
@@ -172,9 +174,12 @@ const BudgetTreemap = ({
         html += `<div class="tooltip-row"><span class="tooltip-label">% от Юнита</span><span class="tooltip-value">${percentOfUnit}%</span></div>`;
       }
 
-      // Percentage of Total
-      const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
-      html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
+      // Percentage of Total - show only if 0 (all) or >1 units selected
+      const showPercentOfTotal = selectedUnitsCount === 0 || selectedUnitsCount > 1;
+      if (showPercentOfTotal) {
+        const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
+        html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
+      }
 
       // Description
       if (nodeData.description) {

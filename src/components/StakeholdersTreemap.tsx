@@ -19,6 +19,7 @@ interface StakeholdersTreemapProps {
   hasData?: boolean; // true if rawData.length > 0
   onInitiativeClick?: (initiativeName: string) => void;
   onResetFilters?: () => void;
+  selectedUnitsCount?: number; // Number of selected units (0 = all)
 }
 
 // Separate color palette for stakeholders
@@ -41,7 +42,8 @@ const StakeholdersTreemap = ({
   selectedQuarters = [],
   hasData = false,
   onInitiativeClick,
-  onResetFilters
+  onResetFilters,
+  selectedUnitsCount = 0
 }: StakeholdersTreemapProps) => {
   const d3ContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -107,9 +109,12 @@ const StakeholdersTreemap = ({
         html += `<div class="tooltip-row"><span class="tooltip-label">% от Стейкхолдера</span><span class="tooltip-value">${percentOfStakeholder}%</span></div>`;
       }
 
-      // Percentage of Total
-      const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
-      html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
+      // Percentage of Total - show only if 0 (all) or >1 units selected
+      const showPercentOfTotal = selectedUnitsCount === 0 || selectedUnitsCount > 1;
+      if (showPercentOfTotal) {
+        const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
+        html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
+      }
 
       if (nodeData.description) {
         html += `<div class="tooltip-description">${escapeHtml(nodeData.description)}</div>`;

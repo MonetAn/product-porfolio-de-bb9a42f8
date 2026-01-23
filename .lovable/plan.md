@@ -1,131 +1,105 @@
 
-# План: Унификация UX для tooltips в Timeline
+# План: Smart positioning для Timeline tooltips
 
-## Обзор изменений
+## Проблема
 
-1. **Унифицировать курсор** — `cursor: pointer` для названия и сегментов
-2. **Улучшить discoverability** — подчёркивание при hover для названия
-3. **Убрать описание из quarter popup** — оставить только в name popup
+При hover на правой части экрана tooltip "прыгает" слишком далеко влево (на ~376px от курсора), создавая визуально неприятный разрыв.
 
-## Файлы для изменения
+## Решение
+
+Применить ту же логику **flip + clamp**, которую мы уже реализовали для Treemap tooltips. Это обеспечит:
+- Tooltip всегда близко к курсору
+- Никогда не выходит за границы viewport
+- Консистентное поведение во всём приложении
+
+## Файл для изменения
 
 | Файл | Изменение |
 |------|-----------|
-| `src/styles/gantt.css` | Изменить курсор + добавить underline при hover |
-| `src/components/GanttView.tsx` | Удалить секцию Description из renderQuarterPopup |
+| `src/components/GanttView.tsx` | Обновить позиционирование для quarterPopup и namePopup |
 
 ## Техническая реализация
 
-### gantt.css
-
-#### 1. Изменить курсор для названия (строка 92)
+### Обновить позиционирование в renderQuarterPopup (строки 294-307)
 
 **Было:**
-```css
-.gantt-row-name {
-  ...
-  cursor: help;
+```typescript
+const padding = 16;
+let posX = x + padding;
+let posY = y + padding;
+
+if (typeof window !== 'undefined') {
+  if (posX + 360 > window.innerWidth - padding) {
+    posX = x - 360 - padding;
+  }
+  if (posY + 300 > window.innerHeight - padding) {
+    posY = Math.max(padding, window.innerHeight - 400 - padding);
+  }
 }
 ```
 
 **Станет:**
-```css
-.gantt-row-name {
-  ...
-  cursor: pointer;
+```typescript
+const padding = 16;
+const tooltipWidth = 360;
+const tooltipHeight = 400;
+
+// Start with position to the right and below cursor
+let posX = x + padding;
+let posY = y + padding;
+
+if (typeof window !== 'undefined') {
+  // Flip horizontally if overflows right edge
+  if (posX + tooltipWidth > window.innerWidth - padding) {
+    posX = x - tooltipWidth - padding;
+  }
+  // Clamp to left edge if still overflows
+  if (posX < padding) {
+    posX = padding;
+  }
+
+  // Flip vertically if overflows bottom edge
+  if (posY + tooltipHeight > window.innerHeight - padding) {
+    posY = y - tooltipHeight - padding;
+  }
+  // Clamp to top edge if still overflows
+  if (posY < padding) {
+    posY = padding;
+  }
 }
 ```
 
-#### 2. Добавить hover эффект для названия (после строки 93)
+### Аналогично обновить позиционирование в renderNamePopup (строки 434-446)
 
-```css
-.gantt-row-name:hover {
-  text-decoration: underline;
-  text-decoration-color: hsl(var(--primary));
-  text-underline-offset: 2px;
-}
-```
+Та же логика flip + clamp.
 
-### GanttView.tsx
-
-#### Удалить секцию Description из renderQuarterPopup (строки 338-359)
-
-**Было:**
-```tsx
-{row.description && (
-  <div className="gantt-quarter-popup-section">
-    <div 
-      className="gantt-quarter-popup-label expandable-header"
-      onClick={() => pinned && descriptionLong && toggleSection('description')}
-    >
-      Описание
-      {pinned && descriptionLong && (
-        expandedSections['description'] 
-          ? <ChevronUp size={12} className="expand-icon" />
-          : <ChevronDown size={12} className="expand-icon" />
-      )}
-    </div>
-    <div 
-      className={`gantt-quarter-popup-text ${!expandedSections['description'] && descriptionLong ? 'truncated' : ''}`}
-    >
-      {expandedSections['description'] || !descriptionLong 
-        ? row.description 
-        : row.description.slice(0, 150) + '…'}
-    </div>
-  </div>
-)}
-```
-
-**Станет:** Удалить этот блок полностью.
-
-#### Удалить неиспользуемую переменную (строка 290)
-
-```tsx
-// Удалить
-const descriptionLong = row.description && row.description.length > 150;
-```
-
-## Результат
-
-| Элемент | Курсор | Hover эффект | Содержимое popup |
-|---------|--------|--------------|------------------|
-| **Название** | pointer | Underline синий | Name, Unit, Costs, Description, Stakeholders |
-| **Сегмент** | pointer | Brightness +10% | Quarter, Status, Budget, Plan, Fact, Comment, Stakeholders |
-
-## Визуальная схема
+## Визуальное сравнение
 
 ```text
-TIMELINE - Unified Interaction Pattern
+БЫЛО (проблема):
+┌────────────────────────────────────────────────────────────────────────┐
+│                                                                        │
+│  ┌─────────────┐                                     cursor ●          │
+│  │  Tooltip    │←─────── 376px разрыв ──────────────→│                 │
+│  │             │                                                       │
+│  └─────────────┘                                                       │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│  Initiative Name ←── [hover: underline, cursor: pointer]        │
-│  ▼ Click                                                         │
-│  ┌─────────────────────┐                                         │
-│  │ Name                │ ← ЧТО это?                              │
-│  │ Unit                │                                         │
-│  │ Costs               │                                         │
-│  │ ▾ Description       │ ← Полное описание здесь                 │
-│  │ Stakeholders        │                                         │
-│  └─────────────────────┘                                         │
-│                                                                  │
-│  [====Segment====] ←── [hover: brightness, cursor: pointer]     │
-│  ▼ Click                                                         │
-│  ┌─────────────────────┐                                         │
-│  │ Quarter + Status    │ ← КАК идёт в этом квартале?             │
-│  │ Budget              │                                         │
-│  │ ▾ Plan              │ ← Только квартальные метрики            │
-│  │ ▾ Fact              │                                         │
-│  │ ▾ Comment           │                                         │
-│  │ Stakeholders        │                                         │
-│  └─────────────────────┘                                         │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+СТАНЕТ (flip + clamp):
+┌────────────────────────────────────────────────────────────────────────┐
+│                                                                        │
+│                                        ┌─────────────┐ cursor ●        │
+│                                        │  Tooltip    │←─ 16px          │
+│                                        │             │                 │
+│                                        └─────────────┘                 │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Преимущества
 
-- **Консистентность** — одинаковый паттерн взаимодействия
-- **Discoverability** — подчёркивание явно показывает кликабельность
-- **Чёткое разделение** — Name popup = общая информация, Quarter popup = прогресс
-- **Меньше дублирования** — описание в одном месте
+- **Консистентность** — одинаковая логика в Treemap и Timeline
+- **Близость** — tooltip всегда рядом с курсором (max 16px gap)
+- **Надёжность** — clamp гарантирует, что tooltip никогда не выйдет за экран
+- **Простота** — переиспользуем проверенный паттерн

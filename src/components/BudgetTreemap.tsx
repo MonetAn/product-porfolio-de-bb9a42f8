@@ -166,13 +166,15 @@ const BudgetTreemap = ({
       // Budget
       html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(nodeValue)}</span></div>`;
 
-      // Percentage of Unit
-      const percentOfUnit = unitValue > 0 ? ((nodeValue / unitValue) * 100).toFixed(1) : '100.0';
-      html += `<div class="tooltip-row"><span class="tooltip-label">% от Юнита</span><span class="tooltip-value">${percentOfUnit}%</span></div>`;
+      // Percentage of Unit - show only for child elements (not for units themselves)
+      if (nodeValue !== unitValue) {
+        const percentOfUnit = unitValue > 0 ? ((nodeValue / unitValue) * 100).toFixed(1) : '100.0';
+        html += `<div class="tooltip-row"><span class="tooltip-label">% от Юнита</span><span class="tooltip-value">${percentOfUnit}%</span></div>`;
+      }
 
       // Percentage of Total
       const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
-      html += `<div class="tooltip-row"><span class="tooltip-label">% от Всего</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
+      html += `<div class="tooltip-row"><span class="tooltip-label">% от бюджета на экране</span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
 
       // Description
       if (nodeData.description) {

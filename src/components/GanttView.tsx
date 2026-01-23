@@ -20,6 +20,13 @@ interface QuarterPopupData {
   pinned: boolean;
 }
 
+interface NamePopupData {
+  row: RawDataRow;
+  x: number;
+  y: number;
+  pinned: boolean;
+}
+
 interface GanttViewProps {
   rawData: RawDataRow[];
   selectedQuarters: string[];
@@ -57,11 +64,14 @@ const GanttView = ({
   const highlightedRef = useRef<HTMLDivElement>(null);
   const headerTimelineRef = useRef<HTMLDivElement>(null);
   const rowsContainerRef = useRef<HTMLDivElement>(null);
-  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [quarterPopup, setQuarterPopup] = useState<QuarterPopupData | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const popupRef = useRef<HTMLDivElement>(null);
+  
+  // Name popup state
+  const [namePopup, setNamePopup] = useState<NamePopupData | null>(null);
+  const [nameExpandedSections, setNameExpandedSections] = useState<Record<string, boolean>>({});
+  const namePopupRef = useRef<HTMLDivElement>(null);
 
   // Filter data based on current filters
   const filteredData = useMemo(() => {
@@ -125,31 +135,60 @@ const GanttView = ({
     return () => rowsContainer.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Close popup on outside click
+  // Close popups on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      // Close quarter popup
       if (quarterPopup?.pinned && popupRef.current && !popupRef.current.contains(e.target as Node)) {
         setQuarterPopup(null);
         setExpandedSections({});
       }
+      // Close name popup
+      if (namePopup?.pinned && namePopupRef.current && !namePopupRef.current.contains(e.target as Node)) {
+        setNamePopup(null);
+        setNameExpandedSections({});
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [quarterPopup]);
+  }, [quarterPopup, namePopup]);
 
   const quarterWidth = 160;
 
-  const handleNameMouseEnter = (e: React.MouseEvent, idx: number) => {
-    setHoveredRow(idx);
-    setTooltipPosition({ x: e.clientX, y: e.clientY });
+  // Name popup handlers
+  const handleNameMouseEnter = (e: React.MouseEvent, row: RawDataRow) => {
+    if (namePopup?.pinned) return;
+    setNamePopup({
+      row,
+      x: e.clientX,
+      y: e.clientY,
+      pinned: false
+    });
   };
 
   const handleNameMouseMove = (e: React.MouseEvent) => {
-    setTooltipPosition({ x: e.clientX, y: e.clientY });
+    if (namePopup?.pinned) return;
+    setNamePopup(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
   };
 
   const handleNameMouseLeave = () => {
-    setHoveredRow(null);
+    if (namePopup?.pinned) return;
+    setNamePopup(null);
+  };
+
+  const handleNameClick = (e: React.MouseEvent, row: RawDataRow) => {
+    e.stopPropagation();
+    setNamePopup({
+      row,
+      x: e.clientX,
+      y: e.clientY,
+      pinned: true
+    });
+    setNameExpandedSections({});
+  };
+
+  const toggleNameSection = (section: string) => {
+    setNameExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
   const handleSegmentMouseEnter = (e: React.MouseEvent, row: RawDataRow, quarter: string) => {
@@ -398,7 +437,93 @@ const GanttView = ({
         )}
 
         {!pinned && (
-          <div style={{ fontSize: '10px', color: 'hsl(var(--muted-foreground))', marginTop: '8px', textAlign: 'center' }}>
+          <div className="gantt-name-popup-hint">
+            Кликните для детального просмотра
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderNamePopup = () => {
+    if (!namePopup) return null;
+
+    const { row, x, y, pinned } = namePopup;
+    const totalCost = calculateTotalBudget(row);
+    const periodCost = calculateBudget(row, selectedQuarters);
+    const allQuarters = getInitiativeQuarters(row);
+    const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
+    const descriptionLong = row.description && row.description.length > 150;
+
+    // Position calculation
+    const padding = 16;
+    let posX = x + padding;
+    let posY = y + padding;
+
+    if (typeof window !== 'undefined') {
+      if (posX + 360 > window.innerWidth - padding) {
+        posX = x - 360 - padding;
+      }
+      if (posY + 300 > window.innerHeight - padding) {
+        posY = Math.max(padding, window.innerHeight - 400 - padding);
+      }
+    }
+
+    return (
+      <div
+        ref={namePopupRef}
+        className={`gantt-name-popup ${pinned ? 'pinned' : ''}`}
+        style={{
+          left: posX,
+          top: posY,
+          pointerEvents: pinned ? 'auto' : 'none'
+        }}
+      >
+        <div className="gantt-name-popup-title">{row.initiative}</div>
+        
+        <div className="gantt-name-popup-unit">{row.unit}</div>
+
+        <div className="gantt-name-popup-costs">
+          <span>Всего: {formatBudget(totalCost)}</span>
+          {showPeriodCost && (
+            <span className="period-cost">За период: {formatBudget(periodCost)}</span>
+          )}
+        </div>
+
+        {row.description && (
+          <div className="gantt-name-popup-section">
+            <div 
+              className="gantt-name-popup-label expandable-header"
+              onClick={() => pinned && descriptionLong && toggleNameSection('description')}
+            >
+              Описание
+              {pinned && descriptionLong && (
+                nameExpandedSections['description'] 
+                  ? <ChevronUp size={12} className="expand-icon" />
+                  : <ChevronDown size={12} className="expand-icon" />
+              )}
+            </div>
+            <div 
+              className={`gantt-name-popup-text ${!nameExpandedSections['description'] && descriptionLong ? 'truncated' : ''}`}
+            >
+              {nameExpandedSections['description'] || !descriptionLong 
+                ? row.description 
+                : row.description.slice(0, 150) + '…'}
+            </div>
+          </div>
+        )}
+
+        {row.stakeholders && (
+          <div className="gantt-name-popup-section">
+            <div className="gantt-name-popup-label">Стейкхолдеры</div>
+            <div className="gantt-name-popup-stakeholders">
+              <span className="gantt-name-popup-tag">{row.stakeholders}</span>
+            </div>
+          </div>
+        )}
+
+        {!pinned && (
+          <div className="gantt-name-popup-hint">
             Кликните для детального просмотра
           </div>
         )}
@@ -438,9 +563,10 @@ const GanttView = ({
               <div className="gantt-row-label">
                 <div 
                   className="gantt-row-name"
-                  onMouseEnter={(e) => handleNameMouseEnter(e, idx)}
+                  onMouseEnter={(e) => handleNameMouseEnter(e, row)}
                   onMouseMove={handleNameMouseMove}
                   onMouseLeave={handleNameMouseLeave}
+                  onClick={(e) => handleNameClick(e, row)}
                 >
                   {row.initiative}
                 </div>
@@ -526,23 +652,8 @@ const GanttView = ({
         })}
       </div>
 
-      {/* Tooltip for initiative name hover - stakeholders only, no description */}
-      {hoveredRow !== null && filteredData[hoveredRow] && (
-        <div 
-          className="gantt-name-tooltip"
-          style={{
-            left: Math.min(tooltipPosition.x + 16, window.innerWidth - 420),
-            top: tooltipPosition.y + 16
-          }}
-        >
-          <div className="gantt-name-tooltip-title">{filteredData[hoveredRow].initiative}</div>
-          {filteredData[hoveredRow].stakeholders && (
-            <div className="gantt-name-tooltip-stakeholders">
-              <span className="gantt-name-tooltip-tag">{filteredData[hoveredRow].stakeholders}</span>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Name popup */}
+      {renderNamePopup()}
 
       {/* Quarter detail popup */}
       {renderQuarterPopup()}

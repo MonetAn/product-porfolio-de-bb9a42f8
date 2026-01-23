@@ -181,31 +181,26 @@ const BudgetTreemap = ({
         html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
       }
 
-      // Description
-      if (nodeData.description) {
-        html += `<div class="tooltip-description">${escapeHtml(nodeData.description)}</div>`;
-      }
-
-      // Plan/Fact for initiatives - show last quarter with full label
+      // Plan/Fact for initiatives - truncated, last quarter (no Description, no Comment)
       if (isInitiative && nodeData.quarterlyData && lastQuarter) {
         const qData = nodeData.quarterlyData[lastQuarter];
         if (qData && (qData.metricPlan || qData.metricFact)) {
-          // Format: "Q1 2024" -> "Q1 2024"
           const [year, quarter] = lastQuarter.split('-');
           const qLabel = `${quarter} ${year}`;
           html += `<div class="tooltip-metrics">`;
           if (qData.metricPlan) {
-            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">План за последний квартал периода (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(qData.metricPlan)}</span></div>`;
+            const truncatedPlan = qData.metricPlan.length > 100 
+              ? qData.metricPlan.slice(0, 100) + '…' 
+              : qData.metricPlan;
+            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">План (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(truncatedPlan)}</span></div>`;
           }
           if (qData.metricFact) {
-            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">Факт за последний квартал периода (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(qData.metricFact)}</span></div>`;
+            const truncatedFact = qData.metricFact.length > 100 
+              ? qData.metricFact.slice(0, 100) + '…' 
+              : qData.metricFact;
+            html += `<div class="tooltip-metric"><span class="tooltip-metric-label">Факт (${qLabel})</span><span class="tooltip-metric-value">${escapeHtml(truncatedFact)}</span></div>`;
           }
           html += `</div>`;
-        }
-
-        // Comment
-        if (qData?.comment) {
-          html += `<div class="tooltip-comment"><span class="tooltip-comment-label">Комментарий:</span> ${escapeHtml(qData.comment)}</div>`;
         }
       }
 

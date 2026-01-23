@@ -287,7 +287,6 @@ const GanttView = ({
 
     const isSupport = qData.support;
     const isOffTrack = !qData.onTrack;
-    const descriptionLong = row.description && row.description.length > 150;
     const planLong = qData.metricPlan && qData.metricPlan.length > 100;
     const factLong = qData.metricFact && qData.metricFact.length > 100;
     const commentLong = qData.comment && qData.comment.length > 100;
@@ -334,29 +333,6 @@ const GanttView = ({
         <div className="gantt-quarter-popup-budget">
           Бюджет: {formatBudget(qData.budget)}
         </div>
-
-        {row.description && (
-          <div className="gantt-quarter-popup-section">
-            <div 
-              className="gantt-quarter-popup-label expandable-header"
-              onClick={() => pinned && descriptionLong && toggleSection('description')}
-            >
-              Описание
-              {pinned && descriptionLong && (
-                expandedSections['description'] 
-                  ? <ChevronUp size={12} className="expand-icon" />
-                  : <ChevronDown size={12} className="expand-icon" />
-              )}
-            </div>
-            <div 
-              className={`gantt-quarter-popup-text ${!expandedSections['description'] && descriptionLong ? 'truncated' : ''}`}
-            >
-              {expandedSections['description'] || !descriptionLong 
-                ? row.description 
-                : row.description.slice(0, 150) + '…'}
-            </div>
-          </div>
-        )}
 
         {qData.metricPlan && (
           <div className="gantt-quarter-popup-section">

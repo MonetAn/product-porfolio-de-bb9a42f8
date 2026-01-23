@@ -89,7 +89,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: help;
+  cursor: pointer;
+}
+
+.gantt-row-name:hover {
+  text-decoration: underline;
+  text-decoration-color: hsl(var(--primary));
+  text-underline-offset: 2px;
 }
 
 .gantt-row-team {

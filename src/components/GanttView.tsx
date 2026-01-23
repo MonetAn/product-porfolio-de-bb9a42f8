@@ -291,29 +291,37 @@ const GanttView = ({
     const factLong = qData.metricFact && qData.metricFact.length > 100;
     const commentLong = qData.comment && qData.comment.length > 100;
 
-    // Position calculation with smart positioning
+    // Position calculation with flip logic
     const padding = 16;
     const tooltipWidth = 360;
     const tooltipHeight = 400;
 
-    // Start with position to the right of cursor
-    let posX = x + padding;
-    let posY = y + padding;
+    let posX: number;
+    let posY: number;
 
     if (typeof window !== 'undefined') {
-      // If overflows right edge, anchor to right edge of viewport
-      if (posX + tooltipWidth > window.innerWidth - padding) {
-        posX = window.innerWidth - tooltipWidth - padding;
+      // Horizontal: try right first, flip to left if doesn't fit
+      const fitsOnRight = x + padding + tooltipWidth <= window.innerWidth - padding;
+      if (fitsOnRight) {
+        posX = x + padding; // Right of cursor
+      } else {
+        posX = x - tooltipWidth - padding; // Left of cursor
       }
-      // Clamp to left edge
-      posX = Math.max(padding, posX);
+      // Clamp to viewport
+      posX = Math.max(padding, Math.min(posX, window.innerWidth - tooltipWidth - padding));
 
-      // If overflows bottom edge, anchor to bottom edge of viewport
-      if (posY + tooltipHeight > window.innerHeight - padding) {
-        posY = window.innerHeight - tooltipHeight - padding;
+      // Vertical: try below first, flip to above if doesn't fit
+      const fitsBelow = y + padding + tooltipHeight <= window.innerHeight - padding;
+      if (fitsBelow) {
+        posY = y + padding; // Below cursor
+      } else {
+        posY = y - tooltipHeight - padding; // Above cursor
       }
-      // Clamp to top edge
-      posY = Math.max(padding, posY);
+      // Clamp to viewport
+      posY = Math.max(padding, Math.min(posY, window.innerHeight - tooltipHeight - padding));
+    } else {
+      posX = x + padding;
+      posY = y + padding;
     }
 
     return (
@@ -441,29 +449,37 @@ const GanttView = ({
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
     const descriptionLong = row.description && row.description.length > 150;
 
-    // Position calculation with smart positioning
+    // Position calculation with flip logic
     const padding = 16;
     const tooltipWidth = 360;
     const tooltipHeight = 400;
 
-    // Start with position to the right of cursor
-    let posX = x + padding;
-    let posY = y + padding;
+    let posX: number;
+    let posY: number;
 
     if (typeof window !== 'undefined') {
-      // If overflows right edge, anchor to right edge of viewport
-      if (posX + tooltipWidth > window.innerWidth - padding) {
-        posX = window.innerWidth - tooltipWidth - padding;
+      // Horizontal: try right first, flip to left if doesn't fit
+      const fitsOnRight = x + padding + tooltipWidth <= window.innerWidth - padding;
+      if (fitsOnRight) {
+        posX = x + padding; // Right of cursor
+      } else {
+        posX = x - tooltipWidth - padding; // Left of cursor
       }
-      // Clamp to left edge
-      posX = Math.max(padding, posX);
+      // Clamp to viewport
+      posX = Math.max(padding, Math.min(posX, window.innerWidth - tooltipWidth - padding));
 
-      // If overflows bottom edge, anchor to bottom edge of viewport
-      if (posY + tooltipHeight > window.innerHeight - padding) {
-        posY = window.innerHeight - tooltipHeight - padding;
+      // Vertical: try below first, flip to above if doesn't fit
+      const fitsBelow = y + padding + tooltipHeight <= window.innerHeight - padding;
+      if (fitsBelow) {
+        posY = y + padding; // Below cursor
+      } else {
+        posY = y - tooltipHeight - padding; // Above cursor
       }
-      // Clamp to top edge
-      posY = Math.max(padding, posY);
+      // Clamp to viewport
+      posY = Math.max(padding, Math.min(posY, window.innerHeight - tooltipHeight - padding));
+    } else {
+      posX = x + padding;
+      posY = y + padding;
     }
 
     return (

@@ -9,14 +9,36 @@ export interface AdminQuarterData {
   comment: string;        // Editable
 }
 
+// Initiative types with descriptions
+export const INITIATIVE_TYPES = [
+  { value: 'Product', label: 'Product', description: 'Влияет на бизнес, зарабатывает или экономит деньги' },
+  { value: 'Stream', label: 'Stream', description: 'Влияет на ключевую метрику' },
+  { value: 'Enabler', label: 'Enabler', description: 'Поддержка инициатив бизнеса' },
+] as const;
+
+export type InitiativeType = typeof INITIATIVE_TYPES[number]['value'];
+
+// Available stakeholders
+export const STAKEHOLDERS_LIST = [
+  'Russia',
+  'Central Asia', 
+  'Europe',
+  'Turkey+',
+  'MENA',
+  'Drinkit',
+  'IT'
+] as const;
+
 export interface AdminDataRow {
   id: string;
   unit: string;
   team: string;
   initiative: string;
+  initiativeType: InitiativeType | '';
+  stakeholdersList: string[];
   description: string;
   documentationLink: string;
-  stakeholders: string;
+  stakeholders: string; // Legacy field for backward compatibility
   quarterlyData: Record<string, AdminQuarterData>;
   isNew?: boolean;
   isModified?: boolean;
@@ -95,19 +117,28 @@ export function parseAdminCSV(text: string): {
   const unitIdx = headers.findIndex(h => h.toLowerCase().includes('unit') || h.toLowerCase() === 'юнит');
   const teamIdx = headers.findIndex(h => h.toLowerCase().includes('team') || h.toLowerCase() === 'команда');
   const initiativeIdx = headers.findIndex(h => h.toLowerCase().includes('initiative') || h.toLowerCase() === 'инициатива');
+  const typeIdx = headers.findIndex(h => h.toLowerCase() === 'type' || h.toLowerCase() === 'тип');
+  const stakeholdersListIdx = headers.findIndex(h => h.toLowerCase() === 'stakeholders list' || h.toLowerCase() === 'список стейкхолдеров');
   const descriptionIdx = headers.findIndex(h => h.toLowerCase().includes('description') || h.toLowerCase() === 'описание');
   const docLinkIdx = headers.findIndex(h => h.toLowerCase().includes('documentation') || h.toLowerCase().includes('doc link'));
   const stakeholdersIdx = headers.findIndex(h => h.toLowerCase().includes('stakeholder') || h.toLowerCase() === 'стейкхолдеры');
-
   for (let i = 1; i < lines.length; i++) {
     const values = parseCSVLine(lines[i]);
     if (values.length < 4) continue;
+
+    // Parse stakeholders list from CSV (comma-separated)
+    const stakeholdersListRaw = stakeholdersListIdx >= 0 ? values[stakeholdersListIdx]?.trim() || '' : '';
+    const parsedStakeholdersList = stakeholdersListRaw
+      ? stakeholdersListRaw.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
 
     const row: AdminDataRow = {
       id: `row-${i}-${Date.now()}`,
       unit: values[unitIdx >= 0 ? unitIdx : 0]?.trim() || '',
       team: values[teamIdx >= 0 ? teamIdx : 1]?.trim() || '',
       initiative: values[initiativeIdx >= 0 ? initiativeIdx : 2]?.trim() || '',
+      initiativeType: (typeIdx >= 0 ? values[typeIdx]?.trim() || '' : '') as InitiativeType | '',
+      stakeholdersList: parsedStakeholdersList,
       description: values[descriptionIdx >= 0 ? descriptionIdx : 3]?.trim() || '',
       documentationLink: docLinkIdx >= 0 ? values[docLinkIdx]?.trim() || '' : '',
       stakeholders: values[stakeholdersIdx >= 0 ? stakeholdersIdx : 4]?.trim() || '',
@@ -159,7 +190,7 @@ export function exportAdminCSV(
   originalHeaders: string[]
 ): string {
   // Build headers
-  const baseHeaders = ['Unit', 'Team', 'Initiative', 'Description', 'Documentation Link', 'Stakeholders'];
+  const baseHeaders = ['Unit', 'Team', 'Initiative', 'Type', 'Stakeholders List', 'Description', 'Documentation Link', 'Stakeholders'];
   const quarterHeaders: string[] = [];
   
   quarters.forEach(q => {
@@ -183,6 +214,8 @@ export function exportAdminCSV(
       escapeCSVValue(row.unit),
       escapeCSVValue(row.team),
       escapeCSVValue(row.initiative),
+      escapeCSVValue(row.initiativeType || ''),
+      escapeCSVValue(row.stakeholdersList?.join(', ') || ''),
       escapeCSVValue(row.description),
       escapeCSVValue(row.documentationLink),
       escapeCSVValue(row.stakeholders)
@@ -260,7 +293,9 @@ export function createEmptyQuarterData(): AdminQuarterData {
 export function createNewInitiative(
   unit: string,
   team: string,
-  quarters: string[]
+  quarters: string[],
+  initiativeType: InitiativeType | '' = '',
+  stakeholdersList: string[] = []
 ): AdminDataRow {
   const quarterlyData: Record<string, AdminQuarterData> = {};
   quarters.forEach(q => {
@@ -272,6 +307,8 @@ export function createNewInitiative(
     unit,
     team,
     initiative: '',
+    initiativeType,
+    stakeholdersList,
     description: '',
     documentationLink: '',
     stakeholders: '',

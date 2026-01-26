@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, ExternalLink, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { Plus, ExternalLink, ChevronRight, Eye, EyeOff, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -13,14 +13,28 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
-import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType } from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
   data: AdminDataRow[];
   quarters: string[];
-  onDataChange: (id: string, field: keyof AdminDataRow, value: string) => void;
+  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[]) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
   onAddInitiative: () => void;
   modifiedIds: Set<string>;
@@ -94,12 +108,14 @@ const InitiativeTable = ({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="sticky left-0 bg-card z-10 min-w-[40px] w-[40px]"></TableHead>
-                <TableHead className="sticky left-[40px] bg-card z-10 min-w-[100px]">Unit</TableHead>
-                <TableHead className="sticky left-[140px] bg-card z-10 min-w-[120px]">Team</TableHead>
-                <TableHead className="sticky left-[260px] bg-card z-10 min-w-[200px]">Initiative</TableHead>
-                <TableHead className={`${expandedView ? 'min-w-[350px]' : 'min-w-[250px]'}`}>Description</TableHead>
-                <TableHead className="min-w-[150px]">Doc Link</TableHead>
+                <TableHead className="sticky left-0 bg-card z-10 min-w-[32px] w-[32px]"></TableHead>
+                <TableHead className="sticky left-[32px] bg-card z-10 min-w-[90px]">Unit</TableHead>
+                <TableHead className="sticky left-[122px] bg-card z-10 min-w-[100px]">Team</TableHead>
+                <TableHead className="sticky left-[222px] bg-card z-10 min-w-[160px]">Initiative</TableHead>
+                <TableHead className="min-w-[100px]">Type</TableHead>
+                <TableHead className="min-w-[140px]">Stakeholders</TableHead>
+                <TableHead className={`${expandedView ? 'min-w-[200px]' : 'min-w-[120px]'}`}>Description</TableHead>
+                <TableHead className="min-w-[100px]">Doc</TableHead>
                 {quarters.map(q => (
                   <TableHead key={q} className="min-w-[220px]">{q}</TableHead>
                 ))}
@@ -113,31 +129,31 @@ const InitiativeTable = ({
                 >
                   {/* Row click indicator */}
                   <TableCell 
-                    className="sticky left-0 bg-card z-10 p-2"
+                    className="sticky left-0 bg-card z-10 p-1"
                     onClick={() => handleRowClick(row)}
                   >
-                    <ChevronRight size={16} className="text-muted-foreground" />
+                    <ChevronRight size={14} className="text-muted-foreground" />
                   </TableCell>
 
                   {/* Unit - read only */}
                   <TableCell 
-                    className="sticky left-[40px] bg-card z-10"
+                    className="sticky left-[32px] bg-card z-10 p-2"
                     onClick={() => handleRowClick(row)}
                   >
-                    <span className="px-2 py-1 bg-muted/50 rounded text-sm">{row.unit}</span>
+                    <span className="px-1.5 py-0.5 bg-muted/50 rounded text-xs truncate block max-w-[80px]">{row.unit}</span>
                   </TableCell>
 
                   {/* Team - read only */}
                   <TableCell 
-                    className="sticky left-[140px] bg-card z-10"
+                    className="sticky left-[122px] bg-card z-10 p-2"
                     onClick={() => handleRowClick(row)}
                   >
-                    <span className="px-2 py-1 bg-muted/50 rounded text-sm">{row.team}</span>
+                    <span className="px-1.5 py-0.5 bg-muted/50 rounded text-xs truncate block max-w-[90px]">{row.team}</span>
                   </TableCell>
 
                   {/* Initiative - editable inline */}
                   <TableCell 
-                    className="sticky left-[260px] bg-card z-10"
+                    className="sticky left-[222px] bg-card z-10 p-2"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleCellClick(row.id, 'initiative');
@@ -150,31 +166,97 @@ const InitiativeTable = ({
                         onChange={(e) => onDataChange(row.id, 'initiative', e.target.value)}
                         onBlur={handleCellBlur}
                         onKeyDown={(e) => e.key === 'Enter' && handleCellBlur()}
-                        className="h-8"
+                        className="h-7 text-xs"
                       />
                     ) : (
-                      <span className={`cursor-pointer hover:bg-secondary px-2 py-1 rounded block ${
+                      <span className={`cursor-pointer hover:bg-secondary px-1.5 py-0.5 rounded block text-xs truncate max-w-[150px] ${
                         modifiedIds.has(row.id) ? 'ring-2 ring-primary/30' : ''
                       }`}>
-                        {row.initiative || <span className="text-muted-foreground italic">Без названия</span>}
+                        {row.initiative || <span className="text-muted-foreground italic">—</span>}
                       </span>
                     )}
+                  </TableCell>
+
+                  {/* Type - dropdown with tooltips */}
+                  <TableCell className="p-2" onClick={(e) => e.stopPropagation()}>
+                    <TooltipProvider>
+                      <Select
+                        value={row.initiativeType || ''}
+                        onValueChange={(value) => onDataChange(row.id, 'initiativeType', value)}
+                      >
+                        <SelectTrigger className="h-7 text-xs w-[90px]">
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {INITIATIVE_TYPES.map(type => (
+                            <Tooltip key={type.value}>
+                              <TooltipTrigger asChild>
+                                <SelectItem value={type.value} className="text-xs">
+                                  <div className="flex items-center gap-1">
+                                    {type.label}
+                                    <Info size={10} className="text-muted-foreground" />
+                                  </div>
+                                </SelectItem>
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-[200px]">
+                                <p className="text-xs">{type.description}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TooltipProvider>
+                  </TableCell>
+
+                  {/* Stakeholders - multi-select badges */}
+                  <TableCell className="p-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex flex-wrap gap-0.5 max-w-[130px]">
+                      {row.stakeholdersList && row.stakeholdersList.length > 0 ? (
+                        row.stakeholdersList.slice(0, 2).map(s => (
+                          <Badge key={s} variant="secondary" className="text-[10px] px-1 py-0">
+                            {s.length > 6 ? s.slice(0, 6) + '…' : s}
+                          </Badge>
+                        ))
+                      ) : null}
+                      {row.stakeholdersList && row.stakeholdersList.length > 2 && (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                          +{row.stakeholdersList.length - 2}
+                        </Badge>
+                      )}
+                      {(!row.stakeholdersList || row.stakeholdersList.length === 0) && (
+                        <span 
+                          className="text-xs text-muted-foreground italic cursor-pointer hover:text-foreground"
+                          onClick={() => handleRowClick(row)}
+                        >
+                          —
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
 
                   {/* Description - truncated, click to open detail */}
                   <TableCell 
                     onClick={() => handleRowClick(row)}
-                    className="cursor-pointer"
+                    className="cursor-pointer p-2"
                   >
-                    <span className={`block text-sm text-muted-foreground hover:text-foreground transition-colors ${
-                      expandedView ? 'line-clamp-4' : 'line-clamp-2'
-                    }`}>
-                      {row.description || <span className="italic">Нажмите для редактирования...</span>}
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className={`block text-xs text-muted-foreground hover:text-foreground transition-colors ${
+                          expandedView ? 'line-clamp-3' : 'line-clamp-1'
+                        } max-w-[${expandedView ? '190px' : '110px'}]`}>
+                          {row.description || <span className="italic">—</span>}
+                        </span>
+                      </TooltipTrigger>
+                      {row.description && (
+                        <TooltipContent side="bottom" className="max-w-[300px]">
+                          <p className="text-xs">{row.description}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
                   </TableCell>
 
                   {/* Doc Link - editable */}
-                  <TableCell onClick={(e) => {
+                  <TableCell className="p-2" onClick={(e) => {
                     e.stopPropagation();
                     handleCellClick(row.id, 'documentationLink');
                   }}>
@@ -185,7 +267,7 @@ const InitiativeTable = ({
                         onChange={(e) => onDataChange(row.id, 'documentationLink', e.target.value)}
                         onBlur={handleCellBlur}
                         onKeyDown={(e) => e.key === 'Enter' && handleCellBlur()}
-                        className="h-8"
+                        className="h-7 text-xs"
                         placeholder="https://..."
                       />
                     ) : row.documentationLink ? (
@@ -193,15 +275,15 @@ const InitiativeTable = ({
                         href={row.documentationLink} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-primary hover:underline text-sm"
+                        className="flex items-center gap-1 text-primary hover:underline text-xs"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <ExternalLink size={14} />
-                        <span className="truncate max-w-[120px]">Документация</span>
+                        <ExternalLink size={12} />
+                        <span className="truncate max-w-[70px]">Ссылка</span>
                       </a>
                     ) : (
-                      <span className="cursor-pointer hover:bg-secondary px-2 py-1 rounded block text-sm text-muted-foreground italic">
-                        Добавить ссылку
+                      <span className="cursor-pointer hover:bg-secondary px-1 py-0.5 rounded block text-xs text-muted-foreground italic">
+                        —
                       </span>
                     )}
                   </TableCell>

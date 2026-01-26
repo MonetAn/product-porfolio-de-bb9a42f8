@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react';
 import { ExternalLink, Info, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -43,6 +45,16 @@ const InitiativeDetailDialog = ({
   onDataChange,
   onQuarterDataChange,
 }: InitiativeDetailDialogProps) => {
+  // Use local state to track stakeholders for immediate UI feedback
+  const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
+  
+  // Sync local state with initiative when dialog opens or initiative changes
+  useEffect(() => {
+    if (initiative) {
+      setLocalStakeholders(initiative.stakeholdersList || []);
+    }
+  }, [initiative?.id, initiative?.stakeholdersList]);
+  
   if (!initiative) return null;
 
   const formatCurrency = (value: number) => {
@@ -52,10 +64,10 @@ const InitiativeDetailDialog = ({
   };
 
   const handleStakeholderToggle = (stakeholder: string, checked: boolean) => {
-    const currentList = initiative.stakeholdersList || [];
     const newList = checked 
-      ? [...currentList, stakeholder]
-      : currentList.filter(s => s !== stakeholder);
+      ? [...localStakeholders, stakeholder]
+      : localStakeholders.filter(s => s !== stakeholder);
+    setLocalStakeholders(newList);
     onDataChange(initiative.id, 'stakeholdersList', newList);
   };
 
@@ -76,6 +88,9 @@ const InitiativeDetailDialog = ({
               placeholder="Название инициативы"
             />
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Редактирование инициативы {initiative.initiative}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-4">
@@ -116,7 +131,7 @@ const InitiativeDetailDialog = ({
             <Label className="text-sm font-medium">Стейкхолдеры</Label>
             <div className="flex flex-wrap gap-2">
               {STAKEHOLDERS_LIST.map(stakeholder => {
-                const isSelected = (initiative.stakeholdersList || []).includes(stakeholder);
+                const isSelected = localStakeholders.includes(stakeholder);
                 return (
                   <button
                     key={stakeholder}

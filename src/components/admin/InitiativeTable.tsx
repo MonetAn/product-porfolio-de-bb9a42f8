@@ -136,9 +136,7 @@ const InitiativeTable = ({
                     className="sticky left-[222px] bg-card z-10 p-2 cursor-pointer"
                     onClick={() => handleRowClick(row)}
                   >
-                    <span className={`text-xs text-primary hover:underline truncate block max-w-[150px] ${
-                      modifiedIds.has(row.id) ? 'ring-2 ring-primary/30 rounded px-1' : ''
-                    }`}>
+                    <span className="text-xs text-primary hover:underline truncate block max-w-[150px]">
                       {row.initiative || <span className="text-muted-foreground italic">—</span>}
                     </span>
                   </TableCell>

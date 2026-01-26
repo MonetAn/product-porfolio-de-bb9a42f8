@@ -18,7 +18,6 @@ interface AdminHeaderProps {
   onUploadClick: () => void;
   onDownloadAll: () => void;
   onDownloadFiltered: () => void;
-  onDownloadModified: () => void;
 }
 
 const AdminHeader = ({
@@ -30,8 +29,7 @@ const AdminHeader = ({
   hasFilters,
   onUploadClick,
   onDownloadAll,
-  onDownloadFiltered,
-  onDownloadModified
+  onDownloadFiltered
 }: AdminHeaderProps) => {
   const navigate = useNavigate();
 
@@ -107,11 +105,6 @@ const AdminHeader = ({
             {hasFilters && (
               <DropdownMenuItem onClick={onDownloadFiltered}>
                 Отфильтрованные ({initiativeCount})
-              </DropdownMenuItem>
-            )}
-            {modifiedCount > 0 && (
-              <DropdownMenuItem onClick={onDownloadModified}>
-                Только измененные ({modifiedCount})
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

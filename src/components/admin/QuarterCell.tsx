@@ -4,8 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import {
   Tooltip,
   TooltipContent,
@@ -33,6 +32,8 @@ const getMissingFields = (data: AdminQuarterData): string[] => {
 
 const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEffort }: QuarterCellProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isEditingEffort, setIsEditingEffort] = useState(false);
+  const [effortInputValue, setEffortInputValue] = useState('');
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
@@ -47,14 +48,31 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
   const missingFields = getMissingFields(data);
   const isIncomplete = missingFields.length > 0;
 
+  const handleEffortSave = () => {
+    const value = parseInt(effortInputValue) || 0;
+    const clampedValue = Math.max(0, Math.min(100, value));
+    onChange('effortCoefficient', clampedValue);
+    setIsEditingEffort(false);
+  };
+
+  const handleCellClick = (e: React.MouseEvent) => {
+    // Don't toggle if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest('input, button, [role="switch"]')) return;
+    setIsOpen(!isOpen);
+  };
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <TooltipProvider delayDuration={100}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className={`rounded-md border p-2 space-y-2 ${
-              isIncomplete ? 'border-amber-400 bg-amber-50/50 dark:bg-amber-950/20' : 'border-border'
-            }`}>
+            <div 
+              className={`rounded-md border p-2 space-y-2 cursor-pointer transition-colors hover:bg-muted/30 ${
+                isIncomplete ? 'border-amber-400 bg-amber-50/50 dark:bg-amber-950/20' : 'border-border'
+              }`}
+              onClick={handleCellClick}
+            >
               
               {/* Compact View - Always Visible */}
               <div className="flex items-center justify-between gap-2">
@@ -65,13 +83,36 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                   {/* Cost */}
                   <span className="text-sm font-medium">{formatCurrency(totalCost)} ₽</span>
                   
-                  {/* Effort % */}
-                  <Badge 
-                    variant={effortValue > 0 ? "default" : "outline"} 
-                    className="text-[10px] px-1.5 py-0"
-                  >
-                    {effortValue}%
-                  </Badge>
+                  {/* Effort % - Inline editable */}
+                  {isEditingEffort ? (
+                    <Input
+                      type="number"
+                      value={effortInputValue}
+                      onChange={(e) => setEffortInputValue(e.target.value)}
+                      onBlur={handleEffortSave}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleEffortSave();
+                        if (e.key === 'Escape') setIsEditingEffort(false);
+                      }}
+                      className="w-14 h-6 text-xs px-1.5"
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      min={0}
+                      max={100}
+                    />
+                  ) : (
+                    <Badge 
+                      variant={effortValue > 0 ? "default" : "outline"} 
+                      className="text-[10px] px-1.5 py-0 cursor-pointer hover:bg-primary/80"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEffortInputValue(String(effortValue));
+                        setIsEditingEffort(true);
+                      }}
+                    >
+                      {effortValue}%
+                    </Badge>
+                  )}
             
                   {/* Support badge */}
                   {data.support && (
@@ -79,11 +120,17 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                   )}
                 </div>
           
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  </Button>
-                </CollapsibleTrigger>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 w-6 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(!isOpen);
+                  }}
+                >
+                  {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </Button>
               </div>
 
               {/* Expanded View Preview - shown when toggle is on */}
@@ -111,14 +158,16 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Коэфф. трудозатрат</span>
                   <div className="flex items-center gap-2">
-                    <Slider
-                      value={[effortValue]}
-                      onValueChange={([v]) => onChange('effortCoefficient', v)}
+                    <Input
+                      type="number"
+                      value={effortValue || ''}
+                      onChange={(e) => onChange('effortCoefficient', parseInt(e.target.value) || 0)}
+                      onClick={(e) => e.stopPropagation()}
+                      min={0}
                       max={100}
-                      step={5}
-                      className="flex-1"
+                      className="w-20 h-8"
                     />
-                    <span className="w-10 text-right text-xs font-mono">{effortValue}%</span>
+                    <span className="text-xs text-muted-foreground">%</span>
                   </div>
                   {teamEffort && (
                     <div className={`text-[10px] ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
@@ -143,6 +192,7 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                     type="number"
                     value={data.otherCosts || ''}
                     onChange={(e) => onChange('otherCosts', parseFloat(e.target.value) || 0)}
+                    onClick={(e) => e.stopPropagation()}
                     className="h-7 text-sm"
                     placeholder="0"
                   />
@@ -154,6 +204,7 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                   <Input
                     value={data.metricPlan}
                     onChange={(e) => onChange('metricPlan', e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
                     className="h-7 text-sm"
                     placeholder="..."
                   />
@@ -165,6 +216,7 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                   <Input
                     value={data.metricFact}
                     onChange={(e) => onChange('metricFact', e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
                     className="h-7 text-sm"
                     placeholder="..."
                   />
@@ -176,6 +228,7 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                   <Input
                     value={data.comment}
                     onChange={(e) => onChange('comment', e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
                     className="h-7 text-sm"
                     placeholder="..."
                   />

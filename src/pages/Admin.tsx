@@ -114,7 +114,7 @@ const Admin = () => {
   }, [handleFileUpload]);
 
   // Data modification
-  const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[]) => {
+  const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[] | number) => {
     setRawData(prev => prev.map(row => {
       if (row.id === id) {
         return { ...row, [field]: value };
@@ -290,6 +290,7 @@ const Admin = () => {
             <div className="flex-1 overflow-hidden">
               <InitiativeTable
                 data={filteredData}
+                allData={rawData}
                 quarters={quarters}
                 onDataChange={handleDataChange}
                 onQuarterDataChange={handleQuarterDataChange}

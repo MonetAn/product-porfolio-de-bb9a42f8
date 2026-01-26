@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-
+import { Slider } from '@/components/ui/slider';
 import {
   Select,
   SelectContent,
@@ -27,7 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType, validateTeamEffort } from '@/lib/adminDataManager';
 
 // Required field label component
 const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -38,15 +38,17 @@ const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode
 
 interface InitiativeDetailDialogProps {
   initiative: AdminDataRow | null;
+  allData: AdminDataRow[];
   quarters: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[]) => void;
+  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
 }
 
 const InitiativeDetailDialog = ({
   initiative,
+  allData,
   quarters,
   open,
   onOpenChange,
@@ -65,6 +67,8 @@ const InitiativeDetailDialog = ({
   
   if (!initiative) return null;
 
+  // Calculate team effort for validation
+  const teamEffort = validateTeamEffort(allData, initiative.unit, initiative.team);
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
@@ -134,6 +138,30 @@ const InitiativeDetailDialog = ({
                 </SelectContent>
               </Select>
             </TooltipProvider>
+          </div>
+
+          {/* Effort Coefficient */}
+          <div className="space-y-2">
+            <RequiredLabel>Коэффициент трудозатрат</RequiredLabel>
+            
+            <div className="flex items-center gap-4">
+              <Slider
+                value={[initiative.effortCoefficient || 0]}
+                onValueChange={([v]) => onDataChange(initiative.id, 'effortCoefficient', v)}
+                max={100}
+                step={5}
+                className="flex-1"
+              />
+              <span className="w-12 text-right font-mono text-sm">
+                {initiative.effortCoefficient || 0}%
+              </span>
+            </div>
+            
+            {/* Team total indicator */}
+            <div className={`text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
+              Команда {initiative.team}: {teamEffort.total}% из 100%
+              {!teamEffort.isValid && ' ⚠ Превышение!'}
+            </div>
           </div>
 
           {/* Stakeholders Multi-select */}

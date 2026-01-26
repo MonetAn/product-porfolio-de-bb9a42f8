@@ -1,4 +1,4 @@
-import { ExternalLink, TrendingUp, TrendingDown, Info } from 'lucide-react';
+import { ExternalLink, Info, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -119,21 +118,19 @@ const InitiativeDetailDialog = ({
               {STAKEHOLDERS_LIST.map(stakeholder => {
                 const isSelected = (initiative.stakeholdersList || []).includes(stakeholder);
                 return (
-                  <label
+                  <button
                     key={stakeholder}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer transition-colors text-sm ${
+                    type="button"
+                    onClick={() => handleStakeholderToggle(stakeholder, !isSelected)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer transition-all text-sm ${
                       isSelected 
-                        ? 'bg-primary text-primary-foreground border-primary' 
+                        ? 'bg-primary text-primary-foreground border-primary shadow-sm' 
                         : 'bg-background hover:bg-muted border-border'
                     }`}
                   >
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(checked) => handleStakeholderToggle(stakeholder, checked as boolean)}
-                      className="sr-only"
-                    />
+                    {isSelected && <Check size={14} className="flex-shrink-0" />}
                     {stakeholder}
-                  </label>
+                  </button>
                 );
               })}
             </div>
@@ -180,7 +177,7 @@ const InitiativeDetailDialog = ({
             <Label className="text-sm font-medium">Квартальные данные</Label>
             
             <div className="space-y-4">
-              {quarters.map((quarter, index) => {
+              {quarters.map((quarter) => {
                 const qData = initiative.quarterlyData[quarter] || {
                   cost: 0,
                   otherCosts: 0,
@@ -192,11 +189,6 @@ const InitiativeDetailDialog = ({
                 };
 
                 const totalCost = qData.cost + qData.otherCosts;
-                const prevQuarter = quarters[index - 1];
-                const prevCost = prevQuarter 
-                  ? (initiative.quarterlyData[prevQuarter]?.cost || 0) + (initiative.quarterlyData[prevQuarter]?.otherCosts || 0)
-                  : 0;
-                const costDiff = index > 0 ? totalCost - prevCost : 0;
 
                 return (
                   <div 
@@ -217,14 +209,6 @@ const InitiativeDetailDialog = ({
                         {/* Cost display */}
                         <div className="text-right">
                           <div className="font-medium">{formatCurrency(totalCost)}</div>
-                          {costDiff !== 0 && (
-                            <div className={`text-xs flex items-center gap-1 ${
-                              costDiff > 0 ? 'text-destructive' : 'text-green-600'
-                            }`}>
-                              {costDiff > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                              {costDiff > 0 ? '+' : ''}{formatCurrency(costDiff)}
-                            </div>
-                          )}
                         </div>
                         
                         {/* OnTrack toggle */}

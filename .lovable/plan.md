@@ -1,155 +1,98 @@
 
+# План: Упрощённый UX для Effort %
 
-# План: Поквартальные коэффициенты трудозатрат
+## Что меняем
 
-## Бизнес-логика
-
-Вместо единого коэффициента на инициативу → коэффициент указывается **для каждого квартала отдельно**.
-
-**Валидация:** Сумма коэффициентов всех инициатив команды **в каждом квартале** не должна превышать 100%.
-
----
-
-## UX-решение
-
-### 1. Убираем колонку "Effort %" из таблицы
-Она больше не нужна — коэффициент теперь привязан к кварталам.
-
-### 2. Добавляем Effort в QuarterCell (компактная ячейка квартала)
-
-В сжатом виде ячейки квартала показываем коэффициент рядом с другими данными:
-
-```text
-┌────────────────────────────┐
-│ ● 500K ₽  │ 25%  │  [▼]   │  ← добавили "25%" 
-└────────────────────────────┘
-```
-
-### 3. Индикатор суммы в заголовке колонки квартала
-
-В шапке таблицы под названием квартала показываем сумму по текущей команде:
-
-```text
-│  2025-Q1   │  2025-Q2   │  2025-Q3   │
-│  95% ✓     │  110% ⚠    │  60%       │
-├────────────┼────────────┼────────────┤
-```
-
-**Цветовая индикация:**
-- **≤100%** — зелёный/обычный цвет
-- **>100%** — красный + ⚠ (превышение)
-- **<80%** (опционально) — серый, показывает недозагрузку
-
-### 4. В карточке инициативы — слайдер внутри каждого квартала
-
-Вместо общего слайдера → слайдер в блоке каждого квартала:
-
-```text
-┌─────────────────────────────────────────────────┐
-│ 2025-Q1                                         │
-│ ─────────────────────────────────────────────── │
-│ Коэффициент трудозатрат                         │
-│ ├─────────●─────────────────┤  25%              │
-│ Команда TeamA в Q1: 95% из 100% ✓               │
-│                                                 │
-│ [Стоимость] [Доп. расходы]                      │
-│ [План метрики] [Факт метрики]                   │
-│ [Комментарий]                                   │
-└─────────────────────────────────────────────────┘
-```
-
----
+1. **Убираем Slider** — заменяем на простой `<input type="number">`
+2. **Кликабельная вся ячейка** — раскрытие по клику на любую область
+3. **Inline-редактирование badge** — клик на процент в компактном виде открывает input
 
 ## Техническая реализация
 
-### 1. Модель данных
+### Файл: `src/components/admin/QuarterCell.tsx`
 
-**Файл: `src/lib/adminDataManager.ts`**
-
-Перенести `effortCoefficient` из `AdminDataRow` в `AdminQuarterData`:
-
+**1. Добавить состояние для inline-редактирования:**
 ```typescript
-export interface AdminQuarterData {
-  cost: number;
-  otherCosts: number;
-  support: boolean;
-  onTrack: boolean;
-  metricPlan: string;
-  metricFact: string;
-  comment: string;
-  effortCoefficient: number;  // НОВОЕ: 0-100% для этого квартала
-}
-
-export interface AdminDataRow {
-  // ... удалить effortCoefficient отсюда
-}
+const [isEditingEffort, setIsEditingEffort] = useState(false);
+const [effortInputValue, setEffortInputValue] = useState('');
 ```
 
-Обновить функции:
-- `parseAdminCSV` — парсить `Effort` из квартальных колонок (например `25_Q1_Effort`)
-- `exportAdminCSV` — экспортировать `effortCoefficient` в квартальные колонки
-- `createEmptyQuarterData` — значение по умолчанию `0`
+**2. Сделать ячейку кликабельной:**
+- Добавить `onClick={() => setIsOpen(!isOpen)}` на внешний div
+- Добавить `cursor-pointer` и `hover:bg-muted/30`
 
-### 2. Валидация по кварталам
-
-```typescript
-export function getTeamQuarterEffortSum(
-  data: AdminDataRow[], 
-  unit: string, 
-  team: string, 
-  quarter: string,
-  excludeId?: string
-): number {
-  return data
-    .filter(row => row.unit === unit && row.team === team && row.id !== excludeId)
-    .reduce((sum, row) => sum + (row.quarterlyData[quarter]?.effortCoefficient || 0), 0);
-}
-
-export function validateTeamQuarterEffort(
-  data: AdminDataRow[],
-  unit: string,
-  team: string,
-  quarter: string
-): { isValid: boolean; total: number } {
-  const total = getTeamQuarterEffortSum(data, unit, team, quarter);
-  return { isValid: total <= 100, total };
-}
+**3. Badge → кликабельный с inline edit:**
+```tsx
+{isEditingEffort ? (
+  <Input
+    type="number"
+    value={effortInputValue}
+    onChange={...}
+    onBlur={...} // сохранить и закрыть
+    onKeyDown={...} // Enter = сохранить
+    className="w-14 h-6 text-xs"
+    autoFocus
+    onClick={(e) => e.stopPropagation()} // не раскрывать ячейку
+  />
+) : (
+  <Badge 
+    onClick={(e) => {
+      e.stopPropagation();
+      setEffortInputValue(String(effortValue));
+      setIsEditingEffort(true);
+    }}
+    className="cursor-pointer hover:bg-primary/80"
+  >
+    {effortValue}%
+  </Badge>
+)}
 ```
 
-### 3. Обновить QuarterCell
+**4. Заменить Slider на Input в развёрнутом виде:**
+```tsx
+<div className="flex items-center gap-2">
+  <Input
+    type="number"
+    value={effortValue || ''}
+    onChange={(e) => onChange('effortCoefficient', parseInt(e.target.value) || 0)}
+    onClick={(e) => e.stopPropagation()}
+    min={0}
+    max={100}
+    className="w-20 h-8"
+  />
+  <span className="text-xs text-muted-foreground">%</span>
+</div>
+```
 
-**Файл: `src/components/admin/QuarterCell.tsx`**
+### Файл: `src/components/admin/InitiativeDetailDialog.tsx`
 
-- Добавить отображение `effortCoefficient` в компактном виде
-- Добавить слайдер в развёрнутом виде
+**Заменить Slider на Input** в каждой секции квартала (аналогично QuarterCell)
 
-### 4. Обновить заголовок таблицы
+## Визуальный результат
 
-**Файл: `src/components/admin/InitiativeTable.tsx`**
+### Компактный вид
+```
+┌─────────────────────────────────────┐
+│ ● 500K ₽   [25%]←клик   S    ▼     │  ← вся область кликабельна
+└─────────────────────────────────────┘
+```
 
-- Убрать колонку "Effort %"
-- Добавить индикатор суммы под названием каждого квартала в `TableHead`
-- Для расчёта суммы нужно знать текущий фильтр (unit/team) — передавать через пропсы
+### Развёрнутый вид
+```
+┌─────────────────────────────────────┐
+│ Коэфф. трудозатрат:                 │
+│ [  25  ] %                          │  ← простой input
+│ Всего: 85% ✓                        │
+│ ...                                 │
+└─────────────────────────────────────┘
+```
 
-### 5. Обновить карточку инициативы
-
-**Файл: `src/components/admin/InitiativeDetailDialog.tsx`**
-
-- Убрать общий слайдер коэффициента
-- Добавить слайдер внутрь каждого блока квартала
-- Показать индикатор суммы команды для каждого квартала
-
----
-
-## Изменения в файлах
+## Файлы
 
 | Файл | Изменения |
 |------|-----------|
-| `src/lib/adminDataManager.ts` | Перенести `effortCoefficient` в `AdminQuarterData`, обновить парсер/экспорт, новые функции валидации |
-| `src/components/admin/QuarterCell.tsx` | + отображение Effort %, + слайдер в развёрнутом виде |
-| `src/components/admin/InitiativeTable.tsx` | − колонка Effort %, + сумма в заголовках кварталов |
-| `src/components/admin/InitiativeDetailDialog.tsx` | − общий слайдер, + слайдер в каждом квартале |
+| `src/components/admin/QuarterCell.tsx` | + inline edit badge, + кликабельная область, − slider → input |
+| `src/components/admin/InitiativeDetailDialog.tsx` | − slider → input |
 
 ## Оценка
-~10-12 кредитов (4 файла, средняя сложность с рефакторингом данных)
-
+~4-5 кредитов (2 файла, простые изменения)

@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { ExternalLink, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { ExternalLink, TrendingUp, TrendingDown, Info } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,15 +11,28 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType } from '@/lib/adminDataManager';
 
 interface InitiativeDetailDialogProps {
   initiative: AdminDataRow | null;
   quarters: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDataChange: (id: string, field: keyof AdminDataRow, value: string) => void;
+  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[]) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
 }
 
@@ -40,10 +52,18 @@ const InitiativeDetailDialog = ({
     return `${value} ₽`;
   };
 
+  const handleStakeholderToggle = (stakeholder: string, checked: boolean) => {
+    const currentList = initiative.stakeholdersList || [];
+    const newList = checked 
+      ? [...currentList, stakeholder]
+      : currentList.filter(s => s !== stakeholder);
+    onDataChange(initiative.id, 'stakeholdersList', newList);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="outline">{initiative.unit}</Badge>
             <span>→</span>
@@ -59,190 +79,237 @@ const InitiativeDetailDialog = ({
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
-          <div className="space-y-6">
-            {/* Description */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Описание</Label>
-              <Textarea
-                value={initiative.description}
-                onChange={(e) => onDataChange(initiative.id, 'description', e.target.value)}
-                placeholder="Подробное описание инициативы..."
-                className="min-h-[100px] resize-y"
-              />
-            </div>
+        <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-4">
+          {/* Initiative Type */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Тип инициативы</Label>
+            <TooltipProvider delayDuration={100}>
+              <Select 
+                value={initiative.initiativeType || ''} 
+                onValueChange={(v) => onDataChange(initiative.id, 'initiativeType', v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Выберите тип" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INITIATIVE_TYPES.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      <div className="flex items-center gap-2">
+                        {type.label}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info size={12} className="text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[200px]">
+                            <p className="text-xs">{type.description}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </TooltipProvider>
+          </div>
 
-            {/* Documentation Link */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Ссылка на документацию</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={initiative.documentationLink}
-                  onChange={(e) => onDataChange(initiative.id, 'documentationLink', e.target.value)}
-                  placeholder="https://..."
-                  className="flex-1"
-                />
-                {initiative.documentationLink && (
-                  <a
-                    href={initiative.documentationLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center w-10 h-10 rounded-md border border-input bg-background hover:bg-accent"
+          {/* Stakeholders Multi-select */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Стейкхолдеры</Label>
+            <div className="flex flex-wrap gap-2">
+              {STAKEHOLDERS_LIST.map(stakeholder => {
+                const isSelected = (initiative.stakeholdersList || []).includes(stakeholder);
+                return (
+                  <label
+                    key={stakeholder}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer transition-colors text-sm ${
+                      isSelected 
+                        ? 'bg-primary text-primary-foreground border-primary' 
+                        : 'bg-background hover:bg-muted border-border'
+                    }`}
                   >
-                    <ExternalLink size={16} />
-                  </a>
-                )}
-              </div>
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) => handleStakeholderToggle(stakeholder, checked as boolean)}
+                      className="sr-only"
+                    />
+                    {stakeholder}
+                  </label>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Stakeholders */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Стейкхолдеры</Label>
+          {/* Description */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Описание</Label>
+            <Textarea
+              value={initiative.description}
+              onChange={(e) => onDataChange(initiative.id, 'description', e.target.value)}
+              placeholder="Подробное описание инициативы..."
+              className="min-h-[100px] resize-y"
+            />
+          </div>
+
+          {/* Documentation Link */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Ссылка на документацию</Label>
+            <div className="flex gap-2">
               <Input
-                value={initiative.stakeholders}
-                onChange={(e) => onDataChange(initiative.id, 'stakeholders', e.target.value)}
-                placeholder="Список стейкхолдеров..."
+                value={initiative.documentationLink}
+                onChange={(e) => onDataChange(initiative.id, 'documentationLink', e.target.value)}
+                placeholder="https://..."
+                className="flex-1"
               />
+              {initiative.documentationLink && (
+                <a
+                  href={initiative.documentationLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center w-10 h-10 rounded-md border border-input bg-background hover:bg-accent"
+                >
+                  <ExternalLink size={16} />
+                </a>
+              )}
             </div>
+          </div>
 
-            <Separator />
+          <Separator />
 
-            {/* Quarters - Vertical Timeline */}
+          {/* Quarters - Vertical Timeline */}
+          <div className="space-y-4">
+            <Label className="text-sm font-medium">Квартальные данные</Label>
+            
             <div className="space-y-4">
-              <Label className="text-sm font-medium">Квартальные данные</Label>
-              
-              <div className="space-y-4">
-                {quarters.map((quarter, index) => {
-                  const qData = initiative.quarterlyData[quarter] || {
-                    cost: 0,
-                    otherCosts: 0,
-                    support: false,
-                    onTrack: true,
-                    metricPlan: '',
-                    metricFact: '',
-                    comment: ''
-                  };
+              {quarters.map((quarter, index) => {
+                const qData = initiative.quarterlyData[quarter] || {
+                  cost: 0,
+                  otherCosts: 0,
+                  support: false,
+                  onTrack: true,
+                  metricPlan: '',
+                  metricFact: '',
+                  comment: ''
+                };
 
-                  const totalCost = qData.cost + qData.otherCosts;
-                  const prevQuarter = quarters[index - 1];
-                  const prevCost = prevQuarter 
-                    ? (initiative.quarterlyData[prevQuarter]?.cost || 0) + (initiative.quarterlyData[prevQuarter]?.otherCosts || 0)
-                    : 0;
-                  const costDiff = index > 0 ? totalCost - prevCost : 0;
+                const totalCost = qData.cost + qData.otherCosts;
+                const prevQuarter = quarters[index - 1];
+                const prevCost = prevQuarter 
+                  ? (initiative.quarterlyData[prevQuarter]?.cost || 0) + (initiative.quarterlyData[prevQuarter]?.otherCosts || 0)
+                  : 0;
+                const costDiff = index > 0 ? totalCost - prevCost : 0;
 
-                  return (
-                    <div 
-                      key={quarter} 
-                      className={`rounded-lg border p-4 space-y-4 ${
-                        qData.onTrack ? 'border-border' : 'border-destructive/50 bg-destructive/5'
-                      }`}
-                    >
-                      {/* Quarter Header */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <h4 className="font-semibold text-lg">{quarter}</h4>
-                          {qData.support && (
-                            <Badge variant="secondary" className="text-xs">Поддержка</Badge>
+                return (
+                  <div 
+                    key={quarter} 
+                    className={`rounded-lg border p-4 space-y-4 ${
+                      qData.onTrack ? 'border-border' : 'border-destructive/50 bg-destructive/5'
+                    }`}
+                  >
+                    {/* Quarter Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <h4 className="font-semibold text-lg">{quarter}</h4>
+                        {qData.support && (
+                          <Badge variant="secondary" className="text-xs">Поддержка</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4">
+                        {/* Cost display */}
+                        <div className="text-right">
+                          <div className="font-medium">{formatCurrency(totalCost)}</div>
+                          {costDiff !== 0 && (
+                            <div className={`text-xs flex items-center gap-1 ${
+                              costDiff > 0 ? 'text-destructive' : 'text-green-600'
+                            }`}>
+                              {costDiff > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                              {costDiff > 0 ? '+' : ''}{formatCurrency(costDiff)}
+                            </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-4">
-                          {/* Cost display */}
-                          <div className="text-right">
-                            <div className="font-medium">{formatCurrency(totalCost)}</div>
-                            {costDiff !== 0 && (
-                              <div className={`text-xs flex items-center gap-1 ${
-                                costDiff > 0 ? 'text-destructive' : 'text-green-600'
-                              }`}>
-                                {costDiff > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                                {costDiff > 0 ? '+' : ''}{formatCurrency(costDiff)}
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* OnTrack toggle */}
-                          <div className="flex items-center gap-2">
-                            <Label className="text-sm">On-Track</Label>
-                            <Switch
-                              checked={qData.onTrack}
-                              onCheckedChange={(checked) => 
-                                onQuarterDataChange(initiative.id, quarter, 'onTrack', checked)
-                              }
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Quarter Fields */}
-                      <div className="grid grid-cols-2 gap-4">
-                        {/* Cost (read-only) */}
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Стоимость (из CSV)</Label>
-                          <Input
-                            value={formatCurrency(qData.cost)}
-                            disabled
-                            className="bg-muted/50"
-                          />
-                        </div>
-
-                        {/* Other Costs (editable) */}
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Доп. расходы</Label>
-                          <Input
-                            type="number"
-                            value={qData.otherCosts || ''}
-                            onChange={(e) => 
-                              onQuarterDataChange(initiative.id, quarter, 'otherCosts', parseFloat(e.target.value) || 0)
+                        
+                        {/* OnTrack toggle */}
+                        <div className="flex items-center gap-2">
+                          <Label className="text-sm">On-Track</Label>
+                          <Switch
+                            checked={qData.onTrack}
+                            onCheckedChange={(checked) => 
+                              onQuarterDataChange(initiative.id, quarter, 'onTrack', checked)
                             }
-                            placeholder="0"
-                          />
-                        </div>
-
-                        {/* Metric Plan */}
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">План метрики</Label>
-                          <Textarea
-                            value={qData.metricPlan}
-                            onChange={(e) => 
-                              onQuarterDataChange(initiative.id, quarter, 'metricPlan', e.target.value)
-                            }
-                            placeholder="Планируемое значение метрики..."
-                            className="min-h-[60px] resize-y"
-                          />
-                        </div>
-
-                        {/* Metric Fact */}
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Факт метрики</Label>
-                          <Textarea
-                            value={qData.metricFact}
-                            onChange={(e) => 
-                              onQuarterDataChange(initiative.id, quarter, 'metricFact', e.target.value)
-                            }
-                            placeholder="Фактическое значение метрики..."
-                            className="min-h-[60px] resize-y"
                           />
                         </div>
                       </div>
+                    </div>
 
-                      {/* Comment - full width */}
+                    {/* Quarter Fields */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Cost (read-only) */}
                       <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Комментарий</Label>
-                        <Textarea
-                          value={qData.comment}
+                        <Label className="text-xs text-muted-foreground">Стоимость (из CSV)</Label>
+                        <Input
+                          value={formatCurrency(qData.cost)}
+                          disabled
+                          className="bg-muted/50"
+                        />
+                      </div>
+
+                      {/* Other Costs (editable) */}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Доп. расходы</Label>
+                        <Input
+                          type="number"
+                          value={qData.otherCosts || ''}
                           onChange={(e) => 
-                            onQuarterDataChange(initiative.id, quarter, 'comment', e.target.value)
+                            onQuarterDataChange(initiative.id, quarter, 'otherCosts', parseFloat(e.target.value) || 0)
                           }
-                          placeholder="Комментарии к кварталу..."
-                          className="min-h-[80px] resize-y"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      {/* Metric Plan */}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">План метрики</Label>
+                        <Textarea
+                          value={qData.metricPlan}
+                          onChange={(e) => 
+                            onQuarterDataChange(initiative.id, quarter, 'metricPlan', e.target.value)
+                          }
+                          placeholder="Планируемое значение метрики..."
+                          className="min-h-[60px] resize-y"
+                        />
+                      </div>
+
+                      {/* Metric Fact */}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Факт метрики</Label>
+                        <Textarea
+                          value={qData.metricFact}
+                          onChange={(e) => 
+                            onQuarterDataChange(initiative.id, quarter, 'metricFact', e.target.value)
+                          }
+                          placeholder="Фактическое значение метрики..."
+                          className="min-h-[60px] resize-y"
                         />
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+
+                    {/* Comment - full width */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Комментарий</Label>
+                      <Textarea
+                        value={qData.comment}
+                        onChange={(e) => 
+                          onQuarterDataChange(initiative.id, quarter, 'comment', e.target.value)
+                        }
+                        placeholder="Комментарии к кварталу..."
+                        className="min-h-[80px] resize-y"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );

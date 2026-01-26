@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -61,6 +61,14 @@ const NewInitiativeDialog = ({
   const [stakeholdersList, setStakeholdersList] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [documentationLink, setDocumentationLink] = useState('');
+
+  // Sync with filter selection when dialog opens
+  useEffect(() => {
+    if (open) {
+      setUnit(defaultUnit);
+      setTeam(defaultTeam);
+    }
+  }, [open, defaultUnit, defaultTeam]);
 
   const handleSubmit = () => {
     if (!unit || !initiative) return;

@@ -233,7 +233,6 @@ const Admin = () => {
         onUploadClick={() => fileInputRef.current?.click()}
         onDownloadAll={() => handleDownload('all')}
         onDownloadFiltered={() => handleDownload('filtered')}
-        onDownloadModified={() => handleDownload('modified')}
       />
 
       {/* Hidden file input */}

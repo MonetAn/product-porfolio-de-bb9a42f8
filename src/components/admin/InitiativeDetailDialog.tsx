@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Info, Check } from 'lucide-react';
+import { ExternalLink, Info, Check, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -27,6 +28,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType } from '@/lib/adminDataManager';
+
+// Required field label component
+const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
+  <Label className={`text-sm font-medium ${className}`}>
+    {children} <span className="text-red-500">*</span>
+  </Label>
+);
 
 interface InitiativeDetailDialogProps {
   initiative: AdminDataRow | null;
@@ -56,6 +64,12 @@ const InitiativeDetailDialog = ({
   }, [initiative?.id, initiative?.stakeholdersList]);
   
   if (!initiative) return null;
+
+  // Calculate missing required fields
+  const missingFields: string[] = [];
+  if (!initiative.initiativeType) missingFields.push('Тип инициативы');
+  if (!localStakeholders.length) missingFields.push('Стейкхолдеры');
+  if (!initiative.description?.trim()) missingFields.push('Описание');
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
@@ -93,16 +107,26 @@ const InitiativeDetailDialog = ({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Missing fields warning banner */}
+        {missingFields.length > 0 && (
+          <Alert className="bg-amber-50 border-amber-200 py-2 flex-shrink-0">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-amber-800 text-sm">
+              Не заполнено: {missingFields.join(', ')}
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-4">
           {/* Initiative Type */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Тип инициативы</Label>
+            <RequiredLabel>Тип инициативы</RequiredLabel>
             <TooltipProvider delayDuration={100}>
               <Select 
                 value={initiative.initiativeType || ''} 
                 onValueChange={(v) => onDataChange(initiative.id, 'initiativeType', v)}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className={`w-full ${!initiative.initiativeType ? 'ring-2 ring-amber-400' : ''}`}>
                   <SelectValue placeholder="Выберите тип" />
                 </SelectTrigger>
                 <SelectContent>
@@ -128,8 +152,10 @@ const InitiativeDetailDialog = ({
 
           {/* Stakeholders Multi-select */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Стейкхолдеры</Label>
-            <div className="flex flex-wrap gap-2">
+            <RequiredLabel>Стейкхолдеры</RequiredLabel>
+            <div className={`flex flex-wrap gap-2 p-2 rounded-md transition-all ${
+              localStakeholders.length === 0 ? 'ring-2 ring-amber-400 bg-amber-50/50' : ''
+            }`}>
               {STAKEHOLDERS_LIST.map(stakeholder => {
                 const isSelected = localStakeholders.includes(stakeholder);
                 return (
@@ -153,12 +179,12 @@ const InitiativeDetailDialog = ({
 
           {/* Description */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Описание</Label>
+            <RequiredLabel>Описание</RequiredLabel>
             <Textarea
               value={initiative.description}
               onChange={(e) => onDataChange(initiative.id, 'description', e.target.value)}
               placeholder="Подробное описание инициативы..."
-              className="min-h-[100px] resize-y"
+              className={`min-h-[100px] resize-y ${!initiative.description?.trim() ? 'ring-2 ring-amber-400' : ''}`}
             />
           </div>
 
@@ -266,27 +292,27 @@ const InitiativeDetailDialog = ({
 
                       {/* Metric Plan */}
                       <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">План метрики</Label>
+                        <RequiredLabel className="text-xs text-muted-foreground">План метрики</RequiredLabel>
                         <Textarea
                           value={qData.metricPlan}
                           onChange={(e) => 
                             onQuarterDataChange(initiative.id, quarter, 'metricPlan', e.target.value)
                           }
                           placeholder="Планируемое значение метрики..."
-                          className="min-h-[60px] resize-y"
+                          className={`min-h-[60px] resize-y ${!qData.metricPlan?.trim() ? 'ring-2 ring-amber-400' : ''}`}
                         />
                       </div>
 
                       {/* Metric Fact */}
                       <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Факт метрики</Label>
+                        <RequiredLabel className="text-xs text-muted-foreground">Факт метрики</RequiredLabel>
                         <Textarea
                           value={qData.metricFact}
                           onChange={(e) => 
                             onQuarterDataChange(initiative.id, quarter, 'metricFact', e.target.value)
                           }
                           placeholder="Фактическое значение метрики..."
-                          className="min-h-[60px] resize-y"
+                          className={`min-h-[60px] resize-y ${!qData.metricFact?.trim() ? 'ring-2 ring-amber-400' : ''}`}
                         />
                       </div>
                     </div>

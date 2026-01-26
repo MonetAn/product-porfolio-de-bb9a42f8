@@ -157,10 +157,10 @@ const InitiativeTable = ({
                     <TooltipProvider delayDuration={100}>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <div className="relative">
+                          <div className="relative flex items-center justify-center w-full h-full min-h-[24px] min-w-[24px]">
                             <Pencil size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
                             {initiativeIncomplete && (
-                              <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
+                              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border border-white dark:border-card" />
                             )}
                           </div>
                         </TooltipTrigger>

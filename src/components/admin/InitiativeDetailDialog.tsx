@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Slider } from '@/components/ui/slider';
+
 import {
   Select,
   SelectContent,
@@ -258,17 +258,16 @@ const InitiativeDetailDialog = ({
                     {/* Effort Coefficient - inside quarter */}
                     <div className="space-y-2 p-3 rounded-md bg-muted/30">
                       <Label className="text-xs text-muted-foreground">Коэффициент трудозатрат</Label>
-                      <div className="flex items-center gap-4">
-                        <Slider
-                          value={[effortValue]}
-                          onValueChange={([v]) => onQuarterDataChange(initiative.id, quarter, 'effortCoefficient', v)}
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={effortValue || ''}
+                          onChange={(e) => onQuarterDataChange(initiative.id, quarter, 'effortCoefficient', parseInt(e.target.value) || 0)}
+                          min={0}
                           max={100}
-                          step={5}
-                          className="flex-1"
+                          className="w-20 h-8"
                         />
-                        <span className="w-12 text-right font-mono text-sm">
-                          {effortValue}%
-                        </span>
+                        <span className="text-xs text-muted-foreground">%</span>
                       </div>
                       <div className={`text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
                         Команда {initiative.team} в {quarter}: {teamEffort.total}% из 100%

@@ -114,7 +114,7 @@ const Admin = () => {
   }, [handleFileUpload]);
 
   // Data modification
-  const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string) => {
+  const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[]) => {
     setRawData(prev => prev.map(row => {
       if (row.id === id) {
         return { ...row, [field]: value };
@@ -153,10 +153,12 @@ const Admin = () => {
     unit: string;
     team: string;
     initiative: string;
+    initiativeType: string;
+    stakeholdersList: string[];
     description: string;
     documentationLink: string;
   }) => {
-    const newRow = createNewInitiative(data.unit, data.team, quarters);
+    const newRow = createNewInitiative(data.unit, data.team, quarters, data.initiativeType as any, data.stakeholdersList);
     newRow.initiative = data.initiative;
     newRow.description = data.description;
     newRow.documentationLink = data.documentationLink;

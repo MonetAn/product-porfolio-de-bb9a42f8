@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -17,6 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Info } from 'lucide-react';
+import { INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType } from '@/lib/adminDataManager';
 
 interface NewInitiativeDialogProps {
   open: boolean;
@@ -25,7 +34,15 @@ interface NewInitiativeDialogProps {
   teams: string[];
   defaultUnit?: string;
   defaultTeam?: string;
-  onSubmit: (data: { unit: string; team: string; initiative: string; description: string; documentationLink: string }) => void;
+  onSubmit: (data: { 
+    unit: string; 
+    team: string; 
+    initiative: string; 
+    initiativeType: InitiativeType | '';
+    stakeholdersList: string[];
+    description: string; 
+    documentationLink: string;
+  }) => void;
 }
 
 const NewInitiativeDialog = ({
@@ -40,23 +57,41 @@ const NewInitiativeDialog = ({
   const [unit, setUnit] = useState(defaultUnit);
   const [team, setTeam] = useState(defaultTeam);
   const [initiative, setInitiative] = useState('');
+  const [initiativeType, setInitiativeType] = useState<InitiativeType | ''>('');
+  const [stakeholdersList, setStakeholdersList] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [documentationLink, setDocumentationLink] = useState('');
 
   const handleSubmit = () => {
     if (!unit || !initiative) return;
-    onSubmit({ unit, team, initiative, description, documentationLink });
+    onSubmit({ 
+      unit, 
+      team, 
+      initiative, 
+      initiativeType,
+      stakeholdersList,
+      description, 
+      documentationLink 
+    });
     // Reset form
     setInitiative('');
+    setInitiativeType('');
+    setStakeholdersList([]);
     setDescription('');
     setDocumentationLink('');
     onOpenChange(false);
   };
 
+  const handleStakeholderToggle = (stakeholder: string, checked: boolean) => {
+    setStakeholdersList(prev => 
+      checked 
+        ? [...prev, stakeholder]
+        : prev.filter(s => s !== stakeholder)
+    );
+  };
+
   // Filter teams based on selected unit
-  const availableTeams = unit 
-    ? teams 
-    : [];
+  const availableTeams = unit ? teams : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -108,6 +143,62 @@ const NewInitiativeDialog = ({
               onChange={(e) => setInitiative(e.target.value)}
               placeholder="Введите название"
             />
+          </div>
+
+          {/* Initiative Type */}
+          <div className="grid gap-2">
+            <Label>Тип инициативы</Label>
+            <TooltipProvider>
+              <Select value={initiativeType} onValueChange={(v) => setInitiativeType(v as InitiativeType | '')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите тип" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INITIATIVE_TYPES.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      <div className="flex items-center gap-2">
+                        {type.label}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info size={12} className="text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[200px]">
+                            <p className="text-xs">{type.description}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </TooltipProvider>
+          </div>
+
+          {/* Stakeholders */}
+          <div className="grid gap-2">
+            <Label>Stakeholders</Label>
+            <div className="flex flex-wrap gap-2">
+              {STAKEHOLDERS_LIST.map(stakeholder => {
+                const isSelected = stakeholdersList.includes(stakeholder);
+                return (
+                  <label
+                    key={stakeholder}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer transition-colors text-sm ${
+                      isSelected 
+                        ? 'bg-primary text-primary-foreground border-primary' 
+                        : 'bg-background hover:bg-muted border-border'
+                    }`}
+                  >
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) => handleStakeholderToggle(stakeholder, checked as boolean)}
+                      className="sr-only"
+                    />
+                    {stakeholder}
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
           {/* Description */}

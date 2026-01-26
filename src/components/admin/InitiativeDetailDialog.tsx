@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Info, Check, AlertTriangle } from 'lucide-react';
+import { ExternalLink, Info, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+
 import {
   Select,
   SelectContent,
@@ -65,11 +65,6 @@ const InitiativeDetailDialog = ({
   
   if (!initiative) return null;
 
-  // Calculate missing required fields
-  const missingFields: string[] = [];
-  if (!initiative.initiativeType) missingFields.push('Тип инициативы');
-  if (!localStakeholders.length) missingFields.push('Стейкхолдеры');
-  if (!initiative.description?.trim()) missingFields.push('Описание');
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
@@ -107,15 +102,6 @@ const InitiativeDetailDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Missing fields warning banner */}
-        {missingFields.length > 0 && (
-          <Alert className="bg-amber-50 border-amber-200 py-2 flex-shrink-0">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <AlertDescription className="text-amber-800 text-sm">
-              Не заполнено: {missingFields.join(', ')}
-            </AlertDescription>
-          </Alert>
-        )}
 
         <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-4">
           {/* Initiative Type */}
@@ -126,7 +112,7 @@ const InitiativeDetailDialog = ({
                 value={initiative.initiativeType || ''} 
                 onValueChange={(v) => onDataChange(initiative.id, 'initiativeType', v)}
               >
-                <SelectTrigger className={`w-full ${!initiative.initiativeType ? 'ring-2 ring-amber-400' : ''}`}>
+                <SelectTrigger className={`w-full focus:ring-0 focus-visible:ring-0 ${!initiative.initiativeType ? 'ring-2 ring-amber-400' : ''}`}>
                   <SelectValue placeholder="Выберите тип" />
                 </SelectTrigger>
                 <SelectContent>

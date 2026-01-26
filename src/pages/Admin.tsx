@@ -172,35 +172,68 @@ const Admin = () => {
     });
   }, [quarters, toast]);
 
-  // Export
-  const handleDownload = useCallback(() => {
-    const csv = exportAdminCSV(rawData, quarters, originalHeaders);
+  // Export - can download all, filtered, or modified only
+  const handleDownload = useCallback((mode: 'all' | 'filtered' | 'modified' = 'all') => {
+    let dataToExport: AdminDataRow[];
+    let description: string;
+
+    switch (mode) {
+      case 'filtered':
+        dataToExport = filteredData;
+        description = `Скачано ${filteredData.length} отфильтрованных инициатив`;
+        break;
+      case 'modified':
+        dataToExport = rawData.filter(row => modifiedIds.has(row.id));
+        description = `Скачано ${dataToExport.length} измененных инициатив`;
+        break;
+      default:
+        dataToExport = rawData;
+        description = `Скачано ${rawData.length} инициатив`;
+    }
+
+    if (dataToExport.length === 0) {
+      toast({
+        title: 'Нет данных',
+        description: 'Нет инициатив для скачивания',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const csv = exportAdminCSV(dataToExport, quarters, originalHeaders);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `portfolio-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `portfolio-${mode}-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
 
-    // Mark as saved
-    setOriginalData(JSON.parse(JSON.stringify(rawData)));
-    setModifiedIds(new Set());
+    // Mark as saved only if downloading all
+    if (mode === 'all') {
+      setOriginalData(JSON.parse(JSON.stringify(rawData)));
+      setModifiedIds(new Set());
+    }
 
     toast({
       title: 'Файл скачан',
-      description: 'CSV файл успешно сохранен'
+      description
     });
-  }, [rawData, quarters, originalHeaders, toast]);
+  }, [rawData, filteredData, modifiedIds, quarters, originalHeaders, toast]);
 
   return (
     <div className="min-h-screen bg-background">
       <AdminHeader
-        initiativeCount={rawData.length}
+        initiativeCount={filteredData.length}
+        totalCount={rawData.length}
         hasData={hasData}
         hasChanges={hasChanges}
+        modifiedCount={modifiedIds.size}
+        hasFilters={selectedUnits.length > 0 || selectedTeams.length > 0}
         onUploadClick={() => fileInputRef.current?.click()}
-        onDownloadClick={handleDownload}
+        onDownloadAll={() => handleDownload('all')}
+        onDownloadFiltered={() => handleDownload('filtered')}
+        onDownloadModified={() => handleDownload('modified')}
       />
 
       {/* Hidden file input */}

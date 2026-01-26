@@ -21,12 +21,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
-import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, validateTeamEffort } from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
   data: AdminDataRow[];
+  allData: AdminDataRow[]; // Full dataset for effort validation
   quarters: string[];
-  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[]) => void;
+  onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
   onAddInitiative: () => void;
   modifiedIds: Set<string>;
@@ -53,6 +54,7 @@ const isQuarterIncomplete = (data: AdminQuarterData): boolean => {
 
 const InitiativeTable = ({
   data,
+  allData,
   quarters,
   onDataChange,
   onQuarterDataChange,
@@ -131,6 +133,7 @@ const InitiativeTable = ({
                 <TableHead className="sticky left-[230px] bg-card z-10 min-w-[100px]">Team</TableHead>
                 <TableHead className="sticky left-[330px] bg-card z-10 min-w-[160px]">Initiative</TableHead>
                 <TableHead className="min-w-[100px]">Type</TableHead>
+                <TableHead className="min-w-[80px]">Effort %</TableHead>
                 <TableHead className="min-w-[140px]">Stakeholders</TableHead>
                 <TableHead className={`${expandedView ? 'min-w-[200px]' : 'min-w-[120px]'}`}>Description</TableHead>
                 <TableHead className="min-w-[100px]">Doc</TableHead>
@@ -146,6 +149,8 @@ const InitiativeTable = ({
                   isQuarterIncomplete(row.quarterlyData[q] || {} as AdminQuarterData)
                 );
                 const rowIncomplete = initiativeIncomplete || hasIncompleteQuarters;
+                const teamEffort = validateTeamEffort(allData, row.unit, row.team);
+                const teamEffortExceeds = !teamEffort.isValid;
                 
                 return (
                 <TableRow 
@@ -221,6 +226,19 @@ const InitiativeTable = ({
                         )}
                       </Tooltip>
                     </TooltipProvider>
+                  </TableCell>
+
+                  {/* Effort % */}
+                  <TableCell 
+                    className="p-2 cursor-pointer"
+                    onClick={() => handleRowClick(row)}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span className={`text-xs ${teamEffortExceeds ? 'text-red-600 font-medium' : ''}`}>
+                        {row.effortCoefficient || 0}%
+                      </span>
+                      {teamEffortExceeds && <AlertTriangle size={12} className="text-red-500" />}
+                    </div>
                   </TableCell>
 
                   {/* Stakeholders - clickable badges */}
@@ -311,6 +329,7 @@ const InitiativeTable = ({
       {/* Initiative Detail Dialog */}
       <InitiativeDetailDialog
         initiative={selectedInitiative}
+        allData={allData}
         quarters={quarters}
         open={!!selectedInitiative}
         onOpenChange={(open) => !open && setSelectedId(null)}

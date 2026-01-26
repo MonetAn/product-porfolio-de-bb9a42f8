@@ -39,6 +39,7 @@ export interface AdminDataRow {
   description: string;
   documentationLink: string;
   stakeholders: string; // Legacy field for backward compatibility
+  effortCoefficient: number; // 0-100, percentage of team effort
   quarterlyData: Record<string, AdminQuarterData>;
   isNew?: boolean;
   isModified?: boolean;
@@ -122,6 +123,7 @@ export function parseAdminCSV(text: string): {
   const descriptionIdx = headers.findIndex(h => h.toLowerCase().includes('description') || h.toLowerCase() === 'описание');
   const docLinkIdx = headers.findIndex(h => h.toLowerCase().includes('documentation') || h.toLowerCase().includes('doc link'));
   const stakeholdersIdx = headers.findIndex(h => h.toLowerCase().includes('stakeholder') || h.toLowerCase() === 'стейкхолдеры');
+  const effortIdx = headers.findIndex(h => h.toLowerCase() === 'effort %' || h.toLowerCase() === 'effort' || h.toLowerCase() === 'коэффициент');
   for (let i = 1; i < lines.length; i++) {
     const values = parseCSVLine(lines[i]);
     if (values.length < 4) continue;
@@ -142,6 +144,7 @@ export function parseAdminCSV(text: string): {
       description: values[descriptionIdx >= 0 ? descriptionIdx : 3]?.trim() || '',
       documentationLink: docLinkIdx >= 0 ? values[docLinkIdx]?.trim() || '' : '',
       stakeholders: values[stakeholdersIdx >= 0 ? stakeholdersIdx : 4]?.trim() || '',
+      effortCoefficient: effortIdx >= 0 ? parseNumber(values[effortIdx]) : 0,
       quarterlyData: {}
     };
 
@@ -190,7 +193,7 @@ export function exportAdminCSV(
   originalHeaders: string[]
 ): string {
   // Build headers
-  const baseHeaders = ['Unit', 'Team', 'Initiative', 'Type', 'Stakeholders List', 'Description', 'Documentation Link', 'Stakeholders'];
+  const baseHeaders = ['Unit', 'Team', 'Initiative', 'Type', 'Effort %', 'Stakeholders List', 'Description', 'Documentation Link', 'Stakeholders'];
   const quarterHeaders: string[] = [];
   
   quarters.forEach(q => {
@@ -215,6 +218,7 @@ export function exportAdminCSV(
       escapeCSVValue(row.team),
       escapeCSVValue(row.initiative),
       escapeCSVValue(row.initiativeType || ''),
+      (row.effortCoefficient || 0).toString(),
       escapeCSVValue(row.stakeholdersList?.join(', ') || ''),
       escapeCSVValue(row.description),
       escapeCSVValue(row.documentationLink),
@@ -312,7 +316,29 @@ export function createNewInitiative(
     description: '',
     documentationLink: '',
     stakeholders: '',
+    effortCoefficient: 0,
     quarterlyData,
     isNew: true
   };
+}
+
+// ===== EFFORT VALIDATION =====
+export function getTeamEffortSum(
+  data: AdminDataRow[], 
+  unit: string, 
+  team: string, 
+  excludeId?: string
+): number {
+  return data
+    .filter(row => row.unit === unit && row.team === team && row.id !== excludeId)
+    .reduce((sum, row) => sum + (row.effortCoefficient || 0), 0);
+}
+
+export function validateTeamEffort(
+  data: AdminDataRow[],
+  unit: string,
+  team: string
+): { isValid: boolean; total: number } {
+  const total = getTeamEffortSum(data, unit, team);
+  return { isValid: total <= 100, total };
 }

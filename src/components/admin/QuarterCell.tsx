@@ -26,10 +26,13 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView }: Quar
 
   const totalCost = data.cost + data.otherCosts;
 
+  // Check if required fields are missing
+  const isIncomplete = !data.metricPlan || !data.metricFact;
+
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <div className={`rounded-md border p-2 space-y-2 ${
-        isModified ? 'ring-2 ring-primary/30' : ''
+        isIncomplete ? 'border-amber-400 bg-amber-50/50 dark:bg-amber-950/20' : ''
       } ${!data.onTrack ? 'border-destructive/50 bg-destructive/5' : 'border-border'}`}>
         
         {/* Compact View - Always Visible */}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, ExternalLink, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { Plus, ExternalLink, Pencil, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -32,6 +32,19 @@ interface InitiativeTableProps {
   modifiedIds: Set<string>;
 }
 
+// Check if initiative has incomplete required fields
+const isInitiativeIncomplete = (row: AdminDataRow): boolean => {
+  return !row.initiativeType || 
+         !row.stakeholdersList || 
+         row.stakeholdersList.length === 0 || 
+         !row.description;
+};
+
+// Check if quarter has incomplete required fields
+const isQuarterIncomplete = (data: AdminQuarterData): boolean => {
+  return !data.metricPlan || !data.metricFact;
+};
+
 const InitiativeTable = ({
   data,
   quarters,
@@ -59,14 +72,30 @@ const InitiativeTable = ({
     );
   }
 
+  // Count incomplete initiatives
+  const incompleteCount = data.filter(row => 
+    isInitiativeIncomplete(row) || 
+    quarters.some(q => isQuarterIncomplete(row.quarterlyData[q] || {} as AdminQuarterData))
+  ).length;
+
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="p-4 border-b border-border flex items-center justify-between">
-        <Button onClick={onAddInitiative} size="sm" className="gap-2">
-          <Plus size={16} />
-          Новая инициатива
-        </Button>
+        <div className="flex items-center gap-4">
+          <Button onClick={onAddInitiative} size="sm" className="gap-2">
+            <Plus size={16} />
+            Новая инициатива
+          </Button>
+          
+          {/* Legend for incomplete fields */}
+          {incompleteCount > 0 && (
+            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500">
+              <AlertCircle size={14} />
+              <span>Требуется заполнить ({incompleteCount})</span>
+            </div>
+          )}
+        </div>
         
         {/* Expanded View Toggle */}
         <div className="flex items-center gap-2">
@@ -102,17 +131,38 @@ const InitiativeTable = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((row) => (
+              {data.map((row) => {
+                const initiativeIncomplete = isInitiativeIncomplete(row);
+                const hasIncompleteQuarters = quarters.some(q => 
+                  isQuarterIncomplete(row.quarterlyData[q] || {} as AdminQuarterData)
+                );
+                const rowIncomplete = initiativeIncomplete || hasIncompleteQuarters;
+                
+                return (
                 <TableRow 
                   key={row.id} 
-                  className={`${row.isNew ? 'bg-primary/5' : ''} hover:bg-muted/50 cursor-pointer`}
+                  className={`${row.isNew ? 'bg-primary/5' : ''} ${rowIncomplete ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''} hover:bg-muted/50 cursor-pointer`}
                 >
-                  {/* Row click indicator */}
+                  {/* Row edit button */}
                   <TableCell 
                     className="sticky left-0 bg-card z-10 p-1"
                     onClick={() => handleRowClick(row)}
                   >
-                    <ChevronRight size={14} className="text-muted-foreground" />
+                    <TooltipProvider delayDuration={100}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="relative">
+                            <Pencil size={14} className="text-muted-foreground hover:text-primary" />
+                            {initiativeIncomplete && (
+                              <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
+                            )}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p className="text-xs">Редактировать</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableCell>
 
                   {/* Unit - clickable link style */}
@@ -239,7 +289,8 @@ const InitiativeTable = ({
                     </TableCell>
                   ))}
                 </TableRow>
-              ))}
+              );
+              })}
             </TableBody>
           </Table>
         </div>

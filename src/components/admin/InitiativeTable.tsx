@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, ExternalLink, Pencil, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Plus, ExternalLink, Pencil, Eye, EyeOff, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -32,11 +32,11 @@ interface InitiativeTableProps {
   modifiedIds: Set<string>;
 }
 
-// Get list of missing required fields for initiative
+// Get list of missing required fields for initiative (shortened names for compact display)
 const getMissingInitiativeFields = (row: AdminDataRow): string[] => {
   const missing: string[] = [];
-  if (!row.initiativeType) missing.push('Тип инициативы');
-  if (!row.stakeholdersList || row.stakeholdersList.length === 0) missing.push('Стейкхолдеры');
+  if (!row.initiativeType) missing.push('Тип');
+  if (!row.stakeholdersList || row.stakeholdersList.length === 0) missing.push('Стейкх.');
   if (!row.description) missing.push('Описание');
   return missing;
 };
@@ -123,10 +123,10 @@ const InitiativeTable = ({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="sticky left-0 bg-card z-10 min-w-[32px] w-[32px]"></TableHead>
-                <TableHead className="sticky left-[32px] bg-card z-10 min-w-[90px]">Unit</TableHead>
-                <TableHead className="sticky left-[122px] bg-card z-10 min-w-[100px]">Team</TableHead>
-                <TableHead className="sticky left-[222px] bg-card z-10 min-w-[160px]">Initiative</TableHead>
+                <TableHead className="sticky left-0 bg-card z-10 min-w-[140px] w-[140px]"></TableHead>
+                <TableHead className="sticky left-[140px] bg-card z-10 min-w-[90px]">Unit</TableHead>
+                <TableHead className="sticky left-[230px] bg-card z-10 min-w-[100px]">Team</TableHead>
+                <TableHead className="sticky left-[330px] bg-card z-10 min-w-[160px]">Initiative</TableHead>
                 <TableHead className="min-w-[100px]">Type</TableHead>
                 <TableHead className="min-w-[140px]">Stakeholders</TableHead>
                 <TableHead className={`${expandedView ? 'min-w-[200px]' : 'min-w-[120px]'}`}>Description</TableHead>
@@ -149,42 +149,33 @@ const InitiativeTable = ({
                   key={row.id} 
                   className={`group ${row.isNew ? 'bg-primary/5' : ''} ${rowIncomplete ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''} hover:bg-muted/50 cursor-pointer`}
                 >
-                  {/* Row edit button */}
+                  {/* Row edit button with inline missing fields indicator */}
                   <TableCell 
-                    className="sticky left-0 bg-card z-10 p-1"
+                    className="sticky left-0 bg-card z-10 p-2 cursor-pointer"
                     onClick={() => handleRowClick(row)}
                   >
-                    <TooltipProvider delayDuration={100}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="relative flex items-center justify-center w-full h-full min-h-[24px] min-w-[24px]">
-                            <Pencil size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
-                            {initiativeIncomplete && (
-                              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border border-white dark:border-card" />
-                            )}
+                    <div className="flex items-center gap-1.5">
+                      <Pencil size={14} className="text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+                      {initiativeIncomplete && (() => {
+                        const missingFields = getMissingInitiativeFields(row);
+                        return (
+                          <div className="flex items-center gap-1 text-amber-600 dark:text-amber-500">
+                            <AlertTriangle size={12} className="flex-shrink-0" />
+                            <span className="text-xs truncate">
+                              {missingFields.length <= 2 
+                                ? missingFields.join(', ')
+                                : `${missingFields.length} поля`
+                              }
+                            </span>
                           </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-[200px]">
-                          {initiativeIncomplete ? (
-                            <>
-                              <p className="text-xs font-medium mb-1">Не заполнено:</p>
-                              <ul className="text-xs list-disc list-inside">
-                                {getMissingInitiativeFields(row).map(field => (
-                                  <li key={field}>{field}</li>
-                                ))}
-                              </ul>
-                            </>
-                          ) : (
-                            <p className="text-xs">Редактировать</p>
-                          )}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                        );
+                      })()}
+                    </div>
                   </TableCell>
 
                   {/* Unit - clickable link style */}
                   <TableCell 
-                    className="sticky left-[32px] bg-card z-10 p-2 cursor-pointer"
+                    className="sticky left-[140px] bg-card z-10 p-2 cursor-pointer"
                     onClick={() => handleRowClick(row)}
                   >
                     <span className="text-xs text-primary hover:underline">{row.unit}</span>
@@ -192,7 +183,7 @@ const InitiativeTable = ({
 
                   {/* Team - clickable link style */}
                   <TableCell 
-                    className="sticky left-[122px] bg-card z-10 p-2 cursor-pointer"
+                    className="sticky left-[230px] bg-card z-10 p-2 cursor-pointer"
                     onClick={() => handleRowClick(row)}
                   >
                     <span className="text-xs text-primary hover:underline">{row.team || '—'}</span>
@@ -200,7 +191,7 @@ const InitiativeTable = ({
 
                   {/* Initiative - clickable link style */}
                   <TableCell 
-                    className="sticky left-[222px] bg-card z-10 p-2 cursor-pointer"
+                    className="sticky left-[330px] bg-card z-10 p-2 cursor-pointer"
                     onClick={() => handleRowClick(row)}
                   >
                     <span className="text-xs text-primary hover:underline truncate block max-w-[150px]">

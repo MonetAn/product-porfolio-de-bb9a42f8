@@ -32,12 +32,18 @@ interface InitiativeTableProps {
   modifiedIds: Set<string>;
 }
 
+// Get list of missing required fields for initiative
+const getMissingInitiativeFields = (row: AdminDataRow): string[] => {
+  const missing: string[] = [];
+  if (!row.initiativeType) missing.push('Тип инициативы');
+  if (!row.stakeholdersList || row.stakeholdersList.length === 0) missing.push('Стейкхолдеры');
+  if (!row.description) missing.push('Описание');
+  return missing;
+};
+
 // Check if initiative has incomplete required fields
 const isInitiativeIncomplete = (row: AdminDataRow): boolean => {
-  return !row.initiativeType || 
-         !row.stakeholdersList || 
-         row.stakeholdersList.length === 0 || 
-         !row.description;
+  return getMissingInitiativeFields(row).length > 0;
 };
 
 // Check if quarter has incomplete required fields
@@ -141,7 +147,7 @@ const InitiativeTable = ({
                 return (
                 <TableRow 
                   key={row.id} 
-                  className={`${row.isNew ? 'bg-primary/5' : ''} ${rowIncomplete ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''} hover:bg-muted/50 cursor-pointer`}
+                  className={`group ${row.isNew ? 'bg-primary/5' : ''} ${rowIncomplete ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''} hover:bg-muted/50 cursor-pointer`}
                 >
                   {/* Row edit button */}
                   <TableCell 
@@ -152,14 +158,25 @@ const InitiativeTable = ({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <div className="relative">
-                            <Pencil size={14} className="text-muted-foreground hover:text-primary" />
+                            <Pencil size={14} className="text-muted-foreground group-hover:text-primary transition-colors" />
                             {initiativeIncomplete && (
                               <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
                             )}
                           </div>
                         </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p className="text-xs">Редактировать</p>
+                        <TooltipContent side="right" className="max-w-[200px]">
+                          {initiativeIncomplete ? (
+                            <>
+                              <p className="text-xs font-medium mb-1">Не заполнено:</p>
+                              <ul className="text-xs list-disc list-inside">
+                                {getMissingInitiativeFields(row).map(field => (
+                                  <li key={field}>{field}</li>
+                                ))}
+                              </ul>
+                            </>
+                          ) : (
+                            <p className="text-xs">Редактировать</p>
+                          )}
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

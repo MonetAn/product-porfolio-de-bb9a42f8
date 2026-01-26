@@ -5,6 +5,12 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { AdminQuarterData } from '@/lib/adminDataManager';
 
 interface QuarterCellProps {
@@ -14,6 +20,14 @@ interface QuarterCellProps {
   isModified?: boolean;
   expandedView?: boolean;
 }
+
+// Get list of missing required fields
+const getMissingFields = (data: AdminQuarterData): string[] => {
+  const missing: string[] = [];
+  if (!data.metricPlan) missing.push('План метрики');
+  if (!data.metricFact) missing.push('Факт метрики');
+  return missing;
+};
 
 const QuarterCell = ({ quarter, data, onChange, isModified, expandedView }: QuarterCellProps) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -27,19 +41,23 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView }: Quar
   const totalCost = data.cost + data.otherCosts;
 
   // Check if required fields are missing
-  const isIncomplete = !data.metricPlan || !data.metricFact;
+  const missingFields = getMissingFields(data);
+  const isIncomplete = missingFields.length > 0;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className={`rounded-md border p-2 space-y-2 ${
-        isIncomplete ? 'border-amber-400 bg-amber-50/50 dark:bg-amber-950/20' : ''
-      } ${!data.onTrack ? 'border-destructive/50 bg-destructive/5' : 'border-border'}`}>
-        
-        {/* Compact View - Always Visible */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            {/* OnTrack indicator */}
-            <div className={`w-2 h-2 rounded-full ${data.onTrack ? 'bg-green-500' : 'bg-red-500'}`} />
+      <TooltipProvider delayDuration={100}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className={`rounded-md border p-2 space-y-2 ${
+              isIncomplete ? 'border-amber-400 bg-amber-50/50 dark:bg-amber-950/20' : 'border-border'
+            }`}>
+              
+              {/* Compact View - Always Visible */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {/* OnTrack indicator */}
+                  <div className={`w-2 h-2 rounded-full ${data.onTrack ? 'bg-green-500' : 'bg-red-500'}`} />
             
             {/* Cost */}
             <span className="text-sm font-medium">{formatCurrency(totalCost)} ₽</span>
@@ -132,7 +150,20 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView }: Quar
             />
           </div>
         </CollapsibleContent>
-      </div>
+            </div>
+          </TooltipTrigger>
+          {isIncomplete && (
+            <TooltipContent side="top" className="max-w-[200px]">
+              <p className="text-xs font-medium mb-1">Не заполнено:</p>
+              <ul className="text-xs list-disc list-inside">
+                {missingFields.map(field => (
+                  <li key={field}>{field}</li>
+                ))}
+              </ul>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
     </Collapsible>
   );
 };

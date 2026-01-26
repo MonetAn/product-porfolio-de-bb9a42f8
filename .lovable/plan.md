@@ -1,34 +1,60 @@
 
 
-# План: Этап 2 — Коэффициенты трудозатрат
+# План: Поквартальные коэффициенты трудозатрат
 
-## Цель
-Добавить для каждой инициативы поле **«Коэффициент трудозатрат»** (0-100%), которое показывает, какую долю усилий команды занимает эта инициатива.
+## Бизнес-логика
 
-## Бизнес-правило
-Сумма коэффициентов всех инициатив **одной команды** не должна превышать 100%.
+Вместо единого коэффициента на инициативу → коэффициент указывается **для каждого квартала отдельно**.
 
-## Визуальный результат
+**Валидация:** Сумма коэффициентов всех инициатив команды **в каждом квартале** не должна превышать 100%.
 
-### В таблице — новая колонка "Effort %"
+---
+
+## UX-решение
+
+### 1. Убираем колонку "Effort %" из таблицы
+Она больше не нужна — коэффициент теперь привязан к кварталам.
+
+### 2. Добавляем Effort в QuarterCell (компактная ячейка квартала)
+
+В сжатом виде ячейки квартала показываем коэффициент рядом с другими данными:
 
 ```text
-│ Unit │ Team │ Initiative │ Type │ Effort % │ Stakeholders │ ...
-├──────┼──────┼────────────┼──────┼──────────┼──────────────┼────
-│ Unit1│ TeamA│ Init 1     │ Prod │   40%    │ Russia, EU   │ ...
-│ Unit1│ TeamA│ Init 2     │ Strm │   35%    │ Turkey+      │ ...
-│ Unit1│ TeamA│ Init 3     │ Enbl │   30%  ⚠ │ IT           │ ... ← превышение
+┌────────────────────────────┐
+│ ● 500K ₽  │ 25%  │  [▼]   │  ← добавили "25%" 
+└────────────────────────────┘
 ```
 
-### В карточке — слайдер с индикатором
+### 3. Индикатор суммы в заголовке колонки квартала
+
+В шапке таблицы под названием квартала показываем сумму по текущей команде:
+
+```text
+│  2025-Q1   │  2025-Q2   │  2025-Q3   │
+│  95% ✓     │  110% ⚠    │  60%       │
+├────────────┼────────────┼────────────┤
+```
+
+**Цветовая индикация:**
+- **≤100%** — зелёный/обычный цвет
+- **>100%** — красный + ⚠ (превышение)
+- **<80%** (опционально) — серый, показывает недозагрузку
+
+### 4. В карточке инициативы — слайдер внутри каждого квартала
+
+Вместо общего слайдера → слайдер в блоке каждого квартала:
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│ Коэффициент трудозатрат *                       │
+│ 2025-Q1                                         │
+│ ─────────────────────────────────────────────── │
+│ Коэффициент трудозатрат                         │
+│ ├─────────●─────────────────┤  25%              │
+│ Команда TeamA в Q1: 95% из 100% ✓               │
 │                                                 │
-│ ├─────────●─────────────────┤  40%              │
-│                                                 │
-│ Команда TeamA: 105% из 100%  ⚠ Превышение!     │
+│ [Стоимость] [Доп. расходы]                      │
+│ [План метрики] [Факт метрики]                   │
+│ [Комментарий]                                   │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -40,120 +66,90 @@
 
 **Файл: `src/lib/adminDataManager.ts`**
 
-Добавить поле в интерфейс:
+Перенести `effortCoefficient` из `AdminDataRow` в `AdminQuarterData`:
+
 ```typescript
+export interface AdminQuarterData {
+  cost: number;
+  otherCosts: number;
+  support: boolean;
+  onTrack: boolean;
+  metricPlan: string;
+  metricFact: string;
+  comment: string;
+  effortCoefficient: number;  // НОВОЕ: 0-100% для этого квартала
+}
+
 export interface AdminDataRow {
-  // ... существующие поля
-  effortCoefficient: number;  // 0-100, процент трудозатрат
+  // ... удалить effortCoefficient отсюда
 }
 ```
 
 Обновить функции:
-- `parseAdminCSV` — парсить колонку "Effort %" из CSV
-- `exportAdminCSV` — экспортировать поле в CSV
-- `createNewInitiative` — значение по умолчанию `0`
+- `parseAdminCSV` — парсить `Effort` из квартальных колонок (например `25_Q1_Effort`)
+- `exportAdminCSV` — экспортировать `effortCoefficient` в квартальные колонки
+- `createEmptyQuarterData` — значение по умолчанию `0`
 
-### 2. Утилита валидации
-
-**Файл: `src/lib/adminDataManager.ts`**
+### 2. Валидация по кварталам
 
 ```typescript
-export function getTeamEffortSum(
+export function getTeamQuarterEffortSum(
   data: AdminDataRow[], 
   unit: string, 
   team: string, 
+  quarter: string,
   excludeId?: string
 ): number {
   return data
     .filter(row => row.unit === unit && row.team === team && row.id !== excludeId)
-    .reduce((sum, row) => sum + (row.effortCoefficient || 0), 0);
+    .reduce((sum, row) => sum + (row.quarterlyData[quarter]?.effortCoefficient || 0), 0);
 }
 
-export function validateTeamEffort(
+export function validateTeamQuarterEffort(
   data: AdminDataRow[],
   unit: string,
-  team: string
+  team: string,
+  quarter: string
 ): { isValid: boolean; total: number } {
-  const total = getTeamEffortSum(data, unit, team);
+  const total = getTeamQuarterEffortSum(data, unit, team, quarter);
   return { isValid: total <= 100, total };
 }
 ```
 
-### 3. Колонка в таблице
+### 3. Обновить QuarterCell
+
+**Файл: `src/components/admin/QuarterCell.tsx`**
+
+- Добавить отображение `effortCoefficient` в компактном виде
+- Добавить слайдер в развёрнутом виде
+
+### 4. Обновить заголовок таблицы
 
 **Файл: `src/components/admin/InitiativeTable.tsx`**
 
-Добавить колонку после "Type":
-```tsx
-<TableHead className="min-w-[80px]">Effort %</TableHead>
-```
+- Убрать колонку "Effort %"
+- Добавить индикатор суммы под названием каждого квартала в `TableHead`
+- Для расчёта суммы нужно знать текущий фильтр (unit/team) — передавать через пропсы
 
-В строке:
-```tsx
-<TableCell className="p-2">
-  <div className="flex items-center gap-1">
-    <span className={`text-xs ${teamEffortExceeds ? 'text-red-600 font-medium' : ''}`}>
-      {row.effortCoefficient || 0}%
-    </span>
-    {teamEffortExceeds && <AlertTriangle size={12} className="text-red-500" />}
-  </div>
-</TableCell>
-```
-
-### 4. Редактирование в карточке
+### 5. Обновить карточку инициативы
 
 **Файл: `src/components/admin/InitiativeDetailDialog.tsx`**
 
-Добавить после блока "Тип инициативы":
-```tsx
-{/* Effort Coefficient */}
-<div className="space-y-2">
-  <RequiredLabel>Коэффициент трудозатрат</RequiredLabel>
-  
-  <div className="flex items-center gap-4">
-    <Slider
-      value={[initiative.effortCoefficient || 0]}
-      onValueChange={([v]) => onDataChange(initiative.id, 'effortCoefficient', v)}
-      max={100}
-      step={5}
-      className="flex-1"
-    />
-    <span className="w-12 text-right font-mono">
-      {initiative.effortCoefficient || 0}%
-    </span>
-  </div>
-  
-  {/* Team total indicator */}
-  <div className={`text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
-    Команда {initiative.team}: {teamEffort.total}% из 100%
-    {!teamEffort.isValid && ' ⚠ Превышение!'}
-  </div>
-</div>
-```
-
-### 5. Пропс для валидации
-
-Передать `allData` в `InitiativeDetailDialog` для расчёта суммы по команде:
-
-```tsx
-// В InitiativeTable.tsx
-<InitiativeDetailDialog
-  initiative={selectedInitiative}
-  allData={data}  // добавить
-  // ...
-/>
-```
+- Убрать общий слайдер коэффициента
+- Добавить слайдер внутрь каждого блока квартала
+- Показать индикатор суммы команды для каждого квартала
 
 ---
 
-## Файлы для изменения
+## Изменения в файлах
 
 | Файл | Изменения |
 |------|-----------|
-| `src/lib/adminDataManager.ts` | + поле `effortCoefficient`, + функции валидации, обновить парсер/экспорт |
-| `src/components/admin/InitiativeTable.tsx` | + колонка Effort %, + передача `allData` |
-| `src/components/admin/InitiativeDetailDialog.tsx` | + Slider, + индикатор суммы команды |
+| `src/lib/adminDataManager.ts` | Перенести `effortCoefficient` в `AdminQuarterData`, обновить парсер/экспорт, новые функции валидации |
+| `src/components/admin/QuarterCell.tsx` | + отображение Effort %, + слайдер в развёрнутом виде |
+| `src/components/admin/InitiativeTable.tsx` | − колонка Effort %, + сумма в заголовках кварталов |
+| `src/components/admin/InitiativeDetailDialog.tsx` | − общий слайдер, + слайдер в каждом квартале |
 
 ## Оценка
-~8-10 кредитов на реализацию (3 файла, умеренная сложность)
+~10-12 кредитов (4 файла, средняя сложность с рефакторингом данных)
 

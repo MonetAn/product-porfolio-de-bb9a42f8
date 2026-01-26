@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Tooltip,
@@ -19,6 +20,7 @@ interface QuarterCellProps {
   onChange: (field: keyof AdminQuarterData, value: string | number | boolean) => void;
   isModified?: boolean;
   expandedView?: boolean;
+  teamEffort?: { total: number; isValid: boolean };
 }
 
 // Get list of missing required fields
@@ -29,7 +31,7 @@ const getMissingFields = (data: AdminQuarterData): string[] => {
   return missing;
 };
 
-const QuarterCell = ({ quarter, data, onChange, isModified, expandedView }: QuarterCellProps) => {
+const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEffort }: QuarterCellProps) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const formatCurrency = (value: number) => {
@@ -39,6 +41,7 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView }: Quar
   };
 
   const totalCost = data.cost + data.otherCosts;
+  const effortValue = data.effortCoefficient || 0;
 
   // Check if required fields are missing
   const missingFields = getMissingFields(data);
@@ -59,97 +62,125 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView }: Quar
                   {/* OnTrack indicator */}
                   <div className={`w-2 h-2 rounded-full ${data.onTrack ? 'bg-green-500' : 'bg-red-500'}`} />
             
-            {/* Cost */}
-            <span className="text-sm font-medium">{formatCurrency(totalCost)} ₽</span>
+                  {/* Cost */}
+                  <span className="text-sm font-medium">{formatCurrency(totalCost)} ₽</span>
+                  
+                  {/* Effort % */}
+                  <Badge 
+                    variant={effortValue > 0 ? "default" : "outline"} 
+                    className="text-[10px] px-1.5 py-0"
+                  >
+                    {effortValue}%
+                  </Badge>
             
-            {/* Support badge */}
-            {data.support && (
-              <Badge variant="secondary" className="text-[10px] px-1 py-0">S</Badge>
-            )}
-          </div>
+                  {/* Support badge */}
+                  {data.support && (
+                    <Badge variant="secondary" className="text-[10px] px-1 py-0">S</Badge>
+                  )}
+                </div>
           
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-              {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </Button>
-          </CollapsibleTrigger>
-        </div>
-
-        {/* Expanded View Preview - shown when toggle is on */}
-        {expandedView && !isOpen && (
-          <div className="text-xs text-muted-foreground space-y-1">
-            {data.metricPlan && (
-              <div className="line-clamp-1">
-                <span className="font-medium">План:</span> {data.metricPlan}
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </Button>
+                </CollapsibleTrigger>
               </div>
-            )}
-            {data.metricFact && (
-              <div className="line-clamp-1">
-                <span className="font-medium">Факт:</span> {data.metricFact}
-              </div>
-            )}
-            {data.comment && (
-              <div className="line-clamp-1 italic">{data.comment}</div>
-            )}
-          </div>
-        )}
 
-        {/* Full Expanded Content */}
-        <CollapsibleContent className="space-y-3 pt-2 border-t border-border/50">
-          {/* OnTrack Toggle */}
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">On-Track</span>
-            <Switch
-              checked={data.onTrack}
-              onCheckedChange={(checked) => onChange('onTrack', checked)}
-            />
-          </div>
+              {/* Expanded View Preview - shown when toggle is on */}
+              {expandedView && !isOpen && (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {data.metricPlan && (
+                    <div className="line-clamp-1">
+                      <span className="font-medium">План:</span> {data.metricPlan}
+                    </div>
+                  )}
+                  {data.metricFact && (
+                    <div className="line-clamp-1">
+                      <span className="font-medium">Факт:</span> {data.metricFact}
+                    </div>
+                  )}
+                  {data.comment && (
+                    <div className="line-clamp-1 italic">{data.comment}</div>
+                  )}
+                </div>
+              )}
 
-          {/* Other Costs */}
-          <div className="space-y-1">
-            <span className="text-xs text-muted-foreground">Доп. расходы</span>
-            <Input
-              type="number"
-              value={data.otherCosts || ''}
-              onChange={(e) => onChange('otherCosts', parseFloat(e.target.value) || 0)}
-              className="h-7 text-sm"
-              placeholder="0"
-            />
-          </div>
+              {/* Full Expanded Content */}
+              <CollapsibleContent className="space-y-3 pt-2 border-t border-border/50">
+                {/* Effort Coefficient */}
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Коэфф. трудозатрат</span>
+                  <div className="flex items-center gap-2">
+                    <Slider
+                      value={[effortValue]}
+                      onValueChange={([v]) => onChange('effortCoefficient', v)}
+                      max={100}
+                      step={5}
+                      className="flex-1"
+                    />
+                    <span className="w-10 text-right text-xs font-mono">{effortValue}%</span>
+                  </div>
+                  {teamEffort && (
+                    <div className={`text-[10px] ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
+                      Всего: {teamEffort.total}%{!teamEffort.isValid && ' ⚠'}
+                    </div>
+                  )}
+                </div>
 
-          {/* Metric Plan */}
-          <div className="space-y-1">
-            <span className="text-xs text-muted-foreground">План метрики</span>
-            <Input
-              value={data.metricPlan}
-              onChange={(e) => onChange('metricPlan', e.target.value)}
-              className="h-7 text-sm"
-              placeholder="..."
-            />
-          </div>
+                {/* OnTrack Toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">On-Track</span>
+                  <Switch
+                    checked={data.onTrack}
+                    onCheckedChange={(checked) => onChange('onTrack', checked)}
+                  />
+                </div>
 
-          {/* Metric Fact */}
-          <div className="space-y-1">
-            <span className="text-xs text-muted-foreground">Факт метрики</span>
-            <Input
-              value={data.metricFact}
-              onChange={(e) => onChange('metricFact', e.target.value)}
-              className="h-7 text-sm"
-              placeholder="..."
-            />
-          </div>
+                {/* Other Costs */}
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Доп. расходы</span>
+                  <Input
+                    type="number"
+                    value={data.otherCosts || ''}
+                    onChange={(e) => onChange('otherCosts', parseFloat(e.target.value) || 0)}
+                    className="h-7 text-sm"
+                    placeholder="0"
+                  />
+                </div>
 
-          {/* Comment */}
-          <div className="space-y-1">
-            <span className="text-xs text-muted-foreground">Комментарий</span>
-            <Input
-              value={data.comment}
-              onChange={(e) => onChange('comment', e.target.value)}
-              className="h-7 text-sm"
-              placeholder="..."
-            />
-          </div>
-        </CollapsibleContent>
+                {/* Metric Plan */}
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">План метрики</span>
+                  <Input
+                    value={data.metricPlan}
+                    onChange={(e) => onChange('metricPlan', e.target.value)}
+                    className="h-7 text-sm"
+                    placeholder="..."
+                  />
+                </div>
+
+                {/* Metric Fact */}
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Факт метрики</span>
+                  <Input
+                    value={data.metricFact}
+                    onChange={(e) => onChange('metricFact', e.target.value)}
+                    className="h-7 text-sm"
+                    placeholder="..."
+                  />
+                </div>
+
+                {/* Comment */}
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Комментарий</span>
+                  <Input
+                    value={data.comment}
+                    onChange={(e) => onChange('comment', e.target.value)}
+                    className="h-7 text-sm"
+                    placeholder="..."
+                  />
+                </div>
+              </CollapsibleContent>
             </div>
           </TooltipTrigger>
           {isIncomplete && (
@@ -169,4 +200,3 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView }: Quar
 };
 
 export default QuarterCell;
-

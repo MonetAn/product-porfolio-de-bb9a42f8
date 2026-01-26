@@ -27,7 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType, validateTeamEffort } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, STAKEHOLDERS_LIST, InitiativeType, validateTeamQuarterEffort } from '@/lib/adminDataManager';
 
 // Required field label component
 const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -66,9 +66,6 @@ const InitiativeDetailDialog = ({
   }, [initiative?.id, initiative?.stakeholdersList]);
   
   if (!initiative) return null;
-
-  // Calculate team effort for validation
-  const teamEffort = validateTeamEffort(allData, initiative.unit, initiative.team);
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
@@ -138,30 +135,6 @@ const InitiativeDetailDialog = ({
                 </SelectContent>
               </Select>
             </TooltipProvider>
-          </div>
-
-          {/* Effort Coefficient */}
-          <div className="space-y-2">
-            <RequiredLabel>Коэффициент трудозатрат</RequiredLabel>
-            
-            <div className="flex items-center gap-4">
-              <Slider
-                value={[initiative.effortCoefficient || 0]}
-                onValueChange={([v]) => onDataChange(initiative.id, 'effortCoefficient', v)}
-                max={100}
-                step={5}
-                className="flex-1"
-              />
-              <span className="w-12 text-right font-mono text-sm">
-                {initiative.effortCoefficient || 0}%
-              </span>
-            </div>
-            
-            {/* Team total indicator */}
-            <div className={`text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
-              Команда {initiative.team}: {teamEffort.total}% из 100%
-              {!teamEffort.isValid && ' ⚠ Превышение!'}
-            </div>
           </div>
 
           {/* Stakeholders Multi-select */}
@@ -240,10 +213,13 @@ const InitiativeDetailDialog = ({
                   onTrack: true,
                   metricPlan: '',
                   metricFact: '',
-                  comment: ''
+                  comment: '',
+                  effortCoefficient: 0
                 };
 
                 const totalCost = qData.cost + qData.otherCosts;
+                const effortValue = qData.effortCoefficient || 0;
+                const teamEffort = validateTeamQuarterEffort(allData, initiative.unit, initiative.team, quarter);
 
                 return (
                   <div 
@@ -276,6 +252,27 @@ const InitiativeDetailDialog = ({
                             }
                           />
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Effort Coefficient - inside quarter */}
+                    <div className="space-y-2 p-3 rounded-md bg-muted/30">
+                      <Label className="text-xs text-muted-foreground">Коэффициент трудозатрат</Label>
+                      <div className="flex items-center gap-4">
+                        <Slider
+                          value={[effortValue]}
+                          onValueChange={([v]) => onQuarterDataChange(initiative.id, quarter, 'effortCoefficient', v)}
+                          max={100}
+                          step={5}
+                          className="flex-1"
+                        />
+                        <span className="w-12 text-right font-mono text-sm">
+                          {effortValue}%
+                        </span>
+                      </div>
+                      <div className={`text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
+                        Команда {initiative.team} в {quarter}: {teamEffort.total}% из 100%
+                        {!teamEffort.isValid && ' ⚠ Превышение!'}
                       </div>
                     </div>
 

@@ -59,11 +59,14 @@ const InitiativeTable = ({
   onAddInitiative,
   modifiedIds
 }: InitiativeTableProps) => {
-  const [selectedInitiative, setSelectedInitiative] = useState<AdminDataRow | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedView, setExpandedView] = useState(false);
 
+  // Find the current initiative from data to ensure we always have fresh data
+  const selectedInitiative = selectedId ? data.find(row => row.id === selectedId) || null : null;
+
   const handleRowClick = (row: AdminDataRow) => {
-    setSelectedInitiative(row);
+    setSelectedId(row.id);
   };
 
   if (data.length === 0) {
@@ -310,7 +313,7 @@ const InitiativeTable = ({
         initiative={selectedInitiative}
         quarters={quarters}
         open={!!selectedInitiative}
-        onOpenChange={(open) => !open && setSelectedInitiative(null)}
+        onOpenChange={(open) => !open && setSelectedId(null)}
         onDataChange={onDataChange}
         onQuarterDataChange={onQuarterDataChange}
       />

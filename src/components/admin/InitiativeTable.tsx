@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Plus, ExternalLink } from 'lucide-react';
+import { Plus, ExternalLink, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -12,6 +14,7 @@ import {
 } from '@/components/ui/table';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import QuarterCell from './QuarterCell';
+import InitiativeDetailDialog from './InitiativeDetailDialog';
 import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
@@ -32,6 +35,8 @@ const InitiativeTable = ({
   modifiedIds
 }: InitiativeTableProps) => {
   const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
+  const [selectedInitiative, setSelectedInitiative] = useState<AdminDataRow | null>(null);
+  const [expandedView, setExpandedView] = useState(false);
 
   const handleCellClick = (id: string, field: string) => {
     setEditingCell({ id, field });
@@ -43,6 +48,10 @@ const InitiativeTable = ({
 
   const isEditing = (id: string, field: string) => 
     editingCell?.id === id && editingCell?.field === field;
+
+  const handleRowClick = (row: AdminDataRow) => {
+    setSelectedInitiative(row);
+  };
 
   if (data.length === 0) {
     return (
@@ -58,12 +67,25 @@ const InitiativeTable = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Add button */}
-      <div className="p-4 border-b border-border">
+      {/* Toolbar */}
+      <div className="p-4 border-b border-border flex items-center justify-between">
         <Button onClick={onAddInitiative} size="sm" className="gap-2">
           <Plus size={16} />
           Новая инициатива
         </Button>
+        
+        {/* Expanded View Toggle */}
+        <div className="flex items-center gap-2">
+          {expandedView ? <Eye size={16} /> : <EyeOff size={16} />}
+          <Label htmlFor="expanded-view" className="text-sm cursor-pointer">
+            Развернутый вид
+          </Label>
+          <Switch
+            id="expanded-view"
+            checked={expandedView}
+            onCheckedChange={setExpandedView}
+          />
+        </div>
       </div>
 
       {/* Table */}
@@ -72,10 +94,11 @@ const InitiativeTable = ({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="sticky left-0 bg-card z-10 min-w-[100px]">Unit</TableHead>
-                <TableHead className="sticky left-[100px] bg-card z-10 min-w-[120px]">Team</TableHead>
-                <TableHead className="sticky left-[220px] bg-card z-10 min-w-[200px]">Initiative</TableHead>
-                <TableHead className="min-w-[250px]">Description</TableHead>
+                <TableHead className="sticky left-0 bg-card z-10 min-w-[40px] w-[40px]"></TableHead>
+                <TableHead className="sticky left-[40px] bg-card z-10 min-w-[100px]">Unit</TableHead>
+                <TableHead className="sticky left-[140px] bg-card z-10 min-w-[120px]">Team</TableHead>
+                <TableHead className="sticky left-[260px] bg-card z-10 min-w-[200px]">Initiative</TableHead>
+                <TableHead className={`${expandedView ? 'min-w-[350px]' : 'min-w-[250px]'}`}>Description</TableHead>
                 <TableHead className="min-w-[150px]">Doc Link</TableHead>
                 {quarters.map(q => (
                   <TableHead key={q} className="min-w-[220px]">{q}</TableHead>
@@ -84,21 +107,41 @@ const InitiativeTable = ({
             </TableHeader>
             <TableBody>
               {data.map((row) => (
-                <TableRow key={row.id} className={row.isNew ? 'bg-primary/5' : ''}>
+                <TableRow 
+                  key={row.id} 
+                  className={`${row.isNew ? 'bg-primary/5' : ''} hover:bg-muted/50 cursor-pointer`}
+                >
+                  {/* Row click indicator */}
+                  <TableCell 
+                    className="sticky left-0 bg-card z-10 p-2"
+                    onClick={() => handleRowClick(row)}
+                  >
+                    <ChevronRight size={16} className="text-muted-foreground" />
+                  </TableCell>
+
                   {/* Unit - read only */}
-                  <TableCell className="sticky left-0 bg-card z-10">
+                  <TableCell 
+                    className="sticky left-[40px] bg-card z-10"
+                    onClick={() => handleRowClick(row)}
+                  >
                     <span className="px-2 py-1 bg-muted/50 rounded text-sm">{row.unit}</span>
                   </TableCell>
 
                   {/* Team - read only */}
-                  <TableCell className="sticky left-[100px] bg-card z-10">
+                  <TableCell 
+                    className="sticky left-[140px] bg-card z-10"
+                    onClick={() => handleRowClick(row)}
+                  >
                     <span className="px-2 py-1 bg-muted/50 rounded text-sm">{row.team}</span>
                   </TableCell>
 
-                  {/* Initiative - editable */}
+                  {/* Initiative - editable inline */}
                   <TableCell 
-                    className="sticky left-[220px] bg-card z-10"
-                    onClick={() => handleCellClick(row.id, 'initiative')}
+                    className="sticky left-[260px] bg-card z-10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCellClick(row.id, 'initiative');
+                    }}
                   >
                     {isEditing(row.id, 'initiative') ? (
                       <Input
@@ -118,26 +161,23 @@ const InitiativeTable = ({
                     )}
                   </TableCell>
 
-                  {/* Description - editable */}
-                  <TableCell onClick={() => handleCellClick(row.id, 'description')}>
-                    {isEditing(row.id, 'description') ? (
-                      <Input
-                        autoFocus
-                        value={row.description}
-                        onChange={(e) => onDataChange(row.id, 'description', e.target.value)}
-                        onBlur={handleCellBlur}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCellBlur()}
-                        className="h-8"
-                      />
-                    ) : (
-                      <span className="cursor-pointer hover:bg-secondary px-2 py-1 rounded block text-sm line-clamp-2">
-                        {row.description || <span className="text-muted-foreground italic">—</span>}
-                      </span>
-                    )}
+                  {/* Description - truncated, click to open detail */}
+                  <TableCell 
+                    onClick={() => handleRowClick(row)}
+                    className="cursor-pointer"
+                  >
+                    <span className={`block text-sm text-muted-foreground hover:text-foreground transition-colors ${
+                      expandedView ? 'line-clamp-4' : 'line-clamp-2'
+                    }`}>
+                      {row.description || <span className="italic">Нажмите для редактирования...</span>}
+                    </span>
                   </TableCell>
 
                   {/* Doc Link - editable */}
-                  <TableCell onClick={() => handleCellClick(row.id, 'documentationLink')}>
+                  <TableCell onClick={(e) => {
+                    e.stopPropagation();
+                    handleCellClick(row.id, 'documentationLink');
+                  }}>
                     {isEditing(row.id, 'documentationLink') ? (
                       <Input
                         autoFocus
@@ -168,7 +208,7 @@ const InitiativeTable = ({
 
                   {/* Quarter cells */}
                   {quarters.map(q => (
-                    <TableCell key={q} className="p-2">
+                    <TableCell key={q} className="p-2" onClick={(e) => e.stopPropagation()}>
                       <QuarterCell
                         quarter={q}
                         data={row.quarterlyData[q] || {
@@ -182,6 +222,7 @@ const InitiativeTable = ({
                         }}
                         onChange={(field, value) => onQuarterDataChange(row.id, q, field, value)}
                         isModified={modifiedIds.has(row.id)}
+                        expandedView={expandedView}
                       />
                     </TableCell>
                   ))}
@@ -192,6 +233,16 @@ const InitiativeTable = ({
         </div>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
+
+      {/* Initiative Detail Dialog */}
+      <InitiativeDetailDialog
+        initiative={selectedInitiative}
+        quarters={quarters}
+        open={!!selectedInitiative}
+        onOpenChange={(open) => !open && setSelectedInitiative(null)}
+        onDataChange={onDataChange}
+        onQuarterDataChange={onQuarterDataChange}
+      />
     </div>
   );
 };

@@ -21,12 +21,14 @@ import {
 import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
-import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, validateTeamEffort } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums } from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
   data: AdminDataRow[];
   allData: AdminDataRow[]; // Full dataset for effort validation
   quarters: string[];
+  selectedUnits: string[];
+  selectedTeams: string[];
   onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
   onAddInitiative: () => void;
@@ -56,6 +58,8 @@ const InitiativeTable = ({
   data,
   allData,
   quarters,
+  selectedUnits,
+  selectedTeams,
   onDataChange,
   onQuarterDataChange,
   onAddInitiative,
@@ -66,6 +70,9 @@ const InitiativeTable = ({
 
   // Find the current initiative from data to ensure we always have fresh data
   const selectedInitiative = selectedId ? data.find(row => row.id === selectedId) || null : null;
+
+  // Calculate effort sums for each quarter (for filtered data)
+  const quarterEffortSums = getTeamQuarterEffortSums(allData, selectedUnits, selectedTeams, quarters);
 
   const handleRowClick = (row: AdminDataRow) => {
     setSelectedId(row.id);
@@ -133,13 +140,30 @@ const InitiativeTable = ({
                 <TableHead className="sticky left-[230px] bg-card z-10 min-w-[100px]">Team</TableHead>
                 <TableHead className="sticky left-[330px] bg-card z-10 min-w-[160px]">Initiative</TableHead>
                 <TableHead className="min-w-[100px]">Type</TableHead>
-                <TableHead className="min-w-[80px]">Effort %</TableHead>
                 <TableHead className="min-w-[140px]">Stakeholders</TableHead>
                 <TableHead className={`${expandedView ? 'min-w-[200px]' : 'min-w-[120px]'}`}>Description</TableHead>
                 <TableHead className="min-w-[100px]">Doc</TableHead>
-                {quarters.map(q => (
-                  <TableHead key={q} className="min-w-[220px]">{q}</TableHead>
-                ))}
+                {quarters.map(q => {
+                  const effortSum = quarterEffortSums[q];
+                  return (
+                    <TableHead key={q} className="min-w-[220px]">
+                      <div className="flex flex-col gap-0.5">
+                        <span>{q}</span>
+                        {/* Effort sum indicator */}
+                        <span className={`text-[10px] font-normal ${
+                          effortSum.total === 0 ? 'text-muted-foreground' :
+                          !effortSum.isValid ? 'text-red-600' : 
+                          effortSum.total < 80 ? 'text-muted-foreground' : 
+                          'text-green-600'
+                        }`}>
+                          {effortSum.total}%
+                          {!effortSum.isValid && ' ⚠'}
+                          {effortSum.isValid && effortSum.total >= 80 && ' ✓'}
+                        </span>
+                      </div>
+                    </TableHead>
+                  );
+                })}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -149,8 +173,6 @@ const InitiativeTable = ({
                   isQuarterIncomplete(row.quarterlyData[q] || {} as AdminQuarterData)
                 );
                 const rowIncomplete = initiativeIncomplete || hasIncompleteQuarters;
-                const teamEffort = validateTeamEffort(allData, row.unit, row.team);
-                const teamEffortExceeds = !teamEffort.isValid;
                 
                 return (
                 <TableRow 
@@ -228,19 +250,6 @@ const InitiativeTable = ({
                     </TooltipProvider>
                   </TableCell>
 
-                  {/* Effort % */}
-                  <TableCell 
-                    className="p-2 cursor-pointer"
-                    onClick={() => handleRowClick(row)}
-                  >
-                    <div className="flex items-center gap-1">
-                      <span className={`text-xs ${teamEffortExceeds ? 'text-red-600 font-medium' : ''}`}>
-                        {row.effortCoefficient || 0}%
-                      </span>
-                      {teamEffortExceeds && <AlertTriangle size={12} className="text-red-500" />}
-                    </div>
-                  </TableCell>
-
                   {/* Stakeholders - clickable badges */}
                   <TableCell 
                     className="p-2 cursor-pointer"
@@ -298,25 +307,30 @@ const InitiativeTable = ({
                   </TableCell>
 
                   {/* Quarter cells */}
-                  {quarters.map(q => (
-                    <TableCell key={q} className="p-2" onClick={(e) => e.stopPropagation()}>
-                      <QuarterCell
-                        quarter={q}
-                        data={row.quarterlyData[q] || {
-                          cost: 0,
-                          otherCosts: 0,
-                          support: false,
-                          onTrack: true,
-                          metricPlan: '',
-                          metricFact: '',
-                          comment: ''
-                        }}
-                        onChange={(field, value) => onQuarterDataChange(row.id, q, field, value)}
-                        isModified={modifiedIds.has(row.id)}
-                        expandedView={expandedView}
-                      />
-                    </TableCell>
-                  ))}
+                  {quarters.map(q => {
+                    const teamEffort = validateTeamQuarterEffort(allData, row.unit, row.team, q);
+                    return (
+                      <TableCell key={q} className="p-2" onClick={(e) => e.stopPropagation()}>
+                        <QuarterCell
+                          quarter={q}
+                          data={row.quarterlyData[q] || {
+                            cost: 0,
+                            otherCosts: 0,
+                            support: false,
+                            onTrack: true,
+                            metricPlan: '',
+                            metricFact: '',
+                            comment: '',
+                            effortCoefficient: 0
+                          }}
+                          onChange={(field, value) => onQuarterDataChange(row.id, q, field, value)}
+                          isModified={modifiedIds.has(row.id)}
+                          expandedView={expandedView}
+                          teamEffort={teamEffort}
+                        />
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               );
               })}

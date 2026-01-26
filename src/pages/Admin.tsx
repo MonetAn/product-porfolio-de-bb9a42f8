@@ -292,6 +292,8 @@ const Admin = () => {
                 data={filteredData}
                 allData={rawData}
                 quarters={quarters}
+                selectedUnits={selectedUnits}
+                selectedTeams={selectedTeams}
                 onDataChange={handleDataChange}
                 onQuarterDataChange={handleQuarterDataChange}
                 onAddInitiative={() => setNewDialogOpen(true)}

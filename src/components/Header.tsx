@@ -1,4 +1,5 @@
-import { Search, Upload, Keyboard } from 'lucide-react';
+import { Search, Upload, Keyboard, Settings } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export type ViewType = 'budget' | 'stakeholders' | 'timeline';
 
@@ -17,6 +18,7 @@ const Header = ({
   onUploadClick,
   onShortcutsClick
 }: HeaderProps) => {
+  const navigate = useNavigate();
   return (
     <header className="h-14 bg-card border-b border-border flex items-center px-6 fixed top-0 left-0 right-0 z-50">
       {/* Logo */}
@@ -95,6 +97,14 @@ const Header = ({
           title="Горячие клавиши"
         >
           <Keyboard size={20} />
+        </button>
+
+        <button
+          onClick={() => navigate('/admin')}
+          className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          title="Админка"
+        >
+          <Settings size={20} />
         </button>
       </div>
     </header>

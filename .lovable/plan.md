@@ -1,225 +1,97 @@
 
-# Этап 1: Базовая админка Portfolio
+# План: Инлайн-индикатор незаполненных полей
 
-## Цель
-Создать страницу `/admin` с полным offline workflow:
-- Загрузка Portfolio CSV
-- Выбор Unit/Team для редактирования
-- Редактируемая таблица инициатив
-- Скачивание обновленного CSV
+## Текущая проблема
+- Тултип по карандашу сложно поймать и он может перекрываться другими элементами
+- Пользователь не видит сразу, что именно не заполнено
 
----
+## Решение
+Заменить тултип на **инлайн-текст** рядом с карандашом, который сразу показывает недостающие поля.
 
-## Файловая структура
+## Визуальный результат
 
 ```text
-src/
-├── pages/
-│   └── Admin.tsx                    # Главная страница админки
-├── components/
-│   └── admin/
-│       ├── AdminHeader.tsx          # Шапка с навигацией и действиями
-│       ├── ScopeSelector.tsx        # Выбор Unit → Team (каскадный)
-│       ├── InitiativeTable.tsx      # Основная редактируемая таблица
-│       ├── QuarterCell.tsx          # Ячейка квартальных данных
-│       └── NewInitiativeDialog.tsx  # Диалог создания инициативы
-├── lib/
-│   └── adminDataManager.ts          # Парсинг и экспорт для админки
-└── App.tsx                          # + роут /admin
+┌──────┬────────┬─────────┬───────────────┬───────────────────────────────┐
+│  ✎  │ Unit   │ Team    │ Initiative    │ ...остальные колонки...       │
+├──────┼────────┼─────────┼───────────────┼───────────────────────────────┤
+│  ✎  │ Core   │ Alpha   │ New Feature   │ ...                           │  ← всё заполнено
+│  ✎ ⚠ Тип, Описание     │ Project X     │ ...                           │  ← не заполнено
+│  ✎ ⚠ 3 поля │ Beta    │ Experiment    │ ...                           │  ← много полей
+└──────┴────────┴─────────┴───────────────┴───────────────────────────────┘
 ```
 
----
+## Что будет изменено
 
-## Компоненты
+### 1. Колонка с карандашом расширяется
+- Минимальная ширина увеличивается с 32px до 140px
+- Это даёт место для текста "⚠ Тип, Описание"
 
-### 1. App.tsx — добавление роута
-- Импорт страницы Admin
-- Новый Route path="/admin"
+### 2. Логика отображения
+- Если всё заполнено: только карандаш
+- Если 1-2 поля пусты: `✎ ⚠ Тип, Описание` (перечисление)
+- Если 3 поля пусты: `✎ ⚠ 3 поля` (счётчик для экономии места)
 
-### 2. AdminHeader.tsx
-- Лого + название "Админка"
-- Кнопка "Дашборд" (навигация на /)
-- Кнопка "Загрузить CSV" (drag-and-drop поддержка)
-- Кнопка "Скачать CSV" (активна когда есть данные)
-- Индикатор: "Загружено X инициатив"
+### 3. Стилизация
+- Иконка `AlertTriangle` (⚠) янтарного цвета
+- Текст мелкий (text-xs), янтарного цвета
+- Весь блок остаётся кликабельным для открытия карточки
 
-### 3. ScopeSelector.tsx
-- Два каскадных селекта (переиспользуем паттерн из FilterBar)
-- Unit: обязательный выбор (single или multi)
-- Team: фильтруется по выбранным Unit, опционально
-- Кнопка "Все команды" для просмотра всего Unit
+### 4. Убираем
+- Тултип с карандаша (больше не нужен)
+- Янтарную точку над карандашом
 
-### 4. InitiativeTable.tsx
-Горизонтально скроллируемая таблица:
-
-**Фиксированные колонки (слева):**
-| Unit | Team | Initiative | Description | Doc Link |
-|------|------|------------|-------------|----------|
-
-**Скроллируемые колонки (кварталы):**
-Для каждого квартала (2025-Q1, 2025-Q2, ...):
-| Cost | OnTrack | Metric Plan | Metric Fact | Other Costs | Comment |
-
-**Редактируемость:**
-- Unit, Team: read-only (серый фон)
-- Cost: read-only (серый фон, автоматически из CSV)
-- Initiative, Description, Doc Link: редактируемые (белый фон)
-- OnTrack: checkbox
-- Metric Plan/Fact, Other Costs, Comment: текстовые поля
-
-### 5. QuarterCell.tsx
-Компактный редактор для одного квартала:
-- Отображает ключевые поля
-- Раскрывается при клике для полного редактирования
-- Визуальная индикация: зеленый/красный для OnTrack
-
-### 6. NewInitiativeDialog.tsx
-Модальное окно для создания новой инициативы:
-- Выбор Unit, Team (предзаполнено из текущего scope)
-- Поля: Initiative name, Description, Doc Link
-- Создает пустые записи для всех кварталов
+### 5. Оставляем
+- Подсветку строки `bg-amber-50/50` для незаполненных инициатив
+- Легенду в тулбаре "Требуется заполнить (N)"
+- Тултипы на кварталах (они работают хорошо)
 
 ---
 
-## Модель данных
+## Техническая реализация
 
-### AdminDataRow (расширенная)
-```typescript
-interface AdminDataRow {
-  // Идентификация
-  id: string;                    // Уникальный ID для React key
-  unit: string;
-  team: string;
-  initiative: string;
-  
-  // Редактируемые поля
-  description: string;
-  documentationLink: string;     // НОВОЕ поле
-  stakeholders: string;
-  
-  // Квартальные данные
-  quarterlyData: Record<string, AdminQuarterData>;
-  
-  // Мета
-  isNew?: boolean;               // Флаг новой инициативы
-  isModified?: boolean;          // Флаг изменений
-}
+### Файл: `src/components/admin/InitiativeTable.tsx`
 
-interface AdminQuarterData {
-  cost: number;                  // Read-only (из CSV)
-  otherCosts: number;            // Editable
-  support: boolean;              // Read-only
-  onTrack: boolean;              // Editable
-  metricPlan: string;            // Editable
-  metricFact: string;            // Editable
-  comment: string;               // Editable
-}
+1. Изменить ширину первой колонки с 32px на 140px
+2. Заменить содержимое ячейки с карандашом:
+
+```tsx
+<TableCell onClick={() => handleRowClick(row)}>
+  <div className="flex items-center gap-1.5">
+    <Pencil size={14} className="text-muted-foreground group-hover:text-primary" />
+    {initiativeIncomplete && (
+      <div className="flex items-center gap-1 text-amber-600">
+        <AlertTriangle size={12} />
+        <span className="text-xs">
+          {missingFields.length <= 2 
+            ? missingFields.join(', ')
+            : `${missingFields.length} поля`
+          }
+        </span>
+      </div>
+    )}
+  </div>
+</TableCell>
 ```
 
----
+3. Сокращённые названия полей для компактности:
+   - "Тип инициативы" → "Тип"
+   - "Стейкхолдеры" → "Стейкх."
+   - "Описание" → "Описание"
 
-## Логика парсинга (adminDataManager.ts)
+4. Удалить `TooltipProvider`, `Tooltip`, `TooltipTrigger`, `TooltipContent` из ячейки карандаша
 
-### parseAdminCSV()
-Расширенный парсер, который извлекает:
-1. Базовые поля: Unit, Team, Initiative, Description
-2. **Documentation Link** — новая колонка после Description
-3. Stakeholders
-4. Квартальные данные:
-   - `XX_QY_Стоимость` → cost
-   - `XX_QY_Other Costs` → otherCosts (НОВОЕ)
-   - `XX_QY_Поддержка` → support
-   - `XX_QY_On-Track` → onTrack
-   - `XX_QY_Metric Plan` → metricPlan
-   - `XX_QY_Metric Fact` → metricFact
-   - `XX_QY_Comment` → comment
+5. Добавить импорт `AlertTriangle` из lucide-react
 
-### exportAdminCSV()
-Генерация CSV с сохранением формата:
-1. Сохраняем порядок колонок как в оригинале
-2. Добавляем Documentation Link после Description
-3. Экспорт в UTF-8 с BOM для корректного открытия в Excel
-4. Обработка кавычек и запятых в значениях
+### Корректировка sticky-позиций
+Так как первая колонка станет шире, нужно обновить `left` для sticky-колонок:
+- Unit: `left-[140px]` вместо `left-[32px]`
+- Team: `left-[230px]` вместо `left-[122px]`  
+- Initiative: `left-[330px]` вместо `left-[222px]`
 
 ---
 
-## User Flow
-
-```text
-1. Пользователь открывает /admin
-2. Видит пустой экран с областью drag-and-drop
-3. Загружает CSV (перетаскивание или кнопка)
-4. Выбирает Unit (обязательно)
-5. Опционально выбирает Team
-6. Видит таблицу с инициативами
-7. Редактирует нужные поля (изменения сразу в state)
-8. Может создать новую инициативу (+)
-9. Нажимает "Скачать CSV"
-10. Получает обновленный файл
-```
-
----
-
-## Визуальный стиль
-
-Переиспользуем существующие компоненты:
-- Table, TableHead, TableRow, TableCell из shadcn/ui
-- Input, Checkbox для редактирования
-- Select для Unit/Team
-- Dialog для создания инициативы
-- Button для действий
-- Toast для уведомлений
-
-Цветовая схема:
-- Read-only ячейки: `bg-muted/50`
-- Editable ячейки: `bg-background`
-- Измененные ячейки: `ring-2 ring-primary/30`
-- OnTrack true: зеленый индикатор
-- OnTrack false: красный индикатор
-
----
-
-## Навигация между дашбордом и админкой
-
-**В Header дашборда:**
-- Добавить иконку/кнопку "Админка" рядом с Upload
-
-**В AdminHeader:**
-- Кнопка "← Дашборд" для возврата
-
----
-
-## Технические детали
-
-### Хранение состояния
-```typescript
-// Admin.tsx
-const [rawData, setRawData] = useState<AdminDataRow[]>([]);
-const [originalData, setOriginalData] = useState<AdminDataRow[]>([]);
-const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
-const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-const [availableQuarters, setAvailableQuarters] = useState<string[]>([]);
-```
-
-### Inline редактирование
-- При клике на ячейку — фокус на input
-- onBlur — сохранение в state
-- Визуальная индикация изменений (сравнение с originalData)
-
-### Предупреждение о несохраненных изменениях
-- beforeunload event для предупреждения при уходе
-- Toast при попытке загрузить новый CSV с несохраненными изменениями
-
----
-
-## Порядок реализации
-
-1. **Роутинг**: App.tsx + базовая страница Admin.tsx
-2. **AdminHeader**: навигация и кнопки действий
-3. **adminDataManager.ts**: парсинг с новыми полями
-4. **ScopeSelector**: выбор Unit/Team
-5. **InitiativeTable**: базовая таблица с горизонтальным скроллом
-6. **Inline editing**: редактирование ячеек
-7. **NewInitiativeDialog**: создание новых инициатив
-8. **Export**: генерация и скачивание CSV
-9. **Polish**: предупреждения, toast-уведомления, индикаторы изменений
+## Преимущества решения
+- Информация видна сразу без hover
+- Пользователь точно знает, что не заполнено
+- Нет проблем с z-index и перекрытием
+- Очевидный призыв к действию

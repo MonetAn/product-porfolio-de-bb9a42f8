@@ -1,46 +1,159 @@
 
-# План: Упрощение индикации в карточке инициативы
 
-## Текущая ситуация
-- При выборе типа инициативы появляется красная/синяя рамка фокуса — лишняя визуальная нагрузка
-- Баннер "Не заполнено: ..." дублирует информацию, которая уже есть:
-  - В таблице (инлайн-индикатор)
-  - В карточке (оранжевая обводка полей)
+# План: Этап 2 — Коэффициенты трудозатрат
 
-## Что убираем
+## Цель
+Добавить для каждой инициативы поле **«Коэффициент трудозатрат»** (0-100%), которое показывает, какую долю усилий команды занимает эта инициатива.
 
-### 1. Фокус-рамку на Select при выборе
-Добавить `focus:ring-0 focus-visible:ring-0` к `SelectTrigger`, чтобы убрать стандартную рамку фокуса.
+## Бизнес-правило
+Сумма коэффициентов всех инициатив **одной команды** не должна превышать 100%.
 
-### 2. Баннер "Не заполнено"
-Полностью удалить блок Alert с предупреждением (строки 110-118), а также:
-- Удалить неиспользуемые импорты `Alert`, `AlertDescription`, `AlertTriangle`
-- Удалить вычисление `missingFields` (строки 69-72)
+## Визуальный результат
 
-## Что оставляем
-- Красные звёздочки у обязательных полей (понятно, что требуется)
-- Оранжевая обводка пустых полей (видно, что не заполнено)
+### В таблице — новая колонка "Effort %"
+
+```text
+│ Unit │ Team │ Initiative │ Type │ Effort % │ Stakeholders │ ...
+├──────┼──────┼────────────┼──────┼──────────┼──────────────┼────
+│ Unit1│ TeamA│ Init 1     │ Prod │   40%    │ Russia, EU   │ ...
+│ Unit1│ TeamA│ Init 2     │ Strm │   35%    │ Turkey+      │ ...
+│ Unit1│ TeamA│ Init 3     │ Enbl │   30%  ⚠ │ IT           │ ... ← превышение
+```
+
+### В карточке — слайдер с индикатором
+
+```text
+┌─────────────────────────────────────────────────┐
+│ Коэффициент трудозатрат *                       │
+│                                                 │
+│ ├─────────●─────────────────┤  40%              │
+│                                                 │
+│ Команда TeamA: 105% из 100%  ⚠ Превышение!     │
+└─────────────────────────────────────────────────┘
+```
+
+---
 
 ## Техническая реализация
 
-### Файл: `src/components/admin/InitiativeDetailDialog.tsx`
+### 1. Модель данных
 
-#### Изменение 1: Убрать фокус-рамку на SelectTrigger
-Строка 129 — добавить классы для отключения фокусной рамки:
+**Файл: `src/lib/adminDataManager.ts`**
 
-```tsx
-<SelectTrigger className={`w-full focus:ring-0 focus-visible:ring-0 ${!initiative.initiativeType ? 'ring-2 ring-amber-400' : ''}`}>
+Добавить поле в интерфейс:
+```typescript
+export interface AdminDataRow {
+  // ... существующие поля
+  effortCoefficient: number;  // 0-100, процент трудозатрат
+}
 ```
 
-#### Изменение 2: Удалить баннер
-Удалить строки 110-118 (Alert с предупреждением).
+Обновить функции:
+- `parseAdminCSV` — парсить колонку "Effort %" из CSV
+- `exportAdminCSV` — экспортировать поле в CSV
+- `createNewInitiative` — значение по умолчанию `0`
 
-#### Изменение 3: Удалить неиспользуемый код
-- Строка 2: убрать `AlertTriangle` из импорта
-- Строка 16: убрать импорт `Alert, AlertDescription`
-- Строки 69-72: убрать массив `missingFields`
+### 2. Утилита валидации
 
-## Результат
-Карточка станет чище, без дублирования информации. Пользователь понимает что заполнять благодаря:
-- Звёздочкам у обязательных полей
-- Оранжевой обводке пустых полей
+**Файл: `src/lib/adminDataManager.ts`**
+
+```typescript
+export function getTeamEffortSum(
+  data: AdminDataRow[], 
+  unit: string, 
+  team: string, 
+  excludeId?: string
+): number {
+  return data
+    .filter(row => row.unit === unit && row.team === team && row.id !== excludeId)
+    .reduce((sum, row) => sum + (row.effortCoefficient || 0), 0);
+}
+
+export function validateTeamEffort(
+  data: AdminDataRow[],
+  unit: string,
+  team: string
+): { isValid: boolean; total: number } {
+  const total = getTeamEffortSum(data, unit, team);
+  return { isValid: total <= 100, total };
+}
+```
+
+### 3. Колонка в таблице
+
+**Файл: `src/components/admin/InitiativeTable.tsx`**
+
+Добавить колонку после "Type":
+```tsx
+<TableHead className="min-w-[80px]">Effort %</TableHead>
+```
+
+В строке:
+```tsx
+<TableCell className="p-2">
+  <div className="flex items-center gap-1">
+    <span className={`text-xs ${teamEffortExceeds ? 'text-red-600 font-medium' : ''}`}>
+      {row.effortCoefficient || 0}%
+    </span>
+    {teamEffortExceeds && <AlertTriangle size={12} className="text-red-500" />}
+  </div>
+</TableCell>
+```
+
+### 4. Редактирование в карточке
+
+**Файл: `src/components/admin/InitiativeDetailDialog.tsx`**
+
+Добавить после блока "Тип инициативы":
+```tsx
+{/* Effort Coefficient */}
+<div className="space-y-2">
+  <RequiredLabel>Коэффициент трудозатрат</RequiredLabel>
+  
+  <div className="flex items-center gap-4">
+    <Slider
+      value={[initiative.effortCoefficient || 0]}
+      onValueChange={([v]) => onDataChange(initiative.id, 'effortCoefficient', v)}
+      max={100}
+      step={5}
+      className="flex-1"
+    />
+    <span className="w-12 text-right font-mono">
+      {initiative.effortCoefficient || 0}%
+    </span>
+  </div>
+  
+  {/* Team total indicator */}
+  <div className={`text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
+    Команда {initiative.team}: {teamEffort.total}% из 100%
+    {!teamEffort.isValid && ' ⚠ Превышение!'}
+  </div>
+</div>
+```
+
+### 5. Пропс для валидации
+
+Передать `allData` в `InitiativeDetailDialog` для расчёта суммы по команде:
+
+```tsx
+// В InitiativeTable.tsx
+<InitiativeDetailDialog
+  initiative={selectedInitiative}
+  allData={data}  // добавить
+  // ...
+/>
+```
+
+---
+
+## Файлы для изменения
+
+| Файл | Изменения |
+|------|-----------|
+| `src/lib/adminDataManager.ts` | + поле `effortCoefficient`, + функции валидации, обновить парсер/экспорт |
+| `src/components/admin/InitiativeTable.tsx` | + колонка Effort %, + передача `allData` |
+| `src/components/admin/InitiativeDetailDialog.tsx` | + Slider, + индикатор суммы команды |
+
+## Оценка
+~8-10 кредитов на реализацию (3 файла, умеренная сложность)
+

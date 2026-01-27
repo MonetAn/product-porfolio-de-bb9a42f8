@@ -1,4 +1,4 @@
-import { ArrowLeft, Upload, Download, FileSpreadsheet, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Upload, Download, FileSpreadsheet, ChevronDown, Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -7,31 +7,103 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { SyncStatus } from '@/hooks/useInitiativeMutations';
 
 interface AdminHeaderProps {
   initiativeCount: number;
   totalCount: number;
   hasData: boolean;
-  hasChanges: boolean;
-  modifiedCount: number;
   hasFilters: boolean;
-  onUploadClick: () => void;
+  syncStatus: SyncStatus;
+  pendingChanges: number;
+  onImportClick: () => void;
   onDownloadAll: () => void;
   onDownloadFiltered: () => void;
+  onRetry: () => void;
 }
 
 const AdminHeader = ({
   initiativeCount,
   totalCount,
   hasData,
-  hasChanges,
-  modifiedCount,
   hasFilters,
-  onUploadClick,
+  syncStatus,
+  pendingChanges,
+  onImportClick,
   onDownloadAll,
-  onDownloadFiltered
+  onDownloadFiltered,
+  onRetry
 }: AdminHeaderProps) => {
   const navigate = useNavigate();
+
+  // Sync status indicator
+  const renderSyncStatus = () => {
+    switch (syncStatus) {
+      case 'saving':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 text-primary text-xs font-medium">
+                  <Loader2 size={12} className="animate-spin" />
+                  <span>Сохранение...</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {pendingChanges > 0 ? `${pendingChanges} изменений в очереди` : 'Сохранение изменений'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      case 'synced':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-primary/10 text-primary text-xs font-medium">
+                  <Check size={12} />
+                  <span>Сохранено</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Все изменения сохранены</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      case 'error':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onRetry}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded bg-destructive/10 text-destructive text-xs font-medium hover:bg-destructive/20 transition-colors"
+                >
+                  <AlertCircle size={12} />
+                  <span>Ошибка</span>
+                  <RefreshCw size={10} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Нажмите для повторной попытки</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      case 'offline':
+        return (
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted text-muted-foreground text-xs font-medium">
+            <AlertCircle size={12} />
+            <span>Офлайн</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <header className="h-14 bg-card border-b border-border flex items-center px-6 fixed top-0 left-0 right-0 z-50">
@@ -56,19 +128,17 @@ const AdminHeader = ({
 
       {/* Status indicator - dynamic count */}
       {hasData && (
-        <div className="ml-6 flex items-center gap-2 text-sm text-muted-foreground">
-          <FileSpreadsheet size={16} />
-          <span>
-            {initiativeCount === totalCount 
-              ? `${initiativeCount} инициатив` 
-              : `${initiativeCount} из ${totalCount} инициатив`
-            }
-          </span>
-          {hasChanges && (
-            <span className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs font-medium">
-              {modifiedCount} изменено
+        <div className="ml-6 flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet size={16} />
+            <span>
+              {initiativeCount === totalCount 
+                ? `${initiativeCount} инициатив` 
+                : `${initiativeCount} из ${totalCount} инициатив`
+              }
             </span>
-          )}
+          </div>
+          {renderSyncStatus()}
         </div>
       )}
 
@@ -78,10 +148,10 @@ const AdminHeader = ({
           variant="outline"
           size="sm"
           className="gap-2"
-          onClick={onUploadClick}
+          onClick={onImportClick}
         >
           <Upload size={16} />
-          <span className="hidden sm:inline">Загрузить CSV</span>
+          <span className="hidden sm:inline">Импорт CSV</span>
         </Button>
 
         {/* Download dropdown */}
@@ -94,7 +164,7 @@ const AdminHeader = ({
               disabled={!hasData}
             >
               <Download size={16} />
-              <span className="hidden sm:inline">Скачать CSV</span>
+              <span className="hidden sm:inline">Экспорт CSV</span>
               <ChevronDown size={14} />
             </Button>
           </DropdownMenuTrigger>

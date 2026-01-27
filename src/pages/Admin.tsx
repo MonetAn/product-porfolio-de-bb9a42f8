@@ -1,10 +1,19 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Upload } from 'lucide-react';
+import { Upload, ClipboardList } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AdminHeader from '@/components/admin/AdminHeader';
 import ScopeSelector from '@/components/admin/ScopeSelector';
 import InitiativeTable from '@/components/admin/InitiativeTable';
 import NewInitiativeDialog from '@/components/admin/NewInitiativeDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import {
   parseAdminCSV,
   exportAdminCSV,
@@ -15,6 +24,17 @@ import {
   AdminDataRow,
   AdminQuarterData
 } from '@/lib/adminDataManager';
+
+const STORAGE_KEY = 'admin_portfolio_draft';
+const AUTOSAVE_INTERVAL = 30000; // 30 секунд
+
+interface DraftData {
+  rawData: AdminDataRow[];
+  quarters: string[];
+  originalHeaders: string[];
+  modifiedIds: string[];
+  savedAt: number;
+}
 
 const Admin = () => {
   const { toast } = useToast();
@@ -34,6 +54,10 @@ const Admin = () => {
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [modifiedIds, setModifiedIds] = useState<Set<string>>(new Set());
+  
+  // Draft restoration state
+  const [showRestoreDialog, setShowRestoreDialog] = useState(false);
+  const [savedDraft, setSavedDraft] = useState<DraftData | null>(null);
 
   // Derived state
   const hasData = rawData.length > 0;
@@ -41,6 +65,81 @@ const Admin = () => {
   const units = getUniqueUnits(rawData);
   const teams = getTeamsForUnits(rawData, selectedUnits);
   const filteredData = filterData(rawData, selectedUnits, selectedTeams);
+  const needsSelection = hasData && selectedUnits.length === 0;
+  const hideUnitTeamColumns = selectedUnits.length > 0;
+
+  // Check for saved draft on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const draft: DraftData = JSON.parse(saved);
+        if (draft.rawData && draft.rawData.length > 0) {
+          setSavedDraft(draft);
+          setShowRestoreDialog(true);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load draft:', e);
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  // Autosave to localStorage every 30 seconds if there are changes
+  useEffect(() => {
+    if (!hasChanges || rawData.length === 0) return;
+
+    const interval = setInterval(() => {
+      try {
+        const draft: DraftData = {
+          rawData,
+          quarters,
+          originalHeaders,
+          modifiedIds: Array.from(modifiedIds),
+          savedAt: Date.now()
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+      } catch (e) {
+        console.error('Failed to save draft:', e);
+      }
+    }, AUTOSAVE_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [hasChanges, rawData, quarters, originalHeaders, modifiedIds]);
+
+  // Clear draft when changes are saved (downloaded)
+  const clearDraft = useCallback(() => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.error('Failed to clear draft:', e);
+    }
+  }, []);
+
+  // Restore draft data
+  const handleRestoreDraft = useCallback(() => {
+    if (savedDraft) {
+      setRawData(savedDraft.rawData);
+      setOriginalData(JSON.parse(JSON.stringify(savedDraft.rawData)));
+      setQuarters(savedDraft.quarters);
+      setOriginalHeaders(savedDraft.originalHeaders);
+      setModifiedIds(new Set(savedDraft.modifiedIds));
+      
+      toast({
+        title: 'Черновик восстановлен',
+        description: `Загружено ${savedDraft.rawData.length} инициатив`
+      });
+    }
+    setShowRestoreDialog(false);
+    setSavedDraft(null);
+  }, [savedDraft, toast]);
+
+  // Discard draft
+  const handleDiscardDraft = useCallback(() => {
+    clearDraft();
+    setShowRestoreDialog(false);
+    setSavedDraft(null);
+  }, [clearDraft]);
 
   // Warn before leaving with unsaved changes
   useEffect(() => {
@@ -213,13 +312,14 @@ const Admin = () => {
     if (mode === 'all') {
       setOriginalData(JSON.parse(JSON.stringify(rawData)));
       setModifiedIds(new Set());
+      clearDraft();
     }
 
     toast({
       title: 'Файл скачан',
       description
     });
-  }, [rawData, filteredData, modifiedIds, quarters, originalHeaders, toast]);
+  }, [rawData, filteredData, modifiedIds, quarters, originalHeaders, toast, clearDraft]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -287,22 +387,67 @@ const Admin = () => {
               onTeamsChange={setSelectedTeams}
             />
 
-            <div className="flex-1 overflow-hidden">
-              <InitiativeTable
-                data={filteredData}
-                allData={rawData}
-                quarters={quarters}
-                selectedUnits={selectedUnits}
-                selectedTeams={selectedTeams}
-                onDataChange={handleDataChange}
-                onQuarterDataChange={handleQuarterDataChange}
-                onAddInitiative={() => setNewDialogOpen(true)}
-                modifiedIds={modifiedIds}
-              />
-            </div>
+            {needsSelection ? (
+              /* Placeholder when no Unit selected */
+              <div className="flex-1 flex flex-col items-center justify-center p-8">
+                <div className="border border-dashed border-border rounded-xl p-12 text-center max-w-md">
+                  <ClipboardList size={48} className="mx-auto text-muted-foreground mb-4" />
+                  <h2 className="text-xl font-semibold mb-2">Выберите Unit и Team</h2>
+                  <p className="text-muted-foreground">
+                    Для просмотра и редактирования инициатив выберите Unit и Team в фильтрах выше
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-hidden">
+                <InitiativeTable
+                  data={filteredData}
+                  allData={rawData}
+                  quarters={quarters}
+                  selectedUnits={selectedUnits}
+                  selectedTeams={selectedTeams}
+                  onDataChange={handleDataChange}
+                  onQuarterDataChange={handleQuarterDataChange}
+                  onAddInitiative={() => setNewDialogOpen(true)}
+                  modifiedIds={modifiedIds}
+                  hideUnitTeamColumns={hideUnitTeamColumns}
+                />
+              </div>
+            )}
           </div>
         )}
       </main>
+
+      {/* Draft Restore Dialog */}
+      <Dialog open={showRestoreDialog} onOpenChange={setShowRestoreDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Найден несохранённый черновик</DialogTitle>
+            <DialogDescription>
+              {savedDraft && (
+                <>
+                  Последнее изменение: {new Date(savedDraft.savedAt).toLocaleString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    day: 'numeric',
+                    month: 'short'
+                  })}
+                  <br />
+                  Инициатив: {savedDraft.rawData.length}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleDiscardDraft}>
+              Удалить черновик
+            </Button>
+            <Button onClick={handleRestoreDraft}>
+              Восстановить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <NewInitiativeDialog
         open={newDialogOpen}

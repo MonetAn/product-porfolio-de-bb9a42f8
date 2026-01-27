@@ -33,6 +33,7 @@ interface InitiativeTableProps {
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
   onAddInitiative: () => void;
   modifiedIds: Set<string>;
+  hideUnitTeamColumns?: boolean;
 }
 
 // Get list of missing required fields for initiative (shortened names for compact display)
@@ -63,7 +64,8 @@ const InitiativeTable = ({
   onDataChange,
   onQuarterDataChange,
   onAddInitiative,
-  modifiedIds
+  modifiedIds,
+  hideUnitTeamColumns = false
 }: InitiativeTableProps) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedView, setExpandedView] = useState(false);
@@ -135,10 +137,14 @@ const InitiativeTable = ({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="sticky left-0 bg-card z-10 min-w-[140px] w-[140px]"></TableHead>
-                <TableHead className="sticky left-[140px] bg-card z-10 min-w-[90px]">Unit</TableHead>
-                <TableHead className="sticky left-[230px] bg-card z-10 min-w-[100px]">Team</TableHead>
-                <TableHead className="sticky left-[330px] bg-card z-10 min-w-[160px]">Initiative</TableHead>
+                <TableHead className="sticky left-0 bg-card z-10 min-w-[60px] w-[60px]"></TableHead>
+                {!hideUnitTeamColumns && (
+                  <TableHead className="sticky left-[60px] bg-card z-10 min-w-[90px]">Unit</TableHead>
+                )}
+                {!hideUnitTeamColumns && (
+                  <TableHead className="sticky left-[150px] bg-card z-10 min-w-[100px]">Team</TableHead>
+                )}
+                <TableHead className={`sticky ${hideUnitTeamColumns ? 'left-[60px]' : 'left-[250px]'} bg-card z-10 min-w-[160px]`}>Initiative</TableHead>
                 <TableHead className="min-w-[100px]">Type</TableHead>
                 <TableHead className="min-w-[140px]">Stakeholders</TableHead>
                 <TableHead className={`${expandedView ? 'min-w-[200px]' : 'min-w-[120px]'}`}>Description</TableHead>
@@ -179,49 +185,45 @@ const InitiativeTable = ({
                   key={row.id} 
                   className={`group ${row.isNew ? 'bg-primary/5' : ''} ${rowIncomplete ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''} hover:bg-muted/50 cursor-pointer`}
                 >
-                  {/* Row edit button with inline missing fields indicator */}
+                  {/* Row edit button with compact warning indicator */}
                   <TableCell 
                     className="sticky left-0 bg-card z-10 p-2 cursor-pointer"
                     onClick={() => handleRowClick(row)}
                   >
-                    <div className="flex items-center gap-1.5">
-                      <Pencil size={14} className="text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
-                      {initiativeIncomplete && (() => {
-                        const missingFields = getMissingInitiativeFields(row);
-                        return (
-                          <div className="flex items-center gap-1 text-amber-600 dark:text-amber-500">
-                            <AlertTriangle size={12} className="flex-shrink-0" />
-                            <span className="text-xs truncate">
-                              {missingFields.length <= 2 
-                                ? missingFields.join(', ')
-                                : `${missingFields.length} поля`
-                              }
-                            </span>
-                          </div>
-                        );
-                      })()}
+                    <div className="flex items-center gap-1">
+                      <Pencil size={14} className="opacity-0 group-hover:opacity-100 text-muted-foreground group-hover:text-primary transition-all flex-shrink-0" />
+                      {initiativeIncomplete && (
+                        <div className="flex items-center gap-0.5 text-amber-600 dark:text-amber-500">
+                          <AlertTriangle size={12} className="flex-shrink-0" />
+                          <span className="text-xs font-medium">{getMissingInitiativeFields(row).length}</span>
+                        </div>
+                      )}
                     </div>
                   </TableCell>
 
                   {/* Unit - clickable link style */}
-                  <TableCell 
-                    className="sticky left-[140px] bg-card z-10 p-2 cursor-pointer"
-                    onClick={() => handleRowClick(row)}
-                  >
-                    <span className="text-xs text-primary hover:underline">{row.unit}</span>
-                  </TableCell>
+                  {!hideUnitTeamColumns && (
+                    <TableCell 
+                      className="sticky left-[60px] bg-card z-10 p-2 cursor-pointer"
+                      onClick={() => handleRowClick(row)}
+                    >
+                      <span className="text-xs text-primary hover:underline">{row.unit}</span>
+                    </TableCell>
+                  )}
 
                   {/* Team - clickable link style */}
-                  <TableCell 
-                    className="sticky left-[230px] bg-card z-10 p-2 cursor-pointer"
-                    onClick={() => handleRowClick(row)}
-                  >
-                    <span className="text-xs text-primary hover:underline">{row.team || '—'}</span>
-                  </TableCell>
+                  {!hideUnitTeamColumns && (
+                    <TableCell 
+                      className="sticky left-[150px] bg-card z-10 p-2 cursor-pointer"
+                      onClick={() => handleRowClick(row)}
+                    >
+                      <span className="text-xs text-primary hover:underline">{row.team || '—'}</span>
+                    </TableCell>
+                  )}
 
                   {/* Initiative - clickable link style */}
                   <TableCell 
-                    className="sticky left-[330px] bg-card z-10 p-2 cursor-pointer"
+                    className={`sticky ${hideUnitTeamColumns ? 'left-[60px]' : 'left-[250px]'} bg-card z-10 p-2 cursor-pointer`}
                     onClick={() => handleRowClick(row)}
                   >
                     <span className="text-xs text-primary hover:underline truncate block max-w-[150px]">

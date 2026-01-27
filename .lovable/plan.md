@@ -1,382 +1,424 @@
 
-# План: Создание схемы базы данных для инициатив
+# План: Адаптация Admin.tsx для работы с Supabase
 
 ## Обзор
 
-Создание полноценной схемы PostgreSQL для хранения данных инициатив с:
-- Полной историей изменений (аудит)
-- Защитой по домену @dodobrands.io через RLS
-- Профилями пользователей
-- Совместимостью с существующей структурой данных
+Переход от клиентского хранения данных (localStorage + CSV) к серверной персистенции через Supabase с сохранением CSV-экспорта как backup-функционала.
 
 ---
 
-## Схема базы данных
+## Архитектурные изменения
 
-### Таблица 1: profiles (профили пользователей)
+### Текущая архитектура
 
-Автоматически создается при первом входе через Google OAuth.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| id | UUID | Ссылка на auth.users(id) |
-| email | TEXT | Email пользователя |
-| full_name | TEXT | Полное имя (из Google) |
-| avatar_url | TEXT | URL аватара (из Google) |
-| created_at | TIMESTAMPTZ | Время создания |
-
-### Таблица 2: initiatives (инициативы)
-
-Основная таблица данных, соответствует `AdminDataRow` из кода.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| id | UUID | Первичный ключ |
-| unit | TEXT | Юнит (Client Platform, etc.) |
-| team | TEXT | Команда (Auth&Security, Menu, etc.) |
-| initiative | TEXT | Название инициативы |
-| initiative_type | TEXT | Product / Stream / Enabler |
-| stakeholders_list | TEXT[] | Массив стейкхолдеров |
-| description | TEXT | Описание |
-| documentation_link | TEXT | Ссылка на документацию |
-| stakeholders | TEXT | Legacy поле (для совместимости) |
-| quarterly_data | JSONB | Данные по кварталам |
-| created_at | TIMESTAMPTZ | Время создания |
-| created_by | UUID | Кто создал |
-| updated_at | TIMESTAMPTZ | Время изменения |
-| updated_by | UUID | Кто изменил |
-
-**Структура quarterly_data (JSONB):**
-```json
-{
-  "2025-Q1": {
-    "cost": 532274,
-    "otherCosts": 58632,
-    "support": false,
-    "onTrack": true,
-    "metricPlan": "Снижение latency на 10%",
-    "metricFact": "Latency снижен на 12%",
-    "comment": "Успешный старт",
-    "effortCoefficient": 25
-  },
-  "2025-Q2": { ... }
-}
+```text
+┌─────────────────────────────────────────────────────────┐
+│                      Admin.tsx                          │
+│  ┌──────────────┐  ┌───────────────┐  ┌──────────────┐ │
+│  │  CSV Upload  │──│ React State   │──│ CSV Download │ │
+│  └──────────────┘  └───────────────┘  └──────────────┘ │
+│                           │                             │
+│                    ┌──────▼──────┐                      │
+│                    │ localStorage │ (autosave)          │
+│                    └─────────────┘                      │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Таблица 3: initiative_history (история изменений)
+### Целевая архитектура
 
-Полный аудит всех изменений для возможности отката.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| id | UUID | Первичный ключ |
-| initiative_id | UUID | Ссылка на инициативу |
-| changed_by | UUID | Кто изменил |
-| changed_at | TIMESTAMPTZ | Когда изменил |
-| change_type | TEXT | create / update / delete |
-| field_name | TEXT | Какое поле изменилось |
-| old_value | JSONB | Старое значение |
-| new_value | JSONB | Новое значение |
+```text
+┌─────────────────────────────────────────────────────────┐
+│                      Admin.tsx                          │
+│  ┌──────────────┐  ┌───────────────┐  ┌──────────────┐ │
+│  │ CSV Import   │──│ React Query   │──│ CSV Export   │ │
+│  │  (one-time)  │  │    Cache      │  │   (backup)   │ │
+│  └──────────────┘  └───────────────┘  └──────────────┘ │
+│                           │                             │
+│               ┌───────────▼───────────┐                 │
+│               │      useInitiatives   │                 │
+│               │    (custom hooks)     │                 │
+│               └───────────────────────┘                 │
+│                           │                             │
+│               ┌───────────▼───────────┐                 │
+│               │   Supabase Database   │                 │
+│               │  (initiatives table)  │                 │
+│               └───────────────────────┘                 │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Row Level Security (RLS)
+## Новые компоненты
 
-### Принцип защиты
+### 1. Хук useInitiatives
 
-Все пользователи с email, заканчивающимся на `@dodobrands.io`, получают полный доступ (SELECT, INSERT, UPDATE, DELETE).
+Основной хук для работы с данными инициатив.
 
-### Функция проверки домена
+**Файл**: `src/hooks/useInitiatives.ts`
 
-```sql
-CREATE OR REPLACE FUNCTION public.is_dodo_employee()
-RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN (
-    SELECT (auth.jwt() ->> 'email') LIKE '%@dodobrands.io'
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-```
+**Функциональность**:
+- Загрузка всех инициатив из Supabase
+- Кэширование через React Query
+- Фильтрация по Unit/Team на клиенте
+- Обработка ошибок и состояния загрузки
 
-### Политики для таблицы initiatives
+**Интерфейс**:
 
-| Операция | Условие |
-|----------|---------|
-| SELECT | `is_dodo_employee() = true` |
-| INSERT | `is_dodo_employee() = true` |
-| UPDATE | `is_dodo_employee() = true` |
-| DELETE | `is_dodo_employee() = true` |
+| Метод | Описание |
+|-------|----------|
+| `data` | Массив инициатив (AdminDataRow[]) |
+| `isLoading` | Флаг загрузки |
+| `error` | Объект ошибки |
+| `refetch` | Принудительная перезагрузка |
 
-### Политики для таблицы initiative_history
+### 2. Хук useInitiativeMutations
 
-| Операция | Условие |
-|----------|---------|
-| SELECT | `is_dodo_employee() = true` |
-| INSERT | `is_dodo_employee() = true` |
+Хук для CRUD-операций с автосохранением.
 
-### Политики для таблицы profiles
+**Файл**: `src/hooks/useInitiativeMutations.ts`
 
-| Операция | Условие |
-|----------|---------|
-| SELECT | `is_dodo_employee() = true` |
-| INSERT | `auth.uid() = id` (только свой профиль) |
-| UPDATE | `auth.uid() = id` (только свой профиль) |
+**Функциональность**:
+- Создание новой инициативы
+- Обновление полей инициативы (с debounce)
+- Обновление квартальных данных (с debounce)
+- Удаление инициативы
+- Запись в initiative_history
+
+**Интерфейс**:
+
+| Метод | Параметры | Описание |
+|-------|-----------|----------|
+| `createInitiative` | data | Создание новой записи |
+| `updateInitiative` | id, field, value | Обновление поля |
+| `updateQuarterData` | id, quarter, field, value | Обновление квартальных данных |
+| `deleteInitiative` | id | Удаление записи |
+| `isSaving` | - | Флаг сохранения |
+| `pendingChanges` | - | Количество несохраненных изменений |
+
+### 3. Хук useCSVExport
+
+Хук для экспорта данных в CSV (backup функционал).
+
+**Файл**: `src/hooks/useCSVExport.ts`
+
+**Функциональность**:
+- Экспорт всех инициатив в CSV
+- Экспорт отфильтрованных инициатив
+- Форматирование данных для Excel
 
 ---
 
-## Автоматизация
+## Изменения в существующих файлах
 
-### Триггер: Автообновление updated_at
+### Admin.tsx
 
-При любом UPDATE на таблице initiatives автоматически обновляется поле `updated_at`.
+**Удаляется**:
+- localStorage логика (STORAGE_KEY, DraftData, autosave interval)
+- Локальное состояние rawData/originalData (заменяется React Query)
+- modifiedIds (заменяется optimistic updates)
+- Диалог восстановления черновика
+- handleFileUpload как основной источник данных
 
-```sql
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-```
+**Добавляется**:
+- Использование useInitiatives для загрузки данных
+- Использование useInitiativeMutations для изменений
+- CSV Import как одноразовая миграция (отдельная кнопка)
+- Индикатор автосохранения в header
+- Обработка состояний loading/error
 
-### Триггер: Запись истории изменений
+**Сохраняется**:
+- Фильтрация по Unit/Team
+- UI таблицы и диалогов
+- CSV Export функционал
 
-При UPDATE на initiatives автоматически создается запись в initiative_history.
+### AdminHeader.tsx
 
-```sql
-CREATE OR REPLACE FUNCTION log_initiative_changes()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Записываем изменения для каждого поля
-  IF OLD.initiative IS DISTINCT FROM NEW.initiative THEN
-    INSERT INTO initiative_history (...)
-    VALUES (..., 'initiative', OLD.initiative, NEW.initiative);
-  END IF;
-  -- ... аналогично для остальных полей
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-```
+**Изменения**:
+- Заменить индикатор "X изменено" на индикатор синхронизации
+- Добавить статус автосохранения (Saving... / Saved / Error)
+- Кнопка "Загрузить CSV" становится "Импорт CSV" (одноразовая миграция)
 
-### Триггер: Автосоздание профиля
+### adminDataManager.ts
 
-При регистрации нового пользователя через auth.users автоматически создается запись в profiles.
+**Сохраняется**:
+- Типы данных (AdminDataRow, AdminQuarterData)
+- INITIATIVE_TYPES, STAKEHOLDERS_LIST константы
+- Утилиты фильтрации (filterData, getUniqueUnits, getTeamsForUnits)
+- CSV парсинг (для импорта)
+- CSV экспорт (для backup)
+
+**Добавляется**:
+- Функция конвертации DB Row → AdminDataRow
+- Функция конвертации AdminDataRow → DB Insert/Update
+
+---
+
+## Стратегия автосохранения
+
+### Debounce механизм
+
+Изменения сохраняются автоматически с задержкой:
+
+| Тип изменения | Debounce | Причина |
+|---------------|----------|---------|
+| Текстовые поля | 1000ms | Ожидание завершения ввода |
+| Switch/Toggle | 0ms | Мгновенное сохранение |
+| Числовые поля | 500ms | Быстрее текста |
+
+### Optimistic Updates
+
+1. Пользователь изменяет поле
+2. UI обновляется мгновенно (optimistic)
+3. Запрос отправляется с debounce
+4. При ошибке — откат + уведомление
+
+### Индикация состояния
+
+| Состояние | Индикатор |
+|-----------|-----------|
+| Синхронизировано | Зеленая галочка |
+| Сохраняется... | Спиннер |
+| Ошибка синхронизации | Красный значок + retry |
+| Нет подключения | Offline режим |
+
+---
+
+## Миграция данных
+
+### Сценарий: Импорт существующего CSV
+
+1. Пользователь нажимает "Импорт CSV"
+2. Выбирает файл portfolio.csv
+3. Диалог подтверждения с предупреждением
+4. Парсинг CSV → массив инициатив
+5. Batch INSERT в Supabase
+6. Запись в history (change_type: 'create')
+7. Обновление UI
+
+### Защита от дублирования
+
+При импорте проверяется уникальность по (unit, team, initiative).
+Если запись существует — предлагается:
+- Пропустить дубликат
+- Обновить существующую запись
+- Отменить импорт
 
 ---
 
 ## Этапы реализации
 
-### Шаг 1: Создание таблицы profiles
+### Шаг 1: Создание хука useInitiatives
 
-- Таблица с базовыми полями (id, email, full_name, avatar_url)
-- Ссылка на auth.users(id)
-- RLS политики для доступа
+- Подключение к Supabase
+- Загрузка данных из таблицы initiatives
+- Маппинг DB Row → AdminDataRow
+- Интеграция с React Query
+- Обработка ошибок RLS
 
-### Шаг 2: Создание таблицы initiatives  
+### Шаг 2: Создание хука useInitiativeMutations
 
-- Все поля из AdminDataRow
-- quarterly_data как JSONB
-- Индексы по unit, team для быстрой фильтрации
-- RLS политики для @dodobrands.io
+- CRUD операции через Supabase
+- Debounce для текстовых полей
+- Optimistic updates
+- Запись в initiative_history
+- Обработка конфликтов
 
-### Шаг 3: Создание таблицы initiative_history
+### Шаг 3: Создание хука useCSVExport
 
-- Связь с initiatives (ON DELETE CASCADE)
-- RLS политики для чтения истории
+- Экспорт данных в формате текущего CSV
+- Поддержка фильтрованного экспорта
+- BOM для Excel совместимости
 
-### Шаг 4: Создание функций и триггеров
+### Шаг 4: Рефакторинг Admin.tsx
 
-- Функция is_dodo_employee() для RLS
-- Триггер updated_at
-- Триггер для записи истории
-- Триггер для автосоздания профиля
+- Удаление localStorage логики
+- Интеграция новых хуков
+- Обновление UI состояний
+- Добавление индикатора синхронизации
+
+### Шаг 5: Обновление AdminHeader.tsx
+
+- Индикатор статуса синхронизации
+- Кнопка импорта CSV
+- Кнопка экспорта CSV (backup)
+
+### Шаг 6: Функционал импорта CSV
+
+- Одноразовый импорт из файла
+- Валидация данных
+- Batch insert с прогрессом
+- Обработка дубликатов
 
 ---
 
 ## Техническая информация
 
-### SQL миграция (будет выполнена)
+### Структура хука useInitiatives
 
-```sql
--- 1. Функция проверки домена
-CREATE OR REPLACE FUNCTION public.is_dodo_employee()
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  RETURN (
-    SELECT COALESCE(
-      (auth.jwt() ->> 'email') LIKE '%@dodobrands.io',
-      false
-    )
-  );
-END;
-$$;
+```typescript
+// src/hooks/useInitiatives.ts
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
+import { Tables } from '@/integrations/supabase/types';
 
--- 2. Таблица profiles
-CREATE TABLE public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT NOT NULL,
-  full_name TEXT,
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+type DBInitiative = Tables<'initiatives'>;
 
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+// Конвертация из DB формата в клиентский формат
+function dbToAdminRow(db: DBInitiative): AdminDataRow {
+  const quarterlyData = (db.quarterly_data as Record<string, AdminQuarterData>) || {};
+  
+  return {
+    id: db.id,
+    unit: db.unit,
+    team: db.team,
+    initiative: db.initiative,
+    initiativeType: (db.initiative_type || '') as AdminDataRow['initiativeType'],
+    stakeholdersList: db.stakeholders_list || [],
+    description: db.description || '',
+    documentationLink: db.documentation_link || '',
+    stakeholders: db.stakeholders || '',
+    quarterlyData,
+  };
+}
 
--- 3. Таблица initiatives  
-CREATE TABLE public.initiatives (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  unit TEXT NOT NULL,
-  team TEXT NOT NULL,
-  initiative TEXT NOT NULL,
-  initiative_type TEXT CHECK (initiative_type IN ('Product', 'Stream', 'Enabler', '')),
-  stakeholders_list TEXT[] DEFAULT '{}',
-  description TEXT DEFAULT '',
-  documentation_link TEXT DEFAULT '',
-  stakeholders TEXT DEFAULT '',
-  quarterly_data JSONB NOT NULL DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  created_by UUID REFERENCES auth.users(id),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_by UUID REFERENCES auth.users(id)
-);
-
-ALTER TABLE public.initiatives ENABLE ROW LEVEL SECURITY;
-
--- Индексы для производительности
-CREATE INDEX idx_initiatives_unit ON public.initiatives(unit);
-CREATE INDEX idx_initiatives_team ON public.initiatives(team);
-CREATE INDEX idx_initiatives_unit_team ON public.initiatives(unit, team);
-
--- 4. Таблица initiative_history
-CREATE TABLE public.initiative_history (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  initiative_id UUID REFERENCES public.initiatives(id) ON DELETE CASCADE,
-  changed_by UUID REFERENCES auth.users(id),
-  changed_at TIMESTAMPTZ DEFAULT NOW(),
-  change_type TEXT NOT NULL CHECK (change_type IN ('create', 'update', 'delete')),
-  field_name TEXT,
-  old_value JSONB,
-  new_value JSONB
-);
-
-ALTER TABLE public.initiative_history ENABLE ROW LEVEL SECURITY;
-
-CREATE INDEX idx_history_initiative ON public.initiative_history(initiative_id);
-CREATE INDEX idx_history_changed_at ON public.initiative_history(changed_at DESC);
-
--- 5. RLS политики
--- profiles
-CREATE POLICY "Dodo employees can view profiles"
-ON public.profiles FOR SELECT
-TO authenticated
-USING (public.is_dodo_employee());
-
-CREATE POLICY "Users can insert own profile"
-ON public.profiles FOR INSERT
-TO authenticated
-WITH CHECK (auth.uid() = id);
-
-CREATE POLICY "Users can update own profile"
-ON public.profiles FOR UPDATE
-TO authenticated
-USING (auth.uid() = id);
-
--- initiatives
-CREATE POLICY "Dodo employees can view initiatives"
-ON public.initiatives FOR SELECT
-TO authenticated
-USING (public.is_dodo_employee());
-
-CREATE POLICY "Dodo employees can create initiatives"
-ON public.initiatives FOR INSERT
-TO authenticated
-WITH CHECK (public.is_dodo_employee());
-
-CREATE POLICY "Dodo employees can update initiatives"
-ON public.initiatives FOR UPDATE
-TO authenticated
-USING (public.is_dodo_employee());
-
-CREATE POLICY "Dodo employees can delete initiatives"
-ON public.initiatives FOR DELETE
-TO authenticated
-USING (public.is_dodo_employee());
-
--- initiative_history
-CREATE POLICY "Dodo employees can view history"
-ON public.initiative_history FOR SELECT
-TO authenticated
-USING (public.is_dodo_employee());
-
-CREATE POLICY "Dodo employees can insert history"
-ON public.initiative_history FOR INSERT
-TO authenticated
-WITH CHECK (public.is_dodo_employee());
-
--- 6. Триггеры
-CREATE OR REPLACE FUNCTION public.update_updated_at()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  NEW.updated_by = auth.uid();
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER trigger_initiatives_updated_at
-  BEFORE UPDATE ON public.initiatives
-  FOR EACH ROW
-  EXECUTE FUNCTION public.update_updated_at();
-
--- Триггер для автосоздания профиля
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  INSERT INTO public.profiles (id, email, full_name, avatar_url)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    NEW.raw_user_meta_data ->> 'full_name',
-    NEW.raw_user_meta_data ->> 'avatar_url'
-  );
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION public.handle_new_user();
+export function useInitiatives() {
+  return useQuery({
+    queryKey: ['initiatives'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('initiatives')
+        .select('*')
+        .order('unit')
+        .order('team')
+        .order('initiative');
+      
+      if (error) throw error;
+      return (data || []).map(dbToAdminRow);
+    },
+  });
+}
 ```
+
+### Структура хука useInitiativeMutations
+
+```typescript
+// src/hooks/useInitiativeMutations.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useRef, useCallback } from 'react';
+import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
+
+export function useInitiativeMutations() {
+  const queryClient = useQueryClient();
+  const debounceTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+  // Mutation для обновления инициативы
+  const updateMutation = useMutation({
+    mutationFn: async ({ 
+      id, 
+      field, 
+      value 
+    }: { 
+      id: string; 
+      field: string; 
+      value: unknown;
+    }) => {
+      const { error } = await supabase
+        .from('initiatives')
+        .update({ [field]: value })
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onMutate: async (variables) => {
+      // Optimistic update
+      await queryClient.cancelQueries({ queryKey: ['initiatives'] });
+      const previous = queryClient.getQueryData(['initiatives']);
+      
+      queryClient.setQueryData(['initiatives'], (old: AdminDataRow[] | undefined) => 
+        (old || []).map(row => 
+          row.id === variables.id 
+            ? { ...row, [variables.field]: variables.value }
+            : row
+        )
+      );
+      
+      return { previous };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previous) {
+        queryClient.setQueryData(['initiatives'], context.previous);
+      }
+    },
+  });
+
+  // Debounced update
+  const debouncedUpdate = useCallback((
+    id: string, 
+    field: string, 
+    value: unknown, 
+    delay = 1000
+  ) => {
+    const key = `${id}-${field}`;
+    
+    // Cancel previous timer
+    const existing = debounceTimers.current.get(key);
+    if (existing) clearTimeout(existing);
+    
+    // Set new timer
+    const timer = setTimeout(() => {
+      updateMutation.mutate({ id, field, value });
+      debounceTimers.current.delete(key);
+    }, delay);
+    
+    debounceTimers.current.set(key, timer);
+  }, [updateMutation]);
+
+  return {
+    updateInitiative: debouncedUpdate,
+    createInitiative: createMutation.mutateAsync,
+    deleteInitiative: deleteMutation.mutateAsync,
+    isSaving: updateMutation.isPending,
+    pendingChanges: debounceTimers.current.size,
+  };
+}
+```
+
+### Маппинг полей DB ↔ Client
+
+| DB Column | Client Field | Тип |
+|-----------|--------------|-----|
+| id | id | UUID |
+| unit | unit | string |
+| team | team | string |
+| initiative | initiative | string |
+| initiative_type | initiativeType | string |
+| stakeholders_list | stakeholdersList | string[] |
+| description | description | string |
+| documentation_link | documentationLink | string |
+| stakeholders | stakeholders | string |
+| quarterly_data | quarterlyData | JSONB → Record |
 
 ---
 
 ## Результат
 
-После применения миграции:
+После реализации:
 
-1. База данных готова к хранению инициатив
-2. Любой пользователь без @dodobrands.io не увидит данные
-3. История изменений записывается автоматически
-4. Профили создаются при первом входе
-5. Можно переходить к настройке Google OAuth
+1. Данные хранятся в Supabase, доступны всем сотрудникам @dodobrands.io
+2. Изменения сохраняются автоматически с debounce
+3. История всех изменений записывается для аудита
+4. CSV экспорт остается как backup функционал
+5. Одноразовый CSV импорт для миграции существующих данных
+6. Offline-first UX с optimistic updates
 
 ---
 
-## Следующие шаги после миграции
+## Следующие шаги после реализации
 
-1. Настройка Google OAuth (потребуются credentials от IT)
-2. Адаптация Admin.tsx для работы с базой данных
-3. Одноразовая миграция данных из CSV
+1. Тестирование с реальными данными
+2. Настройка Google OAuth credentials
+3. Одноразовая миграция из portfolio.csv
+4. Переход к Stage 3 (People/Coefficients)

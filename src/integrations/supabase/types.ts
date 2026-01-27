@@ -14,13 +14,128 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      initiative_history: {
+        Row: {
+          change_type: string
+          changed_at: string | null
+          changed_by: string | null
+          field_name: string | null
+          id: string
+          initiative_id: string | null
+          new_value: Json | null
+          old_value: Json | null
+        }
+        Insert: {
+          change_type: string
+          changed_at?: string | null
+          changed_by?: string | null
+          field_name?: string | null
+          id?: string
+          initiative_id?: string | null
+          new_value?: Json | null
+          old_value?: Json | null
+        }
+        Update: {
+          change_type?: string
+          changed_at?: string | null
+          changed_by?: string | null
+          field_name?: string | null
+          id?: string
+          initiative_id?: string | null
+          new_value?: Json | null
+          old_value?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "initiative_history_initiative_id_fkey"
+            columns: ["initiative_id"]
+            isOneToOne: false
+            referencedRelation: "initiatives"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      initiatives: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          documentation_link: string | null
+          id: string
+          initiative: string
+          initiative_type: string | null
+          quarterly_data: Json
+          stakeholders: string | null
+          stakeholders_list: string[] | null
+          team: string
+          unit: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          documentation_link?: string | null
+          id?: string
+          initiative: string
+          initiative_type?: string | null
+          quarterly_data?: Json
+          stakeholders?: string | null
+          stakeholders_list?: string[] | null
+          team: string
+          unit: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          documentation_link?: string | null
+          id?: string
+          initiative?: string
+          initiative_type?: string | null
+          quarterly_data?: Json
+          stakeholders?: string | null
+          stakeholders_list?: string[] | null
+          team?: string
+          unit?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_dodo_employee: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

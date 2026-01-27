@@ -20,6 +20,8 @@ interface QuarterCellProps {
   isModified?: boolean;
   expandedView?: boolean;
   teamEffort?: { total: number; isValid: boolean };
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }
 
 // Get list of missing required fields
@@ -30,8 +32,7 @@ const getMissingFields = (data: AdminQuarterData): string[] => {
   return missing;
 };
 
-const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEffort }: QuarterCellProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEffort, isExpanded, onToggleExpand }: QuarterCellProps) => {
   const [isEditingEffort, setIsEditingEffort] = useState(false);
   const [effortInputValue, setEffortInputValue] = useState('');
 
@@ -59,11 +60,11 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
     // Don't toggle if clicking on interactive elements
     const target = e.target as HTMLElement;
     if (target.closest('input, button, [role="switch"]')) return;
-    setIsOpen(!isOpen);
+    onToggleExpand();
   };
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+    <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
       <TooltipProvider delayDuration={100}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -126,15 +127,15 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                   className="h-6 w-6 p-0"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setIsOpen(!isOpen);
+                    onToggleExpand();
                   }}
                 >
-                  {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </Button>
               </div>
 
               {/* Expanded View Preview - shown when toggle is on */}
-              {expandedView && !isOpen && (
+              {expandedView && !isExpanded && (
                 <div className="text-xs text-muted-foreground space-y-1">
                   {data.metricPlan && (
                     <div className="line-clamp-1">

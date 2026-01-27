@@ -1,98 +1,203 @@
 
-# План: Упрощённый UX для Effort %
+# План: Комплексное улучшение UX Admin Panel
 
-## Что меняем
+## Что делаем
 
-1. **Убираем Slider** — заменяем на простой `<input type="number">`
-2. **Кликабельная вся ячейка** — раскрытие по клику на любую область
-3. **Inline-редактирование badge** — клик на процент в компактном виде открывает input
+1. **localStorage автосохранение** — защита от потери данных
+2. **Hover-only карандаш** — меньше визуального шума
+3. **Динамическая навигация** — заглушка без выбора Unit/Team, скрытие колонок после выбора
+4. **Компактный warning** — формат `⚠ 2` вместо текста
 
-## Техническая реализация
+---
 
-### Файл: `src/components/admin/QuarterCell.tsx`
+## 1. localStorage Автосохранение
 
-**1. Добавить состояние для inline-редактирования:**
+### Файл: `src/pages/Admin.tsx`
+
+**Добавить константы и состояние:**
 ```typescript
-const [isEditingEffort, setIsEditingEffort] = useState(false);
-const [effortInputValue, setEffortInputValue] = useState('');
+const STORAGE_KEY = 'admin_portfolio_draft';
+const AUTOSAVE_INTERVAL = 30000; // 30 секунд
+
+const [showRestoreDialog, setShowRestoreDialog] = useState(false);
+const [savedDraft, setSavedDraft] = useState<{...} | null>(null);
 ```
 
-**2. Сделать ячейку кликабельной:**
-- Добавить `onClick={() => setIsOpen(!isOpen)}` на внешний div
-- Добавить `cursor-pointer` и `hover:bg-muted/30`
+**Логика автосохранения (useEffect):**
+- Каждые 30 секунд сохранять `rawData`, `quarters`, `originalHeaders`, `modifiedIds` в localStorage
+- Сохранять только если есть изменения (`hasChanges`)
+- При монтировании проверять наличие черновика и показывать диалог восстановления
 
-**3. Badge → кликабельный с inline edit:**
+**Диалог восстановления:**
+```text
+┌─────────────────────────────────────────────┐
+│  Найден несохранённый черновик              │
+│                                             │
+│  Последнее изменение: 15:30, 27 янв         │
+│  Инициатив: 45                              │
+│                                             │
+│  [Восстановить]  [Удалить черновик]         │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## 2. Hover-only Карандаш
+
+### Файл: `src/components/admin/InitiativeTable.tsx`
+
+**Изменить строку 188:**
 ```tsx
-{isEditingEffort ? (
-  <Input
-    type="number"
-    value={effortInputValue}
-    onChange={...}
-    onBlur={...} // сохранить и закрыть
-    onKeyDown={...} // Enter = сохранить
-    className="w-14 h-6 text-xs"
-    autoFocus
-    onClick={(e) => e.stopPropagation()} // не раскрывать ячейку
-  />
-) : (
-  <Badge 
-    onClick={(e) => {
-      e.stopPropagation();
-      setEffortInputValue(String(effortValue));
-      setIsEditingEffort(true);
-    }}
-    className="cursor-pointer hover:bg-primary/80"
-  >
-    {effortValue}%
-  </Badge>
+// Было:
+<Pencil size={14} className="text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+
+// Станет:
+<Pencil size={14} className="opacity-0 group-hover:opacity-100 text-muted-foreground group-hover:text-primary transition-all flex-shrink-0" />
+```
+
+Карандаш появляется только при наведении на строку.
+
+---
+
+## 3. Динамическая Навигация
+
+### Файл: `src/pages/Admin.tsx`
+
+**Добавить условие для заглушки:**
+```tsx
+const needsSelection = hasData && selectedUnits.length === 0;
+```
+
+**Новый блок заглушки после ScopeSelector:**
+```text
+┌─────────────────────────────────────────────┐
+│                                             │
+│        📋 Выберите Unit и Team              │
+│                                             │
+│  Для просмотра и редактирования инициатив   │
+│  выберите Unit и Team в фильтрах выше       │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+### Файл: `src/components/admin/InitiativeTable.tsx`
+
+**Скрыть колонки Unit и Team когда выбраны фильтры:**
+
+Добавить проп `hideUnitTeamColumns`:
+```typescript
+interface InitiativeTableProps {
+  // ...existing props
+  hideUnitTeamColumns?: boolean;
+}
+```
+
+Условно рендерить колонки:
+```tsx
+{!hideUnitTeamColumns && (
+  <>
+    <TableHead className="sticky left-[140px] ...">Unit</TableHead>
+    <TableHead className="sticky left-[230px] ...">Team</TableHead>
+  </>
 )}
 ```
 
-**4. Заменить Slider на Input в развёрнутом виде:**
+Пересчитать `left` для Initiative:
 ```tsx
-<div className="flex items-center gap-2">
-  <Input
-    type="number"
-    value={effortValue || ''}
-    onChange={(e) => onChange('effortCoefficient', parseInt(e.target.value) || 0)}
-    onClick={(e) => e.stopPropagation()}
-    min={0}
-    max={100}
-    className="w-20 h-8"
-  />
-  <span className="text-xs text-muted-foreground">%</span>
-</div>
+// Если колонки скрыты: left-[140px] вместо left-[330px]
+<TableHead className={`sticky ${hideUnitTeamColumns ? 'left-[140px]' : 'left-[330px]'} ...`}>
 ```
 
-### Файл: `src/components/admin/InitiativeDetailDialog.tsx`
+**Экономия места: ~190px**
 
-**Заменить Slider на Input** в каждой секции квартала (аналогично QuarterCell)
+---
 
-## Визуальный результат
+## 4. Компактный Warning
 
-### Компактный вид
+### Файл: `src/components/admin/InitiativeTable.tsx`
+
+**Заменить блок warning (строки 189-202):**
+```tsx
+// Было:
+{initiativeIncomplete && (() => {
+  const missingFields = getMissingInitiativeFields(row);
+  return (
+    <div className="flex items-center gap-1 text-amber-600">
+      <AlertTriangle size={12} />
+      <span className="text-xs truncate">
+        {missingFields.length <= 2 
+          ? missingFields.join(', ')
+          : `${missingFields.length} поля`
+        }
+      </span>
+    </div>
+  );
+})()}
+
+// Станет:
+{initiativeIncomplete && (
+  <div className="flex items-center gap-0.5 text-amber-600">
+    <AlertTriangle size={12} />
+    <span className="text-xs font-medium">{getMissingInitiativeFields(row).length}</span>
+  </div>
+)}
 ```
-┌─────────────────────────────────────┐
-│ ● 500K ₽   [25%]←клик   S    ▼     │  ← вся область кликабельна
-└─────────────────────────────────────┘
+
+**Визуальный результат:**
+```text
+До:    ✎ ⚠ Тип, Стейкх.     (много места)
+После: ✎ ⚠ 2               (компактно)
 ```
 
-### Развёрнутый вид
-```
-┌─────────────────────────────────────┐
-│ Коэфф. трудозатрат:                 │
-│ [  25  ] %                          │  ← простой input
-│ Всего: 85% ✓                        │
-│ ...                                 │
-└─────────────────────────────────────┘
+**Уменьшить ширину первой колонки:**
+```tsx
+// Было:
+<TableHead className="sticky left-0 bg-card z-10 min-w-[140px] w-[140px]">
+
+// Станет:
+<TableHead className="sticky left-0 bg-card z-10 min-w-[60px] w-[60px]">
 ```
 
-## Файлы
+---
+
+## Файлы для изменения
 
 | Файл | Изменения |
 |------|-----------|
-| `src/components/admin/QuarterCell.tsx` | + inline edit badge, + кликабельная область, − slider → input |
-| `src/components/admin/InitiativeDetailDialog.tsx` | − slider → input |
+| `src/pages/Admin.tsx` | + localStorage автосохранение, + диалог восстановления, + заглушка без выбора Unit |
+| `src/components/admin/InitiativeTable.tsx` | + hover-only карандаш, + скрытие колонок Unit/Team, + компактный warning `⚠ N` |
+
+---
+
+## Визуальный результат
+
+### До выбора Unit/Team:
+```text
+┌─ Фильтры ──────────────────────────────────┐
+│ Unit: [▼ Выберите]   Team: [▼ Выберите]    │
+└────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│                                             │
+│     Выберите Unit и Team для просмотра      │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+### После выбора (Unit/Team колонки скрыты):
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│    │ Initiative          │ Type  │ Stakeh. │ ...  │ Q1  │ Q2   │
+├─────────────────────────────────────────────────────────────────┤
+│ ✎  │ Payment System      │ Prod  │ S, A    │ ...  │ ... │ ...  │
+│⚠ 2 │ Auth Refactor       │ —     │ —       │ ...  │ ... │ ...  │
+│ ✎  │ Mobile App          │ Strm  │ M       │ ...  │ ... │ ...  │
+└─────────────────────────────────────────────────────────────────┘
+  ↑                               
+  карандаш появляется при hover   
+```
+
+---
 
 ## Оценка
-~4-5 кредитов (2 файла, простые изменения)
+~6-8 кредитов (2 файла, комплексные изменения)

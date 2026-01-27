@@ -1,162 +1,127 @@
 
-# План: Комплексное улучшение UX Admin Panel
+# План: Синхронное раскрытие всех кварталов инициативы
 
-## Что делаем
+## Что меняем
 
-1. **localStorage автосохранение** — защита от потери данных
-2. **Hover-only карандаш** — меньше визуального шума
-3. **Динамическая навигация** — заглушка без выбора Unit/Team, скрытие колонок после выбора
-4. **Компактный warning** — формат `⚠ 2` вместо текста
+При клике на любой квартал — раскрываются ВСЕ кварталы этой инициативы одновременно.
+
+## Почему это хорошее UX решение
+
+- **Меньше кликов**: 1 вместо 4-5 для доступа ко всем полям
+- **Визуальная консистентность**: все ячейки строки одной высоты
+- **Контекст заполнения**: обычно нужны все кварталы сразу
+- **Эффективность**: строка всё равно расширяется
 
 ---
 
-## 1. localStorage Автосохранение
+## Техническая реализация
 
-### Файл: `src/pages/Admin.tsx`
+### 1. InitiativeTable.tsx — состояние раскрытых строк
 
-**Добавить константы и состояние:**
+**Добавить состояние:**
 ```typescript
-const STORAGE_KEY = 'admin_portfolio_draft';
-const AUTOSAVE_INTERVAL = 30000; // 30 секунд
+const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(new Set());
 
-const [showRestoreDialog, setShowRestoreDialog] = useState(false);
-const [savedDraft, setSavedDraft] = useState<{...} | null>(null);
+const toggleRowExpanded = (id: string) => {
+  setExpandedRowIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    return next;
+  });
+};
 ```
 
-**Логика автосохранения (useEffect):**
-- Каждые 30 секунд сохранять `rawData`, `quarters`, `originalHeaders`, `modifiedIds` в localStorage
-- Сохранять только если есть изменения (`hasChanges`)
-- При монтировании проверять наличие черновика и показывать диалог восстановления
-
-**Диалог восстановления:**
-```text
-┌─────────────────────────────────────────────┐
-│  Найден несохранённый черновик              │
-│                                             │
-│  Последнее изменение: 15:30, 27 янв         │
-│  Инициатив: 45                              │
-│                                             │
-│  [Восстановить]  [Удалить черновик]         │
-└─────────────────────────────────────────────┘
-```
-
----
-
-## 2. Hover-only Карандаш
-
-### Файл: `src/components/admin/InitiativeTable.tsx`
-
-**Изменить строку 188:**
+**Изменить рендер QuarterCell:**
 ```tsx
-// Было:
-<Pencil size={14} className="text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
-
-// Станет:
-<Pencil size={14} className="opacity-0 group-hover:opacity-100 text-muted-foreground group-hover:text-primary transition-all flex-shrink-0" />
+<QuarterCell
+  quarter={q}
+  data={row.quarterlyData[q] || {...}}
+  onChange={(field, value) => onQuarterDataChange(row.id, q, field, value)}
+  isModified={modifiedIds.has(row.id)}
+  expandedView={expandedView}
+  teamEffort={teamEffort}
+  // Новые пропсы:
+  isExpanded={expandedRowIds.has(row.id)}
+  onToggleExpand={() => toggleRowExpanded(row.id)}
+/>
 ```
 
-Карандаш появляется только при наведении на строку.
+### 2. QuarterCell.tsx — использование внешнего состояния
 
----
-
-## 3. Динамическая Навигация
-
-### Файл: `src/pages/Admin.tsx`
-
-**Добавить условие для заглушки:**
-```tsx
-const needsSelection = hasData && selectedUnits.length === 0;
-```
-
-**Новый блок заглушки после ScopeSelector:**
-```text
-┌─────────────────────────────────────────────┐
-│                                             │
-│        📋 Выберите Unit и Team              │
-│                                             │
-│  Для просмотра и редактирования инициатив   │
-│  выберите Unit и Team в фильтрах выше       │
-│                                             │
-└─────────────────────────────────────────────┘
-```
-
-### Файл: `src/components/admin/InitiativeTable.tsx`
-
-**Скрыть колонки Unit и Team когда выбраны фильтры:**
-
-Добавить проп `hideUnitTeamColumns`:
+**Изменить интерфейс:**
 ```typescript
-interface InitiativeTableProps {
-  // ...existing props
-  hideUnitTeamColumns?: boolean;
+interface QuarterCellProps {
+  quarter: string;
+  data: AdminQuarterData;
+  onChange: (...) => void;
+  isModified?: boolean;
+  expandedView?: boolean;
+  teamEffort?: { total: number; isValid: boolean };
+  // Новые пропсы:
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }
 ```
 
-Условно рендерить колонки:
-```tsx
-{!hideUnitTeamColumns && (
-  <>
-    <TableHead className="sticky left-[140px] ...">Unit</TableHead>
-    <TableHead className="sticky left-[230px] ...">Team</TableHead>
-  </>
-)}
+**Убрать локальное состояние и использовать пропсы:**
+```typescript
+// Было:
+const [isOpen, setIsOpen] = useState(false);
+
+// Станет:
+// Используем isExpanded и onToggleExpand из пропсов
 ```
 
-Пересчитать `left` для Initiative:
+**Обновить Collapsible:**
 ```tsx
-// Если колонки скрыты: left-[140px] вместо left-[330px]
-<TableHead className={`sticky ${hideUnitTeamColumns ? 'left-[140px]' : 'left-[330px]'} ...`}>
+<Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
 ```
 
-**Экономия места: ~190px**
+**Обновить handleCellClick:**
+```typescript
+const handleCellClick = (e: React.MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (target.closest('input, button, [role="switch"]')) return;
+  onToggleExpand(); // Вместо setIsOpen(!isOpen)
+};
+```
+
+**Обновить кнопку chevron:**
+```tsx
+<Button 
+  variant="ghost" 
+  size="sm" 
+  className="h-6 w-6 p-0"
+  onClick={(e) => {
+    e.stopPropagation();
+    onToggleExpand(); // Вместо setIsOpen(!isOpen)
+  }}
+>
+  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+</Button>
+```
 
 ---
 
-## 4. Компактный Warning
+## Визуальный результат
 
-### Файл: `src/components/admin/InitiativeTable.tsx`
-
-**Заменить блок warning (строки 189-202):**
-```tsx
-// Было:
-{initiativeIncomplete && (() => {
-  const missingFields = getMissingInitiativeFields(row);
-  return (
-    <div className="flex items-center gap-1 text-amber-600">
-      <AlertTriangle size={12} />
-      <span className="text-xs truncate">
-        {missingFields.length <= 2 
-          ? missingFields.join(', ')
-          : `${missingFields.length} поля`
-        }
-      </span>
-    </div>
-  );
-})()}
-
-// Станет:
-{initiativeIncomplete && (
-  <div className="flex items-center gap-0.5 text-amber-600">
-    <AlertTriangle size={12} />
-    <span className="text-xs font-medium">{getMissingInitiativeFields(row).length}</span>
-  </div>
-)}
-```
-
-**Визуальный результат:**
+### До (текущее поведение):
 ```text
-До:    ✎ ⚠ Тип, Стейкх.     (много места)
-После: ✎ ⚠ 2               (компактно)
+│ Init A │ Q1 ▼ (развернут) │ Q2 ▶ (свёрнут) │ Q3 ▶ │ Q4 ▶ │
+│        │ [много полей]    │ [компактно]    │      │      │
 ```
+↑ Визуальный дисбаланс, 4 клика для заполнения
 
-**Уменьшить ширину первой колонки:**
-```tsx
-// Было:
-<TableHead className="sticky left-0 bg-card z-10 min-w-[140px] w-[140px]">
-
-// Станет:
-<TableHead className="sticky left-0 bg-card z-10 min-w-[60px] w-[60px]">
+### После:
+```text
+│ Init A │ Q1 ▼             │ Q2 ▼           │ Q3 ▼ │ Q4 ▼ │
+│        │ [все поля]       │ [все поля]     │ ...  │ ...  │
 ```
+↑ Консистентно, 1 клик для доступа ко всем кварталам
 
 ---
 
@@ -164,40 +129,8 @@ interface InitiativeTableProps {
 
 | Файл | Изменения |
 |------|-----------|
-| `src/pages/Admin.tsx` | + localStorage автосохранение, + диалог восстановления, + заглушка без выбора Unit |
-| `src/components/admin/InitiativeTable.tsx` | + hover-only карандаш, + скрытие колонок Unit/Team, + компактный warning `⚠ N` |
-
----
-
-## Визуальный результат
-
-### До выбора Unit/Team:
-```text
-┌─ Фильтры ──────────────────────────────────┐
-│ Unit: [▼ Выберите]   Team: [▼ Выберите]    │
-└────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────┐
-│                                             │
-│     Выберите Unit и Team для просмотра      │
-│                                             │
-└─────────────────────────────────────────────┘
-```
-
-### После выбора (Unit/Team колонки скрыты):
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│    │ Initiative          │ Type  │ Stakeh. │ ...  │ Q1  │ Q2   │
-├─────────────────────────────────────────────────────────────────┤
-│ ✎  │ Payment System      │ Prod  │ S, A    │ ...  │ ... │ ...  │
-│⚠ 2 │ Auth Refactor       │ —     │ —       │ ...  │ ... │ ...  │
-│ ✎  │ Mobile App          │ Strm  │ M       │ ...  │ ... │ ...  │
-└─────────────────────────────────────────────────────────────────┘
-  ↑                               
-  карандаш появляется при hover   
-```
-
----
+| `src/components/admin/InitiativeTable.tsx` | + состояние `expandedRowIds`, + функция `toggleRowExpanded`, передача пропсов в QuarterCell |
+| `src/components/admin/QuarterCell.tsx` | − локальное состояние `isOpen`, + пропсы `isExpanded` и `onToggleExpand` |
 
 ## Оценка
-~6-8 кредитов (2 файла, комплексные изменения)
+~3-4 кредита (простой рефакторинг состояния)

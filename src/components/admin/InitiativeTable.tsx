@@ -69,6 +69,19 @@ const InitiativeTable = ({
 }: InitiativeTableProps) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedView, setExpandedView] = useState(false);
+  const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(new Set());
+
+  const toggleRowExpanded = (id: string) => {
+    setExpandedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   // Find the current initiative from data to ensure we always have fresh data
   const selectedInitiative = selectedId ? data.find(row => row.id === selectedId) || null : null;
@@ -329,6 +342,8 @@ const InitiativeTable = ({
                           isModified={modifiedIds.has(row.id)}
                           expandedView={expandedView}
                           teamEffort={teamEffort}
+                          isExpanded={expandedRowIds.has(row.id)}
+                          onToggleExpand={() => toggleRowExpanded(row.id)}
                         />
                       </TableCell>
                     );

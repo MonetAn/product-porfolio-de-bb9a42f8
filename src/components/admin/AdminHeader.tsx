@@ -1,5 +1,5 @@
-import { ArrowLeft, Upload, Download, FileSpreadsheet, ChevronDown, Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Upload, Download, FileSpreadsheet, ChevronDown, Check, Loader2, AlertCircle, RefreshCw, Users } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -144,6 +144,13 @@ const AdminHeader = ({
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
+        <Link to="/admin/people">
+          <Button variant="outline" size="sm" className="gap-2">
+            <Users size={16} />
+            <span className="hidden sm:inline">Люди</span>
+          </Button>
+        </Link>
+        
         <Button
           variant="outline"
           size="sm"

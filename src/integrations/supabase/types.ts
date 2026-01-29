@@ -106,6 +106,155 @@ export type Database = {
         }
         Relationships: []
       }
+      people: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          email: string | null
+          external_id: string | null
+          full_name: string
+          hired_at: string | null
+          hr_structure: string | null
+          id: string
+          leader: string | null
+          position: string | null
+          team: string | null
+          terminated_at: string | null
+          unit: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          external_id?: string | null
+          full_name: string
+          hired_at?: string | null
+          hr_structure?: string | null
+          id?: string
+          leader?: string | null
+          position?: string | null
+          team?: string | null
+          terminated_at?: string | null
+          unit?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          external_id?: string | null
+          full_name?: string
+          hired_at?: string | null
+          hr_structure?: string | null
+          id?: string
+          leader?: string | null
+          position?: string | null
+          team?: string | null
+          terminated_at?: string | null
+          unit?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      person_assignment_history: {
+        Row: {
+          assignment_id: string | null
+          change_type: string
+          changed_at: string | null
+          changed_by: string | null
+          field_name: string | null
+          id: string
+          initiative_id: string | null
+          new_value: Json | null
+          old_value: Json | null
+          person_id: string | null
+        }
+        Insert: {
+          assignment_id?: string | null
+          change_type: string
+          changed_at?: string | null
+          changed_by?: string | null
+          field_name?: string | null
+          id?: string
+          initiative_id?: string | null
+          new_value?: Json | null
+          old_value?: Json | null
+          person_id?: string | null
+        }
+        Update: {
+          assignment_id?: string | null
+          change_type?: string
+          changed_at?: string | null
+          changed_by?: string | null
+          field_name?: string | null
+          id?: string
+          initiative_id?: string | null
+          new_value?: Json | null
+          old_value?: Json | null
+          person_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "person_assignment_history_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "person_initiative_assignments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      person_initiative_assignments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          initiative_id: string
+          person_id: string
+          quarterly_effort: Json
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          initiative_id: string
+          person_id: string
+          quarterly_effort?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          initiative_id?: string
+          person_id?: string
+          quarterly_effort?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "person_initiative_assignments_initiative_id_fkey"
+            columns: ["initiative_id"]
+            isOneToOne: false
+            referencedRelation: "initiatives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_initiative_assignments_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null

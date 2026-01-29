@@ -1,240 +1,198 @@
 
 
-# Исправление интерфейса страницы "Люди"
+# Добавление настроек для просмотра и редактирования данных сотрудников
 
-## Проблемы на скриншоте
+## Обнаруженная проблема с данными
 
-1. **Не скроллится страница** — контент обрезается внизу, нет возможности пролистать
-2. **Кварталы не выровнены** — заголовки кварталов (25 Q1, 25 Q2...) не совпадают с ячейками значений в строках
-3. **"12 привязок" — лишняя метрика** — теперь показываем все возможные комбинации, поэтому счётчик привязок не несёт смысла
-4. **Шаг стрелок в input = 1%** — слишком мелкий шаг, нужно 5% или 10%
+При анализе базы обнаружено **несоответствие названий** между таблицами `initiatives` и `people`:
+
+| Поле | initiatives | people | Результат |
+|------|-------------|--------|-----------|
+| Unit | `FAP` | `Franchise as a Product` | ❌ Не совпадает |
+| Team | `База Знаний` | `Drum&Base` | ❌ Не совпадает |
+| Team | `SOM (IMF)` | `Slippers of mimir` | ❌ Не совпадает |
+
+Из-за этого при выборе `FAP` в фильтре не находится ни один сотрудник — их unit в базе записан как `Franchise as a Product`.
 
 ---
 
-## Решение
+## Решение: Шестерёнка с настройками
 
-### 1. Исправить скролл
-
-Проблема в CSS-структуре:
-- `AdminPeople.tsx` использует `flex-col` и `overflow-hidden`
-- `PeopleAssignmentsTable.tsx` использует `ScrollArea` внутри `flex-1`
-
-Но высота не ограничена правильно. Нужно:
-- Добавить `h-screen` и правильные `overflow` на контейнеры
-- Убедиться что `ScrollArea` получает ограниченную высоту
-
-### 2. Выровнять кварталы с ячейками
-
-Сейчас:
-- Заголовки кварталов: `flex gap-2` с `w-[50px]`
-- Ячейки в строках: `flex gap-2` с `min-w-[50px]` или `min-w-[60px]`
-
-Проблема — разная ширина и несогласованные gap/padding. Решение:
-- Использовать **фиксированную табличную структуру** с CSS Grid
-- Левая колонка (имя/инициатива) — `flex-1`
-- Правая часть (кварталы) — фиксированная ширина на каждый квартал
+Добавить иконку ⚙️ в правый угол хедера на странице "Люди", которая открывает **дропдаун-меню** с опциями:
 
 ```text
-| Имя человека / Инициатива      | 25Q1 | 25Q2 | 25Q3 | 25Q4 | 26Q1 | ... |
-|--------------------------------|------|------|------|------|------|-----|
-| ↳ Инициатива 1                 | 40%  | 26%  | 69%  | —    | —    | ... |
+⚙️ ▾
+├── 👁️ Просмотр сотрудников
+├── ✏️ Редактирование справочника
+└── 🔄 Синонимы Unit/Team
 ```
 
-### 3. Убрать "привязок" из статистики
+---
 
-Заменить на что-то более полезное или убрать совсем:
+## Компоненты
+
+### 1. Просмотр сотрудников (PeopleListDialog)
+
+Таблица со всеми сотрудниками в БД с возможностью:
+- Фильтрация по Unit, Team
+- Поиск по имени
+- Сортировка по колонкам
+- Просмотр HR-структуры, email, дат
 
 ```text
-Было:    3 чел. • 7 инициатив • 12 привязок
-Станет:  3 чел. • 7 инициатив
+┌────────────────────────────────────────────────────────────────────────┐
+│ 👥 Справочник сотрудников                                    [×]      │
+├────────────────────────────────────────────────────────────────────────┤
+│ [🔍 Поиск...]     [Unit: Все ▾]     [Team: Все ▾]     194 сотрудников │
+├────────────────────────────────────────────────────────────────────────┤
+│ ФИО                          │ Unit           │ Team           │ ✏️    │
+├────────────────────────────────────────────────────────────────────────┤
+│ Афонченко Дмитрий           │ Franchise as a │ Drum&Base      │ [✏️]  │
+│ Чудова Ольга Александровна   │ Franchise as a │ Drum&Base      │ [✏️]  │
+│ ...                                                                    │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4. Шаг input = 5%
+### 2. Редактирование сотрудника (PersonEditDialog)
 
-Добавить `step={5}` к input полям:
+При клике на ✏️ открывается форма редактирования:
 
-```tsx
-<Input
-  type="number"
-  min={0}
-  max={100}
-  step={5}  // Добавить
-  ...
-/>
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│ Редактирование сотрудника                                    [×]      │
+├────────────────────────────────────────────────────────────────────────┤
+│ ФИО:        [Афонченко Дмитрий Александрович        ]                 │
+│                                                                        │
+│ HR-структура: [Dodo Engineering.Franchise as a Product.Drum&Base ]    │
+│                                                                        │
+│ Unit:       [Franchise as a Product    ▾]  ← Dropdown с автозаполнением│
+│ Team:       [Drum&Base                 ▾]                              │
+│                                                                        │
+│ Email:      [d.afonchenko@dodobrands.io       ]                       │
+│ Должность:  [Senior Developer                  ]                      │
+│                                                                        │
+│                                     [Отмена]  [💾 Сохранить]          │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-Это касается:
-- `EffortInput.tsx` — страница Люди
-- `QuarterCell.tsx` — админка инициатив
+### 3. Синонимы Unit/Team (UnitTeamMappingDialog)
+
+Таблица маппинга названий, чтобы `FAP` → `Franchise as a Product` и т.д.
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│ 🔄 Синонимы Unit/Team                                        [×]      │
+├────────────────────────────────────────────────────────────────────────┤
+│ Тип   │ В инициативах    │ В HR-системе           │ Действия          │
+├────────────────────────────────────────────────────────────────────────┤
+│ Unit  │ FAP              │ Franchise as a Product │ [Применить] [×]   │
+│ Team  │ База Знаний      │ Drum&Base              │ [Применить] [×]   │
+│ Team  │ SOM (IMF)        │ Slippers of mimir      │ [Применить] [×]   │
+├────────────────────────────────────────────────────────────────────────┤
+│ [+ Добавить маппинг]                                                  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+Кнопка **"Применить"** обновляет значения `unit`/`team` в таблице `people` по выбранному маппингу.
 
 ---
 
 ## Техническая реализация
 
-### Файлы для изменения
+### Новые файлы
+
+| Файл | Назначение |
+|------|------------|
+| `src/components/admin/people/SettingsMenu.tsx` | Дропдаун-меню с шестерёнкой |
+| `src/components/admin/people/PeopleListDialog.tsx` | Таблица просмотра всех сотрудников |
+| `src/components/admin/people/PersonEditDialog.tsx` | Форма редактирования одного сотрудника |
+| `src/components/admin/people/UnitTeamMappingDialog.tsx` | Таблица синонимов и массовое обновление |
+
+### Изменения в существующих файлах
 
 | Файл | Изменение |
 |------|-----------|
-| `AdminPeople.tsx` | Исправить структуру flex/overflow для скролла, убрать "привязок" |
-| `PeopleAssignmentsTable.tsx` | Переделать на CSS Grid с фиксированными колонками для кварталов |
-| `PersonGroupRow.tsx` | Адаптировать под grid-структуру, фиксированная ширина ячеек |
-| `InitiativeGroupRow.tsx` | Адаптировать под grid-структуру |
-| `EffortInput.tsx` | Добавить `step={5}` |
-| `QuarterCell.tsx` | Добавить `step={5}` к input |
+| `src/pages/AdminPeople.tsx` | Добавить `<SettingsMenu />` в хедер |
+| `src/hooks/usePeople.ts` | Добавить `updatePerson` для редактирования, `bulkUpdateUnit`/`bulkUpdateTeam` для маппинга |
 
-### Шаг 1: Grid-структура для таблицы
+### Хук для массового обновления
 
-```tsx
-// PeopleAssignmentsTable.tsx
-
-// Динамическое создание grid-template-columns
-const gridCols = `minmax(300px, 1fr) repeat(${displayQuarters.length}, 70px) 90px`;
-
-return (
-  <div className="flex flex-col h-full overflow-hidden">
-    {/* Header row */}
-    <div 
-      className="grid items-center px-4 py-3 bg-muted/50 border-b sticky top-0 z-10"
-      style={{ gridTemplateColumns: gridCols }}
-    >
-      <ToggleGroup>...</ToggleGroup>
-      
-      {displayQuarters.map(q => (
-        <div key={q} className="text-xs font-medium text-center">
-          {q.replace('20', '').replace('-', ' ')}
-        </div>
-      ))}
-      
-      <div>{/* Placeholder for badge column */}</div>
-    </div>
-
-    {/* Scrollable content */}
-    <div className="flex-1 overflow-y-auto">
-      {byPerson.map(...)}
-    </div>
-  </div>
-);
-```
-
-### Шаг 2: Строки с такой же grid-структурой
-
-```tsx
-// PersonGroupRow.tsx
-
-<div 
-  className="grid items-center px-4 py-3 cursor-pointer hover:bg-muted/50"
-  style={{ gridTemplateColumns: gridCols }}
->
-  {/* Имя человека */}
-  <div className="flex items-center gap-3">
-    <ChevronDown />
-    <div>
-      <span className="font-medium">{person.full_name}</span>
-      <div className="text-xs text-muted-foreground">{person.team}</div>
-    </div>
-  </div>
-  
-  {/* Кварталы — каждый в своей ячейке grid */}
-  {quarters.map(q => (
-    <div key={q} className="text-center">
-      {quarterTotals[q]}%
-    </div>
-  ))}
-  
-  {/* Badge */}
-  <Badge>7 инициатив</Badge>
-</div>
-```
-
-### Шаг 3: Передача gridCols через props или context
-
-Чтобы все строки использовали одинаковую структуру:
-
-```tsx
-// Вариант 1: props
-<PersonGroupRow gridCols={gridCols} ... />
-
-// Вариант 2: CSS-переменная
-<div style={{ '--grid-cols': gridCols } as React.CSSProperties}>
-  ...
-</div>
-```
-
-### Шаг 4: Исправить скролл в AdminPeople
-
-```tsx
-// AdminPeople.tsx
-
-<div className="h-screen bg-background flex flex-col overflow-hidden">
-  {/* Header - fixed */}
-  <header className="h-14 shrink-0 ...">...</header>
-
-  {/* Scope Selector - fixed */}
-  <div className="shrink-0">
-    <ScopeSelector ... />
-  </div>
-
-  {/* Main Content - scrollable */}
-  <main className="flex-1 overflow-hidden">
-    <PeopleAssignmentsTable ... />
-  </main>
-</div>
-```
-
-### Шаг 5: Step=5 для input
-
-```tsx
-// EffortInput.tsx, строка 67-77
-<Input
-  type="number"
-  min={0}
-  max={100}
-  step={5}  // ДОБАВИТЬ
-  ...
-/>
-
-// QuarterCell.tsx, строки 89-103 и 162-170
-<Input
-  type="number"
-  min={0}
-  max={100}
-  step={5}  // ДОБАВИТЬ
-  ...
-/>
+```typescript
+const bulkUpdatePeopleUnit = useMutation({
+  mutationFn: async ({ fromUnit, toUnit }: { fromUnit: string; toUnit: string }) => {
+    const { error } = await supabase
+      .from('people')
+      .update({ unit: toUnit })
+      .eq('unit', fromUnit);
+    
+    if (error) throw error;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['people'] });
+    toast({ title: 'Unit обновлён' });
+  }
+});
 ```
 
 ---
 
-## Визуальный результат
+## Для быстрого исправления текущих данных
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ ← Админка  👥 Люди  3 чел. • 7 инициатив                 [Импорт] [Экспорт] │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ [Client Platform ▾] [Auth&Security ▾]  1 юнит  │ [Инициативы] [👥 Люди]    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ [👥 По людям] [📋 По инициативам]    25Q1  25Q2  25Q3  25Q4  26Q1  26Q2  .. │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ ▼ Завгородний Артём Вадимович         40%   26%   69%   77%   40%   8%  .. │ ← ВЫРОВНЕНО
-│   Auth&Security                                                             │
-│ ────────────────────────────────────────────────────────────────────────────│
-│   Анализ уязвимостей                  40%   2%    69%   77%   40%   8%  .. │ ← ВЫРОВНЕНО
-│   Auth&Security                                                             │
-│ ────────────────────────────────────────────────────────────────────────────│
-│   Антифрод                            —     7%    —     —     —     —   .. │
-│   ...                                                                       │
-│                                    ↕ СКРОЛЛИТСЯ                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+Сразу после реализации маппинга можно будет:
+
+1. Добавить маппинг: `FAP` → `Franchise as a Product`
+2. Нажать "Применить" — это обновит `unit` в таблице **initiatives**:
+   - `UPDATE initiatives SET unit = 'Franchise as a Product' WHERE unit = 'FAP'`
+   
+   *Или наоборот — обновить `people` чтобы соответствовали `initiatives`:*
+   - `UPDATE people SET unit = 'FAP' WHERE unit = 'Franchise as a Product'`
+
+3. Аналогично для команд:
+   - `База Знаний` → `Drum&Base` (или наоборот)
+   - `SOM (IMF)` → `SOM` и `Slippers of mimir` → `SOM`
 
 ---
 
-## Порядок реализации
+## Альтернатива: Сначала исправить данные, потом делать UI
 
-1. `EffortInput.tsx` — добавить `step={5}`
-2. `QuarterCell.tsx` — добавить `step={5}` ко всем input
-3. `AdminPeople.tsx` — исправить структуру для скролла, убрать "привязок"
-4. `PeopleAssignmentsTable.tsx` — переделать на CSS Grid
-5. `PersonGroupRow.tsx` — адаптировать под grid
-6. `InitiativeGroupRow.tsx` — адаптировать под grid
+Если нужно быстро починить текущую проблему, можно:
+
+1. **Быстрый SQL-фикс** (выполнить вручную):
+   ```sql
+   -- Обновить людей, чтобы unit совпадал с инициативами
+   UPDATE people SET unit = 'FAP' WHERE unit = 'Franchise as a Product';
+   
+   -- Обновить людей, чтобы team совпадал
+   UPDATE people SET team = 'База Знаний' WHERE team = 'Drum&Base';
+   UPDATE people SET team = 'SOM' WHERE team = 'Slippers of mimir';
+   
+   -- Убрать (IMF) из инициатив
+   UPDATE initiatives SET team = 'SOM' WHERE team = 'SOM (IMF)';
+   ```
+
+2. **Потом** реализовать UI для настроек, чтобы в будущем такие проблемы решались без SQL.
+
+---
+
+## Рекомендуемый план
+
+**Фаза 1 (быстрый фикс):**
+- Исправить данные SQL-запросами — сразу заработает FAP
+
+**Фаза 2 (UI для настроек):**
+1. `SettingsMenu.tsx` — шестерёнка с дропдауном
+2. `PeopleListDialog.tsx` — просмотр всех сотрудников
+3. `PersonEditDialog.tsx` — редактирование одного сотрудника
+4. `UnitTeamMappingDialog.tsx` — синонимы и массовое обновление
+
+---
+
+## Порядок изменения файлов
+
+1. `src/hooks/usePeople.ts` — добавить мутации для редактирования и массового обновления
+2. `src/components/admin/people/SettingsMenu.tsx` — создать меню
+3. `src/components/admin/people/PeopleListDialog.tsx` — таблица просмотра
+4. `src/components/admin/people/PersonEditDialog.tsx` — форма редактирования
+5. `src/components/admin/people/UnitTeamMappingDialog.tsx` — маппинг синонимов
+6. `src/pages/AdminPeople.tsx` — интегрировать SettingsMenu в хедер
 

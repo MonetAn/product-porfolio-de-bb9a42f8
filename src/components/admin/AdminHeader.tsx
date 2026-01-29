@@ -1,4 +1,4 @@
-import { ArrowLeft, Upload, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { SyncStatus } from '@/hooks/useInitiativeMutations';
-import AdminSettingsMenu from './AdminSettingsMenu';
+import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 
 interface AdminHeaderProps {
   initiativeCount: number;
@@ -139,23 +139,14 @@ const AdminHeader = ({
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2"
-          onClick={onImportClick}
-        >
-          <Upload size={16} />
-          <span className="hidden sm:inline">Импорт CSV</span>
-        </Button>
-
-        <AdminSettingsMenu
-          totalCount={totalCount}
-          filteredCount={initiativeCount}
-          hasFilters={hasFilters}
+        <UnifiedSettingsMenu
+          onImportInitiatives={onImportClick}
+          onExportAllInitiatives={onDownloadAll}
+          onExportFilteredInitiatives={onDownloadFiltered}
+          initiativesTotal={totalCount}
+          initiativesFiltered={initiativeCount}
+          hasInitiativeFilters={hasFilters}
           hasData={hasData}
-          onDownloadAll={onDownloadAll}
-          onDownloadFiltered={onDownloadFiltered}
         />
       </div>
     </header>

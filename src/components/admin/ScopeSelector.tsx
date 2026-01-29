@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Check, Users, ClipboardList } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 type ViewMode = 'initiatives' | 'people';
@@ -12,7 +12,6 @@ interface ScopeSelectorProps {
   selectedTeams: string[];
   onUnitsChange: (units: string[]) => void;
   onTeamsChange: (teams: string[]) => void;
-  buildFilteredUrl?: (basePath: string) => string;
 }
 
 const ScopeSelector = ({
@@ -21,8 +20,7 @@ const ScopeSelector = ({
   selectedUnits,
   selectedTeams,
   onUnitsChange,
-  onTeamsChange,
-  buildFilteredUrl
+  onTeamsChange
 }: ScopeSelectorProps) => {
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
@@ -79,9 +77,20 @@ const ScopeSelector = ({
     }
   };
 
-  // Build URLs for navigation
-  const initiativesUrl = buildFilteredUrl ? buildFilteredUrl('/admin') : '/admin';
-  const peopleUrl = buildFilteredUrl ? buildFilteredUrl('/admin/people') : '/admin/people';
+  const [searchParams] = useSearchParams();
+  
+  // Build URLs for navigation - always use current search params directly
+  const initiativesUrl = useMemo(() => {
+    const params = new URLSearchParams(searchParams);
+    const queryString = params.toString();
+    return queryString ? `/admin?${queryString}` : '/admin';
+  }, [searchParams]);
+  
+  const peopleUrl = useMemo(() => {
+    const params = new URLSearchParams(searchParams);
+    const queryString = params.toString();
+    return queryString ? `/admin/people?${queryString}` : '/admin/people';
+  }, [searchParams]);
 
   return (
     <div className="flex items-center gap-3 p-4 bg-card border-b border-border">

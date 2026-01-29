@@ -59,6 +59,16 @@ export interface PersonAssignment {
   updated_at: string | null;
 }
 
+// Virtual assignment — not yet saved to DB, generated for all person-initiative combinations
+export interface VirtualAssignment {
+  id: string | null; // null if not in DB yet
+  person_id: string;
+  initiative_id: string;
+  quarterly_effort: Record<string, number>;
+  is_auto: boolean;
+  isVirtual: boolean; // true if not in DB
+}
+
 // ===== CSV PARSING FOR PEOPLE IMPORT =====
 interface RawPeopleCSVRow {
   id?: string;

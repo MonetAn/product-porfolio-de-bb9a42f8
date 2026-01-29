@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Person, PersonAssignment } from '@/lib/peopleDataManager';
+import { Person, VirtualAssignment } from '@/lib/peopleDataManager';
 import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -9,10 +9,10 @@ import { cn } from '@/lib/utils';
 
 interface InitiativeGroupRowProps {
   initiative: AdminDataRow;
-  assignments: PersonAssignment[];
+  assignments: VirtualAssignment[];
   people: Person[];
   quarters: string[];
-  onEffortChange: (assignmentId: string, quarter: string, value: number) => void;
+  onEffortChange: (assignment: VirtualAssignment, quarter: string, value: number) => void;
 }
 
 export default function InitiativeGroupRow({
@@ -110,10 +110,9 @@ export default function InitiativeGroupRow({
       <CollapsibleContent>
         <div className="bg-muted/20 border-t">
           {assignmentDetails.map(({ assignment, person }) => {
-            // Calculate this person's total across all their initiatives
             return (
               <div 
-                key={assignment.id}
+                key={assignment.id || `${assignment.person_id}-${assignment.initiative_id}`}
                 className="flex items-center gap-3 px-4 py-2 pl-10 border-b border-border/50 last:border-b-0 hover:bg-muted/30"
               >
                 {/* Person info */}
@@ -136,7 +135,8 @@ export default function InitiativeGroupRow({
                       key={q}
                       value={assignment.quarterly_effort[q] || 0}
                       isAuto={assignment.is_auto}
-                      onChange={(value) => onEffortChange(assignment.id, q, value)}
+                      isVirtual={assignment.isVirtual}
+                      onChange={(value) => onEffortChange(assignment, q, value)}
                     />
                   ))}
                 </div>

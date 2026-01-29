@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Person, PersonAssignment } from '@/lib/peopleDataManager';
+import { Person, VirtualAssignment } from '@/lib/peopleDataManager';
 import { AdminDataRow } from '@/lib/adminDataManager';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -9,10 +9,10 @@ import { cn } from '@/lib/utils';
 
 interface PersonGroupRowProps {
   person: Person;
-  assignments: PersonAssignment[];
+  assignments: VirtualAssignment[];
   initiatives: AdminDataRow[];
   quarters: string[];
-  onEffortChange: (assignmentId: string, quarter: string, value: number) => void;
+  onEffortChange: (assignment: VirtualAssignment, quarter: string, value: number) => void;
 }
 
 export default function PersonGroupRow({
@@ -85,7 +85,8 @@ export default function PersonGroupRow({
                     "text-xs font-mono px-2 py-1 rounded min-w-[60px] text-center",
                     isOver && "bg-destructive/20 text-destructive",
                     isUnder && "bg-muted text-muted-foreground",
-                    total === 100 && "bg-primary/20 text-primary"
+                    total === 100 && "bg-primary/20 text-primary",
+                    total === 0 && "bg-muted/50 text-muted-foreground"
                   )}
                   title={`${q}: ${total}%`}
                 >
@@ -107,7 +108,7 @@ export default function PersonGroupRow({
         <div className="bg-muted/20 border-t">
           {assignmentDetails.map(({ assignment, initiative }) => (
             <div 
-              key={assignment.id}
+              key={assignment.id || `${assignment.person_id}-${assignment.initiative_id}`}
               className="flex items-center gap-3 px-4 py-2 pl-10 border-b border-border/50 last:border-b-0 hover:bg-muted/30"
             >
               {/* Initiative info */}
@@ -127,7 +128,8 @@ export default function PersonGroupRow({
                     key={q}
                     value={assignment.quarterly_effort[q] || 0}
                     isAuto={assignment.is_auto}
-                    onChange={(value) => onEffortChange(assignment.id, q, value)}
+                    isVirtual={assignment.isVirtual}
+                    onChange={(value) => onEffortChange(assignment, q, value)}
                   />
                 ))}
               </div>

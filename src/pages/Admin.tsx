@@ -180,7 +180,6 @@ const Admin = () => {
         onDownloadAll={handleDownloadAll}
         onDownloadFiltered={handleDownloadFiltered}
         onRetry={retry}
-        peopleUrl={buildFilteredUrl('/admin/people')}
       />
 
       <main className="pt-14">
@@ -216,6 +215,7 @@ const Admin = () => {
               selectedTeams={selectedTeams}
               onUnitsChange={setSelectedUnits}
               onTeamsChange={setSelectedTeams}
+              buildFilteredUrl={buildFilteredUrl}
             />
 
             {needsSelection ? (

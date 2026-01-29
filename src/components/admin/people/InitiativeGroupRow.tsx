@@ -63,18 +63,12 @@ export default function InitiativeGroupRow({
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           )}
           
-          <div className="flex-1 min-w-0 grid grid-cols-4 gap-2">
+          <div className="flex-1 min-w-0">
             <div className="font-medium truncate" title={initiative.initiative}>
               {initiative.initiative}
             </div>
-            <div className="text-sm text-muted-foreground">
-              {initiative.initiativeType || '—'}
-            </div>
-            <div className="text-sm text-muted-foreground truncate">
-              {initiative.stakeholdersList?.slice(0, 2).join(', ') || '—'}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {initiative.team}
+            <div className="text-xs text-muted-foreground">
+              {[initiative.team, initiative.initiativeType].filter(Boolean).join(' • ')}
             </div>
           </div>
 

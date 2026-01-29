@@ -12,12 +12,16 @@ interface EffortInputProps {
 
 export default function EffortInput({ value, isAuto, onChange, className }: EffortInputProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [localValue, setLocalValue] = useState(value.toString());
+  // Show empty string for zero values when editing starts
+  const [localValue, setLocalValue] = useState(value === 0 ? '' : value.toString());
   const inputRef = useRef<HTMLInputElement>(null);
   
   useEffect(() => {
-    setLocalValue(value.toString());
-  }, [value]);
+    // Only update local value when not editing
+    if (!isEditing) {
+      setLocalValue(value === 0 ? '' : value.toString());
+    }
+  }, [value, isEditing]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -25,6 +29,12 @@ export default function EffortInput({ value, isAuto, onChange, className }: Effo
       inputRef.current.select();
     }
   }, [isEditing]);
+
+  const handleStartEditing = () => {
+    // When starting to edit, if value is 0, show empty field
+    setLocalValue(value === 0 ? '' : value.toString());
+    setIsEditing(true);
+  };
 
   const handleBlur = () => {
     setIsEditing(false);
@@ -63,7 +73,7 @@ export default function EffortInput({ value, isAuto, onChange, className }: Effo
 
   return (
     <button
-      onClick={() => setIsEditing(true)}
+      onClick={handleStartEditing}
       className={cn(
         "flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors",
         "hover:bg-muted cursor-pointer min-w-[50px] justify-center",

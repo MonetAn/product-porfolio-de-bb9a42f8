@@ -28,8 +28,8 @@ export default function PeopleAssignmentsTable({
   onGroupModeChange,
   onEffortChange
 }: PeopleAssignmentsTableProps) {
-  // Display last 4 quarters
-  const displayQuarters = useMemo(() => quarters.slice(-4), [quarters]);
+  // Display all available quarters from initiatives (earliest to latest)
+  const displayQuarters = useMemo(() => quarters, [quarters]);
 
   // Group assignments by person
   const byPerson = useMemo(() => {

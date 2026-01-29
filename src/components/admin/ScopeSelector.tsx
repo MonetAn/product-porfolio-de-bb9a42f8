@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, Check, Users, ClipboardList } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+
+type ViewMode = 'initiatives' | 'people';
 
 interface ScopeSelectorProps {
   units: string[];
@@ -8,6 +12,8 @@ interface ScopeSelectorProps {
   selectedTeams: string[];
   onUnitsChange: (units: string[]) => void;
   onTeamsChange: (teams: string[]) => void;
+  buildFilteredUrl?: (basePath: string) => string;
+  showViewToggle?: boolean;
 }
 
 const ScopeSelector = ({
@@ -16,12 +22,18 @@ const ScopeSelector = ({
   selectedUnits,
   selectedTeams,
   onUnitsChange,
-  onTeamsChange
+  onTeamsChange,
+  buildFilteredUrl,
+  showViewToggle = true
 }: ScopeSelectorProps) => {
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
   const unitRef = useRef<HTMLDivElement>(null);
   const teamRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  
+  // Determine current view based on path
+  const currentView: ViewMode = location.pathname.includes('/people') ? 'people' : 'initiatives';
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -68,6 +80,10 @@ const ScopeSelector = ({
       onTeamsChange([...selectedTeams, t]);
     }
   };
+
+  // Build URLs for navigation
+  const initiativesUrl = buildFilteredUrl ? buildFilteredUrl('/admin') : '/admin';
+  const peopleUrl = buildFilteredUrl ? buildFilteredUrl('/admin/people') : '/admin/people';
 
   return (
     <div className="flex items-center gap-3 p-4 bg-card border-b border-border">
@@ -182,9 +198,35 @@ const ScopeSelector = ({
 
       {/* Summary */}
       {selectedUnits.length > 0 && (
-        <div className="text-sm text-muted-foreground ml-2">
-          Показано: {selectedUnits.length} {selectedUnits.length === 1 ? 'юнит' : 'юнитов'}
+        <div className="text-sm text-muted-foreground">
+          {selectedUnits.length} {selectedUnits.length === 1 ? 'юнит' : 'юнитов'}
           {selectedTeams.length > 0 && `, ${selectedTeams.length} ${selectedTeams.length === 1 ? 'команда' : 'команд'}`}
+        </div>
+      )}
+
+      {/* View mode toggle - aligned to right */}
+      {showViewToggle && buildFilteredUrl && (
+        <div className="ml-auto">
+          <ToggleGroup type="single" value={currentView} className="bg-background border border-border rounded-lg p-0.5">
+            <Link to={initiativesUrl}>
+              <ToggleGroupItem 
+                value="initiatives" 
+                className="gap-1.5 px-3 h-8 data-[state=on]:bg-primary/10"
+              >
+                <ClipboardList className="h-4 w-4" />
+                <span className="hidden sm:inline">Инициативы</span>
+              </ToggleGroupItem>
+            </Link>
+            <Link to={peopleUrl}>
+              <ToggleGroupItem 
+                value="people" 
+                className="gap-1.5 px-3 h-8 data-[state=on]:bg-primary/10"
+              >
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Люди</span>
+              </ToggleGroupItem>
+            </Link>
+          </ToggleGroup>
         </div>
       )}
     </div>

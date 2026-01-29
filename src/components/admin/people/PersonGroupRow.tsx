@@ -111,18 +111,12 @@ export default function PersonGroupRow({
               className="flex items-center gap-3 px-4 py-2 pl-10 border-b border-border/50 last:border-b-0 hover:bg-muted/30"
             >
               {/* Initiative info */}
-              <div className="flex-1 min-w-0 grid grid-cols-4 gap-2">
+              <div className="flex-1 min-w-0">
                 <div className="truncate font-medium" title={initiative!.initiative}>
                   {initiative!.initiative}
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {initiative!.initiativeType || '—'}
-                </div>
-                <div className="text-sm text-muted-foreground truncate" title={initiative!.stakeholdersList?.join(', ')}>
-                  {initiative!.stakeholdersList?.slice(0, 2).join(', ') || '—'}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {initiative!.team}
+                <div className="text-xs text-muted-foreground">
+                  {[initiative!.team, initiative!.initiativeType].filter(Boolean).join(' • ')}
                 </div>
               </div>
 

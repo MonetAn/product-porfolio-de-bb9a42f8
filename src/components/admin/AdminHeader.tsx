@@ -1,5 +1,5 @@
-import { ArrowLeft, Upload, Download, FileSpreadsheet, ChevronDown, Check, Loader2, AlertCircle, RefreshCw, Users } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, Upload, Download, FileSpreadsheet, ChevronDown, Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -26,7 +26,6 @@ interface AdminHeaderProps {
   onDownloadAll: () => void;
   onDownloadFiltered: () => void;
   onRetry: () => void;
-  peopleUrl?: string;
 }
 
 const AdminHeader = ({
@@ -39,8 +38,7 @@ const AdminHeader = ({
   onImportClick,
   onDownloadAll,
   onDownloadFiltered,
-  onRetry,
-  peopleUrl = '/admin/people'
+  onRetry
 }: AdminHeaderProps) => {
   const navigate = useNavigate();
 
@@ -146,13 +144,6 @@ const AdminHeader = ({
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
-        <Link to={peopleUrl}>
-          <Button variant="outline" size="sm" className="gap-2">
-            <Users size={16} />
-            <span className="hidden sm:inline">Люди</span>
-          </Button>
-        </Link>
-        
         <Button
           variant="outline"
           size="sm"

@@ -1,217 +1,97 @@
 
-
-# План: Перенос статистики Support/Development наверх
+# План: Убрать дублирование бюджета — деньги только снизу
 
 ## Текущее состояние
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ Header                                                                   │
-├──────────────────────────────────────────────────────────────────────────┤
-│ FilterBar (фильтры, период, toggles)                                     │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│                         Timeline (GanttView)                             │
-│                                                                          │
-│                      ... много строк инициатив ...                       │
-│                                                                          │
-├──────────────────────────────────────────────────────────────────────────┤
-│ Легенда: [■ Development] [■ Support] [⊘ Off-track]                      │
-│ Итого: 66.5 млн ₽ • Development: 45.2 млн ₽ (68%) • Support: 21.3 (32%) │
+│ FilterBar (верхняя панель)                                               │
+│ [Юниты ▼] [Команды ▼] [Период ▼] ...    │ 25 иниц. │ 66.5M ₽ │ 3 off │ │
 └──────────────────────────────────────────────────────────────────────────┘
+     ↑ дублирование бюджета
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ GanttView Legend (нижняя панель)                                         │
+│ [■ Dev] [■ Support] [⊘ Off] │ Итого: 66.5M │ Dev: 45M (68%) │ Sup: 21M │ │
+└──────────────────────────────────────────────────────────────────────────┘
+     ↑ полная финансовая статистика
 ```
 
-## Целевое состояние (Вариант А)
+## Целевое состояние
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ Header                                                                   │
-├──────────────────────────────────────────────────────────────────────────┤
-│ FilterBar (фильтры, период, toggles)                                     │
-├──────────────────────────────────────────────────────────────────────────┤
-│ Статистика:  Итого: 66.5 млн ₽                                          │
-│              Development: 45.2 млн ₽ (68%)  Support: 21.3 млн ₽ (32%)   │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│                         Timeline (GanttView)                             │
-│                                                                          │
-├──────────────────────────────────────────────────────────────────────────┤
-│ Легенда: [■ Development] [■ Support] [⊘ Off-track]    ← только цвета    │
+│ FilterBar (верхняя панель)                                               │
+│ [Юниты ▼] [Команды ▼] [Период ▼] ...       │ 25 иниц. │ 3 off-track │   │
 └──────────────────────────────────────────────────────────────────────────┘
-```
+     ↑ только количество (без денег)
 
----
-
-## Подход к реализации
-
-### Два варианта архитектуры:
-
-**А1. Статистика внутри GanttView (но сверху)**
-- Добавить блок статистики между хедером таблицы и строками
-- Проще реализовать, не требует изменения Index.tsx
-- Минус: визуально "внутри" Timeline
-
-**А2. Вынести статистику в Index.tsx (между FilterBar и GanttView)**
-- Чистое разделение: общая сводка отдельно от таблицы
-- GanttView возвращает расчёты через callback или выносим расчёт в Index
-- Минус: небольшой рефакторинг
-
-### Рекомендация: Вариант А1
-
-Проще и быстрее — добавляем статистику прямо под хедером Timeline, но над списком инициатив. Визуально это будет выглядеть как часть интерфейса Timeline, но читаться сразу при открытии.
-
----
-
-## Техническая реализация
-
-### Изменения в GanttView.tsx
-
-**1. Добавить блок статистики после хедера (перед gantt-rows)**
-
-Вставить после строки ~612 (после закрывающего `</div>` хедера):
-
-```tsx
-{/* Budget Statistics - показываем под хедером */}
-<div className="gantt-stats-bar">
-  <div className="gantt-stats-total">
-    Итого за период: <strong>{formatBudget(grandTotal)}</strong>
-  </div>
-  <div className="gantt-stats-breakdown">
-    <span className="gantt-stats-development">
-      <span className="gantt-stats-dot development" />
-      Development: {formatBudget(developmentTotal)} ({100 - supportPercent}%)
-    </span>
-    <span className="gantt-stats-support">
-      <span className="gantt-stats-dot support" />
-      Support: {formatBudget(supportTotal)} ({supportPercent}%)
-    </span>
-  </div>
-</div>
-```
-
-**2. Упростить легенду внизу — убрать статистику**
-
-Оставить только цветовые индикаторы:
-
-```tsx
-<div className="gantt-legend">
-  <div className="gantt-legend-item">
-    <div className="gantt-legend-color development"></div>
-    <span>Development</span>
-  </div>
-  <div className="gantt-legend-item">
-    <div className="gantt-legend-color support"></div>
-    <span>Support</span>
-  </div>
-  <div className="gantt-legend-item">
-    <div className="gantt-legend-color hatched"></div>
-    <span>Off-track</span>
-  </div>
-</div>
-```
-
----
-
-### Новые стили в gantt.css
-
-```css
-/* Statistics Bar - под хедером */
-.gantt-stats-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  background: hsl(var(--secondary));
-  border-bottom: 1px solid hsl(var(--border));
-  flex-shrink: 0;
-}
-
-.gantt-stats-total {
-  font-size: 13px;
-  color: hsl(var(--foreground));
-}
-
-.gantt-stats-total strong {
-  font-weight: 600;
-}
-
-.gantt-stats-breakdown {
-  display: flex;
-  gap: 20px;
-  font-size: 13px;
-}
-
-.gantt-stats-development {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: hsl(var(--development));
-  font-weight: 500;
-}
-
-.gantt-stats-support {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: hsl(var(--support-color));
-  font-weight: 500;
-}
-
-.gantt-stats-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-
-.gantt-stats-dot.development {
-  background: hsl(var(--development));
-}
-
-.gantt-stats-dot.support {
-  background: hsl(var(--support-color));
-}
-```
-
----
-
-## Визуальный результат
-
-```text
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ Инициатива                    │  Q1 2024  │  Q2 2024  │  Q3 2024  │ ...  │
-├──────────────────────────────────────────────────────────────────────────┤
-│ Итого за период: 66.5 млн ₽   │  ■ Development: 45.2 млн ₽ (68%)         │
-│                               │  ■ Support: 21.3 млн ₽ (32%)             │
-├──────────────────────────────────────────────────────────────────────────┤
-│ Project Alpha                 │ ████████████████                         │
-│ FAP • База Знаний             │                                          │
-├──────────────────────────────────────────────────────────────────────────┤
-│ Project Beta                  │      ████████████████████████            │
-│ DTIP • Core Team              │                                          │
+│ GanttView Legend (нижняя панель)                                         │
+│ [■ Dev] [■ Support] [⊘ Off] │ Итого: 66.5M │ Dev: 45M (68%) │ Sup: 21M │ │
 └──────────────────────────────────────────────────────────────────────────┘
-...
-┌──────────────────────────────────────────────────────────────────────────┐
-│ [■ Development]  [■ Support]  [⊘ Off-track]         ← только легенда     │
-└──────────────────────────────────────────────────────────────────────────┘
+     ↑ вся финансовая информация здесь
 ```
 
 ---
 
 ## Преимущества
 
-| Аспект | Было (внизу) | Станет (сверху) |
-|--------|--------------|-----------------|
-| Видимость | Надо скроллить вниз | Сразу видно |
-| Связь с фильтрами | Далеко | Рядом — причина-следствие |
-| Легенда | Перегружена | Только цвета |
-| Фокус внимания | Размыт | Сначала итог, потом детали |
+| Аспект | Было | Станет |
+|--------|------|--------|
+| Дублирование | Бюджет в 2 местах | Бюджет только внизу |
+| Верхняя панель | Перегружена | Легче читать |
+| Иерархия | Размыта | Чёткая: фильтры + счётчик → детали |
+| Связь данных | Нет контекста | Деньги рядом с Dev/Support разбивкой |
 
 ---
 
-## Порядок изменения файлов
+## Техническая реализация
 
-1. `src/styles/gantt.css` — добавить стили для .gantt-stats-bar
-2. `src/components/GanttView.tsx`:
-   - Добавить блок статистики после хедера
-   - Убрать статистику из легенды внизу
+### Изменения в FilterBar.tsx
 
+**Удалить блок бюджета (строки 779-781):**
+
+Было:
+```tsx
+{/* KPIs - compact */}
+<div className="flex items-center gap-1.5 flex-shrink-0">
+  <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
+    <span className="font-bold">{totals.count}</span> иниц.
+  </div>
+  <div className="px-2 py-1 bg-secondary rounded text-[11px] font-bold whitespace-nowrap">
+    {formatBudgetCompact(totals.budget)} ₽
+  </div>
+  <button onClick={onOfftrackClick} ...>
+    ...
+  </button>
+</div>
+```
+
+Станет:
+```tsx
+{/* KPIs - compact */}
+<div className="flex items-center gap-1.5 flex-shrink-0">
+  <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
+    <span className="font-bold">{totals.count}</span> иниц.
+  </div>
+  {/* Бюджет убран — показывается только в легенде GanttView */}
+  <button onClick={onOfftrackClick} ...>
+    ...
+  </button>
+</div>
+```
+
+---
+
+## Объём изменений
+
+- **1 файл:** `src/components/FilterBar.tsx`
+- **Удаляется:** 3 строки (блок с бюджетом)
+- **Риски:** Нет — функциональность сохранена в легенде GanttView
+
+---
+
+## Результат
+
+Верхняя панель станет компактнее, а финансовая информация будет сгруппирована в одном месте (легенда внизу) вместе с разбивкой Development/Support.

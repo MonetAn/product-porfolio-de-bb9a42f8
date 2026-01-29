@@ -365,3 +365,47 @@ export function getTeamQuarterEffortSums(
   
   return result;
 }
+
+// ===== CASCADING SUPPORT VALIDATION =====
+// Check if support can be toggled for a specific quarter
+export function canToggleSupport(
+  quarterlyData: Record<string, AdminQuarterData>,
+  quarter: string,
+  quarters: string[]
+): { canToggle: boolean; reason?: string; inheritedFrom?: string } {
+  const quarterIndex = quarters.indexOf(quarter);
+  
+  // Check previous quarters for support
+  for (let i = 0; i < quarterIndex; i++) {
+    if (quarterlyData[quarters[i]]?.support) {
+      return {
+        canToggle: false,
+        reason: 'Унаследовано от предыдущего квартала',
+        inheritedFrom: quarters[i]
+      };
+    }
+  }
+  
+  return { canToggle: true };
+}
+
+// Get inherited support info for a quarter
+export function getInheritedSupportInfo(
+  quarterlyData: Record<string, AdminQuarterData>,
+  quarter: string,
+  quarters: string[]
+): { isInherited: boolean; fromQuarter: string | null } {
+  const quarterIndex = quarters.indexOf(quarter);
+  
+  // Find first quarter with support = true before current
+  for (let i = 0; i < quarterIndex; i++) {
+    if (quarterlyData[quarters[i]]?.support) {
+      return {
+        isInherited: true,
+        fromQuarter: quarters[i]
+      };
+    }
+  }
+  
+  return { isInherited: false, fromQuarter: null };
+}

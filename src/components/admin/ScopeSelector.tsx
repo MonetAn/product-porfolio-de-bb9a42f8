@@ -13,7 +13,6 @@ interface ScopeSelectorProps {
   onUnitsChange: (units: string[]) => void;
   onTeamsChange: (teams: string[]) => void;
   buildFilteredUrl?: (basePath: string) => string;
-  showViewToggle?: boolean;
 }
 
 const ScopeSelector = ({
@@ -23,8 +22,7 @@ const ScopeSelector = ({
   selectedTeams,
   onUnitsChange,
   onTeamsChange,
-  buildFilteredUrl,
-  showViewToggle = true
+  buildFilteredUrl
 }: ScopeSelectorProps) => {
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
@@ -204,31 +202,37 @@ const ScopeSelector = ({
         </div>
       )}
 
-      {/* View mode toggle - aligned to right */}
-      {showViewToggle && buildFilteredUrl && (
-        <div className="ml-auto">
-          <ToggleGroup type="single" value={currentView} className="bg-background border border-border rounded-lg p-0.5">
-            <Link to={initiativesUrl}>
-              <ToggleGroupItem 
-                value="initiatives" 
-                className="gap-1.5 px-3 h-8 data-[state=on]:bg-primary/10"
-              >
-                <ClipboardList className="h-4 w-4" />
-                <span className="hidden sm:inline">Инициативы</span>
-              </ToggleGroupItem>
-            </Link>
-            <Link to={peopleUrl}>
-              <ToggleGroupItem 
-                value="people" 
-                className="gap-1.5 px-3 h-8 data-[state=on]:bg-primary/10"
-              >
-                <Users className="h-4 w-4" />
-                <span className="hidden sm:inline">Люди</span>
-              </ToggleGroupItem>
-            </Link>
-          </ToggleGroup>
-        </div>
-      )}
+      {/* View mode toggle - always visible */}
+      <div className="ml-auto flex items-center gap-3">
+        {/* Separator */}
+        <div className="h-6 w-px bg-border" />
+        
+        {/* Toggle with improved styles */}
+        <ToggleGroup 
+          type="single" 
+          value={currentView} 
+          className="bg-secondary rounded-lg p-1 shadow-sm"
+        >
+          <Link to={initiativesUrl}>
+            <ToggleGroupItem 
+              value="initiatives" 
+              className="gap-1.5 px-4 h-9 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              <ClipboardList className="h-4 w-4" />
+              <span>Инициативы</span>
+            </ToggleGroupItem>
+          </Link>
+          <Link to={peopleUrl}>
+            <ToggleGroupItem 
+              value="people" 
+              className="gap-1.5 px-4 h-9 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              <Users className="h-4 w-4" />
+              <span>Люди</span>
+            </ToggleGroupItem>
+          </Link>
+        </ToggleGroup>
+      </div>
     </div>
   );
 };

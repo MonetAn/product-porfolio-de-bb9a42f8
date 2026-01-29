@@ -48,6 +48,7 @@ const Admin = () => {
     selectedTeams, 
     setSelectedUnits, 
     setSelectedTeams,
+    setFilters,
     buildFilteredUrl 
   } = useFilterParams();
 
@@ -215,6 +216,7 @@ const Admin = () => {
               selectedTeams={selectedTeams}
               onUnitsChange={setSelectedUnits}
               onTeamsChange={setSelectedTeams}
+              onFiltersChange={setFilters}
               allData={rawData}
             />
 

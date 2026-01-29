@@ -1,16 +1,22 @@
 import { useState } from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import PeopleListDialog from './PeopleListDialog';
 import UnitTeamMappingDialog from './UnitTeamMappingDialog';
 
-export default function SettingsMenu() {
+interface SettingsMenuProps {
+  onExport?: () => void;
+  hasData?: boolean;
+}
+
+export default function SettingsMenu({ onExport, hasData = true }: SettingsMenuProps) {
   const [peopleListOpen, setPeopleListOpen] = useState(false);
   const [mappingOpen, setMappingOpen] = useState(false);
 
@@ -23,6 +29,15 @@ export default function SettingsMenu() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {onExport && (
+            <>
+              <DropdownMenuItem onClick={onExport} disabled={!hasData}>
+                <Download size={14} className="mr-2" />
+                Экспорт CSV
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem onClick={() => setPeopleListOpen(true)}>
             👁️ Просмотр сотрудников
           </DropdownMenuItem>

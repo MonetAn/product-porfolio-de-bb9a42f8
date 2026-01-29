@@ -448,7 +448,6 @@ const Index = () => {
         currentView={currentView}
         onViewChange={handleViewChange}
         onSearchClick={() => setShowSearch(true)}
-        onUploadClick={() => fileInputRef.current?.click()}
         onShortcutsClick={() => setShowShortcuts(true)}
       />
 

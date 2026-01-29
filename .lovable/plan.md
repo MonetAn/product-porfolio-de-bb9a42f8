@@ -1,198 +1,217 @@
 
 
-# Добавление настроек для просмотра и редактирования данных сотрудников
+# Изменения в Product Dashboard
 
-## Обнаруженная проблема с данными
+## 1. Переименование "ProductDashboard" → "Product Portfolio"
 
-При анализе базы обнаружено **несоответствие названий** между таблицами `initiatives` и `people`:
+### Файлы для изменения:
 
-| Поле | initiatives | people | Результат |
-|------|-------------|--------|-----------|
-| Unit | `FAP` | `Franchise as a Product` | ❌ Не совпадает |
-| Team | `База Знаний` | `Drum&Base` | ❌ Не совпадает |
-| Team | `SOM (IMF)` | `Slippers of mimir` | ❌ Не совпадает |
+| Файл | Изменение |
+|------|-----------|
+| `src/components/Header.tsx` | Изменить текст лого с "ProductDashboard" на "Product Portfolio" |
+| `index.html` | Обновить `<title>`, мета-теги `og:title`, `og:description` |
 
-Из-за этого при выборе `FAP` в фильтре не находится ни один сотрудник — их unit в базе записан как `Franchise as a Product`.
+### Конкретные изменения:
+
+**Header.tsx** (строка 29):
+```tsx
+// Было:
+<span>ProductDashboard</span>
+
+// Станет:
+<span>Product Portfolio</span>
+```
+
+**index.html**:
+- `<title>` → "Product Portfolio - Управление портфелем"
+- `og:title` → "Product Portfolio"
+- `og:description` → "Управление портфелем продуктов с визуализацией бюджетов..."
 
 ---
 
-## Решение: Шестерёнка с настройками
+## 2. Улучшение шестерёнки для интуитивности
 
-Добавить иконку ⚙️ в правый угол хедера на странице "Люди", которая открывает **дропдаун-меню** с опциями:
+Сейчас шестерёнка выглядит как обычная иконка и ведёт в админку. Проблема — неочевидно, что там можно **редактировать данные**.
 
+### Варианты решения:
+
+**Вариант A: Кнопка с текстом**
+```text
+[ ✏️ Редактировать ]  или  [ ⚙️ Управление ]
+```
+Плюс: максимально понятно
+Минус: занимает место
+
+**Вариант B: Tooltip + подсветка**
+При наведении на шестерёнку показывать:
+- Tooltip "Редактирование данных"
+- Изменить иконку с Settings на Database или Edit
+
+**Вариант C: Dropdown вместо перехода**
+Шестерёнка открывает дропдаун:
 ```text
 ⚙️ ▾
-├── 👁️ Просмотр сотрудников
-├── ✏️ Редактирование справочника
-└── 🔄 Синонимы Unit/Team
+├── 📊 Управление инициативами
+├── 👥 Управление людьми
+└── 📁 Импорт/Экспорт CSV
 ```
+
+### Рекомендация: Вариант A + B
+
+Заменить иконку Settings на **явную кнопку**:
+```tsx
+<Button variant="outline" size="sm" className="gap-2">
+  <Settings size={16} />
+  <span>Управление</span>
+</Button>
+```
+
+Дополнительно добавить Tooltip с пояснением "Редактировать инициативы, людей и настройки".
+
+### Файлы для изменения:
+
+| Файл | Изменение |
+|------|-----------|
+| `src/components/Header.tsx` | Заменить иконку-кнопку на Button с текстом + Tooltip |
 
 ---
 
-## Компоненты
+## 3. Добавление Support/Change соотношения на Timeline
 
-### 1. Просмотр сотрудников (PeopleListDialog)
+### Что добавить:
 
-Таблица со всеми сотрудниками в БД с возможностью:
-- Фильтрация по Unit, Team
-- Поиск по имени
-- Сортировка по колонкам
-- Просмотр HR-структуры, email, дат
+В легенду или как отдельный блок статистики показать:
 
 ```text
-┌────────────────────────────────────────────────────────────────────────┐
-│ 👥 Справочник сотрудников                                    [×]      │
-├────────────────────────────────────────────────────────────────────────┤
-│ [🔍 Поиск...]     [Unit: Все ▾]     [Team: Все ▾]     194 сотрудников │
-├────────────────────────────────────────────────────────────────────────┤
-│ ФИО                          │ Unit           │ Team           │ ✏️    │
-├────────────────────────────────────────────────────────────────────────┤
-│ Афонченко Дмитрий           │ Franchise as a │ Drum&Base      │ [✏️]  │
-│ Чудова Ольга Александровна   │ Franchise as a │ Drum&Base      │ [✏️]  │
-│ ...                                                                    │
-└────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ 📊 Итого за период:                          │
+│ Development: 45.2 млн ₽ (68%)               │
+│ Support: 21.3 млн ₽ (32%)                   │
+└──────────────────────────────────────────────┘
 ```
 
-### 2. Редактирование сотрудника (PersonEditDialog)
+### Логика расчёта:
 
-При клике на ✏️ открывается форма редактирования:
+```typescript
+// Считаем по всем отфильтрованным инициативам за выбранные кварталы
+const { supportTotal, developmentTotal } = useMemo(() => {
+  let support = 0;
+  let development = 0;
+  
+  filteredData.forEach(row => {
+    selectedQuarters.forEach(q => {
+      const qData = row.quarterlyData[q];
+      if (qData && qData.budget > 0) {
+        if (qData.support) {
+          support += qData.budget;
+        } else {
+          development += qData.budget;
+        }
+      }
+    });
+  });
+  
+  return { supportTotal: support, developmentTotal: development };
+}, [filteredData, selectedQuarters]);
+
+const total = supportTotal + developmentTotal;
+const supportPercent = total > 0 ? Math.round((supportTotal / total) * 100) : 0;
+```
+
+### Где разместить:
+
+Расширить блок легенды внизу GanttView:
 
 ```text
-┌────────────────────────────────────────────────────────────────────────┐
-│ Редактирование сотрудника                                    [×]      │
-├────────────────────────────────────────────────────────────────────────┤
-│ ФИО:        [Афонченко Дмитрий Александрович        ]                 │
-│                                                                        │
-│ HR-структура: [Dodo Engineering.Franchise as a Product.Drum&Base ]    │
-│                                                                        │
-│ Unit:       [Franchise as a Product    ▾]  ← Dropdown с автозаполнением│
-│ Team:       [Drum&Base                 ▾]                              │
-│                                                                        │
-│ Email:      [d.afonchenko@dodobrands.io       ]                       │
-│ Должность:  [Senior Developer                  ]                      │
-│                                                                        │
-│                                     [Отмена]  [💾 Сохранить]          │
-└────────────────────────────────────────────────────────────────────────┘
+┌─ Legend ──────────────────────────────────────────────────────────────────┐
+│ [■ Development]  [■ Support]  [⊘ Off-track]                              │
+│                                                                           │
+│ Итого: 66.5 млн ₽  •  Development: 45.2 млн ₽ (68%)  •  Support: 21.3 млн ₽ (32%)  │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3. Синонимы Unit/Team (UnitTeamMappingDialog)
+### Файлы для изменения:
 
-Таблица маппинга названий, чтобы `FAP` → `Franchise as a Product` и т.д.
-
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│ 🔄 Синонимы Unit/Team                                        [×]      │
-├────────────────────────────────────────────────────────────────────────┤
-│ Тип   │ В инициативах    │ В HR-системе           │ Действия          │
-├────────────────────────────────────────────────────────────────────────┤
-│ Unit  │ FAP              │ Franchise as a Product │ [Применить] [×]   │
-│ Team  │ База Знаний      │ Drum&Base              │ [Применить] [×]   │
-│ Team  │ SOM (IMF)        │ Slippers of mimir      │ [Применить] [×]   │
-├────────────────────────────────────────────────────────────────────────┤
-│ [+ Добавить маппинг]                                                  │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-Кнопка **"Применить"** обновляет значения `unit`/`team` в таблице `people` по выбранному маппингу.
+| Файл | Изменение |
+|------|-----------|
+| `src/components/GanttView.tsx` | Добавить расчёт и отображение Support/Development breakdown |
+| `src/styles/gantt.css` | Стили для статистики в легенде (если нужны) |
 
 ---
 
 ## Техническая реализация
 
-### Новые файлы
+### Шаг 1: Header.tsx — переименование + кнопка управления
 
-| Файл | Назначение |
-|------|------------|
-| `src/components/admin/people/SettingsMenu.tsx` | Дропдаун-меню с шестерёнкой |
-| `src/components/admin/people/PeopleListDialog.tsx` | Таблица просмотра всех сотрудников |
-| `src/components/admin/people/PersonEditDialog.tsx` | Форма редактирования одного сотрудника |
-| `src/components/admin/people/UnitTeamMappingDialog.tsx` | Таблица синонимов и массовое обновление |
+```tsx
+// Лого
+<span>Product Portfolio</span>
 
-### Изменения в существующих файлах
-
-| Файл | Изменение |
-|------|-----------|
-| `src/pages/AdminPeople.tsx` | Добавить `<SettingsMenu />` в хедер |
-| `src/hooks/usePeople.ts` | Добавить `updatePerson` для редактирования, `bulkUpdateUnit`/`bulkUpdateTeam` для маппинга |
-
-### Хук для массового обновления
-
-```typescript
-const bulkUpdatePeopleUnit = useMutation({
-  mutationFn: async ({ fromUnit, toUnit }: { fromUnit: string; toUnit: string }) => {
-    const { error } = await supabase
-      .from('people')
-      .update({ unit: toUnit })
-      .eq('unit', fromUnit);
-    
-    if (error) throw error;
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ['people'] });
-    toast({ title: 'Unit обновлён' });
-  }
-});
+// Кнопка управления (вместо иконки)
+<TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-2"
+        onClick={() => navigate('/admin')}
+      >
+        <Settings size={16} />
+        <span className="hidden sm:inline">Управление</span>
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>
+      Редактировать инициативы, людей и настройки
+    </TooltipContent>
+  </Tooltip>
+</TooltipProvider>
 ```
 
----
+### Шаг 2: index.html — мета-теги
 
-## Для быстрого исправления текущих данных
+```html
+<title>Product Portfolio - Управление портфелем</title>
+<meta property="og:title" content="Product Portfolio" />
+```
 
-Сразу после реализации маппинга можно будет:
+### Шаг 3: GanttView.tsx — Support/Development статистика
 
-1. Добавить маппинг: `FAP` → `Franchise as a Product`
-2. Нажать "Применить" — это обновит `unit` в таблице **initiatives**:
-   - `UPDATE initiatives SET unit = 'Franchise as a Product' WHERE unit = 'FAP'`
-   
-   *Или наоборот — обновить `people` чтобы соответствовали `initiatives`:*
-   - `UPDATE people SET unit = 'FAP' WHERE unit = 'Franchise as a Product'`
+Добавить useMemo для расчёта и обновить блок легенды:
 
-3. Аналогично для команд:
-   - `База Знаний` → `Drum&Base` (или наоборот)
-   - `SOM (IMF)` → `SOM` и `Slippers of mimir` → `SOM`
-
----
-
-## Альтернатива: Сначала исправить данные, потом делать UI
-
-Если нужно быстро починить текущую проблему, можно:
-
-1. **Быстрый SQL-фикс** (выполнить вручную):
-   ```sql
-   -- Обновить людей, чтобы unit совпадал с инициативами
-   UPDATE people SET unit = 'FAP' WHERE unit = 'Franchise as a Product';
-   
-   -- Обновить людей, чтобы team совпадал
-   UPDATE people SET team = 'База Знаний' WHERE team = 'Drum&Base';
-   UPDATE people SET team = 'SOM' WHERE team = 'Slippers of mimir';
-   
-   -- Убрать (IMF) из инициатив
-   UPDATE initiatives SET team = 'SOM' WHERE team = 'SOM (IMF)';
-   ```
-
-2. **Потом** реализовать UI для настроек, чтобы в будущем такие проблемы решались без SQL.
-
----
-
-## Рекомендуемый план
-
-**Фаза 1 (быстрый фикс):**
-- Исправить данные SQL-запросами — сразу заработает FAP
-
-**Фаза 2 (UI для настроек):**
-1. `SettingsMenu.tsx` — шестерёнка с дропдауном
-2. `PeopleListDialog.tsx` — просмотр всех сотрудников
-3. `PersonEditDialog.tsx` — редактирование одного сотрудника
-4. `UnitTeamMappingDialog.tsx` — синонимы и массовое обновление
+```tsx
+// В легенде (строки 696-709)
+<div className="gantt-legend">
+  {/* Существующие элементы легенды */}
+  <div className="gantt-legend-item">
+    <div className="gantt-legend-color development"></div>
+    <span>Development</span>
+  </div>
+  <div className="gantt-legend-item">
+    <div className="gantt-legend-color support"></div>
+    <span>Support</span>
+  </div>
+  <div className="gantt-legend-item">
+    <div className="gantt-legend-color hatched"></div>
+    <span>Off-track</span>
+  </div>
+  
+  {/* Новый блок статистики */}
+  <div className="gantt-legend-divider" />
+  <div className="gantt-legend-stats">
+    <span>Итого: {formatBudget(total)}</span>
+    <span className="development">Development: {formatBudget(developmentTotal)} ({100 - supportPercent}%)</span>
+    <span className="support">Support: {formatBudget(supportTotal)} ({supportPercent}%)</span>
+  </div>
+</div>
+```
 
 ---
 
 ## Порядок изменения файлов
 
-1. `src/hooks/usePeople.ts` — добавить мутации для редактирования и массового обновления
-2. `src/components/admin/people/SettingsMenu.tsx` — создать меню
-3. `src/components/admin/people/PeopleListDialog.tsx` — таблица просмотра
-4. `src/components/admin/people/PersonEditDialog.tsx` — форма редактирования
-5. `src/components/admin/people/UnitTeamMappingDialog.tsx` — маппинг синонимов
-6. `src/pages/AdminPeople.tsx` — интегрировать SettingsMenu в хедер
+1. `index.html` — обновить мета-теги
+2. `src/components/Header.tsx` — переименование + кнопка управления
+3. `src/components/GanttView.tsx` — добавить расчёт и отображение Support/Development
+4. `src/styles/gantt.css` — стили для новой статистики (опционально)
 

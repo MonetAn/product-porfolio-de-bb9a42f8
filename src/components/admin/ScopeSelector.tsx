@@ -13,6 +13,7 @@ interface ScopeSelectorProps {
   selectedTeams: string[];
   onUnitsChange: (units: string[]) => void;
   onTeamsChange: (teams: string[]) => void;
+  onFiltersChange?: (units: string[], teams: string[]) => void;
   allData: AdminDataRow[];
 }
 
@@ -23,6 +24,7 @@ const ScopeSelector = ({
   selectedTeams,
   onUnitsChange,
   onTeamsChange,
+  onFiltersChange,
   allData
 }: ScopeSelectorProps) => {
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
@@ -63,23 +65,30 @@ const ScopeSelector = ({
     if (selectedUnits.includes(u)) {
       // Removing a unit
       const newUnits = selectedUnits.filter(x => x !== u);
-      onUnitsChange(newUnits);
       
       // Clear teams that don't belong to remaining units
+      let newTeams: string[];
       if (newUnits.length > 0) {
         const validTeams = new Set(
           allData
             .filter(r => newUnits.includes(r.unit))
             .map(r => r.team)
         );
-        onTeamsChange(selectedTeams.filter(t => validTeams.has(t)));
+        newTeams = selectedTeams.filter(t => validTeams.has(t));
       } else {
-        onTeamsChange([]);
+        newTeams = [];
+      }
+      
+      // Use atomic update if available, otherwise sequential
+      if (onFiltersChange) {
+        onFiltersChange(newUnits, newTeams);
+      } else {
+        onUnitsChange(newUnits);
+        onTeamsChange(newTeams);
       }
     } else {
       // Adding a unit → auto-select all its teams
       const newUnits = [...selectedUnits, u];
-      onUnitsChange(newUnits);
       
       const teamsFromNewUnit = [...new Set(
         allData
@@ -89,7 +98,14 @@ const ScopeSelector = ({
       )];
       
       const newTeams = [...new Set([...selectedTeams, ...teamsFromNewUnit])];
-      onTeamsChange(newTeams);
+      
+      // Use atomic update if available, otherwise sequential
+      if (onFiltersChange) {
+        onFiltersChange(newUnits, newTeams);
+      } else {
+        onUnitsChange(newUnits);
+        onTeamsChange(newTeams);
+      }
     }
   };
 

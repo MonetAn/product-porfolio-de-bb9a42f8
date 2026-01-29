@@ -26,6 +26,7 @@ export default function AdminPeople() {
     selectedTeams, 
     setSelectedUnits, 
     setSelectedTeams,
+    setFilters,
     buildFilteredUrl 
   } = useFilterParams();
   
@@ -164,6 +165,7 @@ export default function AdminPeople() {
           selectedTeams={selectedTeams}
           onUnitsChange={setSelectedUnits}
           onTeamsChange={setSelectedTeams}
+          onFiltersChange={setFilters}
           allData={initiatives}
         />
       </div>

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Check, Users, ClipboardList } from 'lucide-react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { AdminDataRow } from '@/lib/adminDataManager';
 
 type ViewMode = 'initiatives' | 'people';
 
@@ -12,6 +13,7 @@ interface ScopeSelectorProps {
   selectedTeams: string[];
   onUnitsChange: (units: string[]) => void;
   onTeamsChange: (teams: string[]) => void;
+  allData: AdminDataRow[];
 }
 
 const ScopeSelector = ({
@@ -20,7 +22,8 @@ const ScopeSelector = ({
   selectedUnits,
   selectedTeams,
   onUnitsChange,
-  onTeamsChange
+  onTeamsChange,
+  allData
 }: ScopeSelectorProps) => {
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
@@ -58,14 +61,35 @@ const ScopeSelector = ({
 
   const toggleUnit = (u: string) => {
     if (selectedUnits.includes(u)) {
+      // Removing a unit
       const newUnits = selectedUnits.filter(x => x !== u);
       onUnitsChange(newUnits);
+      
       // Clear teams that don't belong to remaining units
-      if (newUnits.length === 0) {
+      if (newUnits.length > 0) {
+        const validTeams = new Set(
+          allData
+            .filter(r => newUnits.includes(r.unit))
+            .map(r => r.team)
+        );
+        onTeamsChange(selectedTeams.filter(t => validTeams.has(t)));
+      } else {
         onTeamsChange([]);
       }
     } else {
-      onUnitsChange([...selectedUnits, u]);
+      // Adding a unit → auto-select all its teams
+      const newUnits = [...selectedUnits, u];
+      onUnitsChange(newUnits);
+      
+      const teamsFromNewUnit = [...new Set(
+        allData
+          .filter(r => r.unit === u)
+          .map(r => r.team)
+          .filter(Boolean)
+      )];
+      
+      const newTeams = [...new Set([...selectedTeams, ...teamsFromNewUnit])];
+      onTeamsChange(newTeams);
     }
   };
 

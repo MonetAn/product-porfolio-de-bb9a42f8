@@ -74,6 +74,7 @@ export default function EffortInput({
         className={cn("w-14 h-7 text-center text-xs", className)}
         min={0}
         max={100}
+        step={5}
       />
     );
   }

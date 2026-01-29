@@ -1,70 +1,71 @@
 
 
-# Улучшение навигации между "Инициативы" и "Люди"
+# Исправление интерфейса страницы "Люди"
 
-## Анализ текущей проблемы
+## Проблемы на скриншоте
 
-Toggle для переключения между вкладками **уже существует** в `ScopeSelector.tsx` (строки 207-231), но он:
-- Расположен в крайней правой части панели фильтров
-- Визуально сливается с фоном (серая рамка на сером)
-- На мобильных показывает только иконки без подписей
-- Не привлекает внимание пользователя
-
-## Пользовательские сценарии
-
-### Сценарий 1: Администратор настраивает бюджеты
-1. Открывает Админку (/admin)
-2. Выбирает Unit и Team
-3. Редактирует инициативы
-4. **Хочет перейти к распределению нагрузки по людям**
-5. Видит toggle рядом с фильтрами, переключается на "Люди"
-
-### Сценарий 2: HR-менеджер проверяет загрузку
-1. Открывает Админку
-2. **Сразу хочет перейти на страницу "Люди"**
-3. Toggle должен быть виден без необходимости выбора фильтров
-
-### Сценарий 3: Быстрое переключение контекста
-1. Работает на странице "Люди"
-2. Замечает проблему в инициативе
-3. Переключается обратно на "Инициативы" одним кликом
-4. Фильтры сохраняются
+1. **Не скроллится страница** — контент обрезается внизу, нет возможности пролистать
+2. **Кварталы не выровнены** — заголовки кварталов (25 Q1, 25 Q2...) не совпадают с ячейками значений в строках
+3. **"12 привязок" — лишняя метрика** — теперь показываем все возможные комбинации, поэтому счётчик привязок не несёт смысла
+4. **Шаг стрелок в input = 1%** — слишком мелкий шаг, нужно 5% или 10%
 
 ---
 
-## Решение: Выделить toggle визуально + добавить в хедер
+## Решение
 
-### Изменение 1: Улучшить видимость toggle в ScopeSelector
+### 1. Исправить скролл
 
-```text
-Было:
-[Выберите юнит ▾] [Все команды ▾]  ...пространство...  [📋][👥]
+Проблема в CSS-структуре:
+- `AdminPeople.tsx` использует `flex-col` и `overflow-hidden`
+- `PeopleAssignmentsTable.tsx` использует `ScrollArea` внутри `flex-1`
 
-Станет:
-[Выберите юнит ▾] [Все команды ▾]  2 юнита  |  [📋 Инициативы | 👥 Люди]
-                                              ↑
-                                        Более заметный toggle
-                                        с яркой подсветкой активной вкладки
-```
+Но высота не ограничена правильно. Нужно:
+- Добавить `h-screen` и правильные `overflow` на контейнеры
+- Убедиться что `ScrollArea` получает ограниченную высоту
 
-**Визуальные улучшения:**
-- Фон toggle: `bg-secondary` вместо `bg-background`
-- Активная вкладка: `bg-primary text-primary-foreground` (яркий акцент)
-- Добавить разделитель `|` перед toggle
-- Всегда показывать текст (убрать `hidden sm:inline`)
+### 2. Выровнять кварталы с ячейками
 
-### Изменение 2: Добавить вкладки в Header
+Сейчас:
+- Заголовки кварталов: `flex gap-2` с `w-[50px]`
+- Ячейки в строках: `flex gap-2` с `min-w-[50px]` или `min-w-[60px]`
 
-Добавить переключатель прямо в `AdminHeader` рядом с названием "Админка":
+Проблема — разная ширина и несогласованные gap/padding. Решение:
+- Использовать **фиксированную табличную структуру** с CSS Grid
+- Левая колонка (имя/инициатива) — `flex-1`
+- Правая часть (кварталы) — фиксированная ширина на каждый квартал
 
 ```text
-[← Дашборд]  [A] Админка  |  [Инициативы] [Люди]  📊 15 инициатив  ✓Сохранено  ...  [Импорт] [Экспорт]
+| Имя человека / Инициатива      | 25Q1 | 25Q2 | 25Q3 | 25Q4 | 26Q1 | ... |
+|--------------------------------|------|------|------|------|------|-----|
+| ↳ Инициатива 1                 | 40%  | 26%  | 69%  | —    | —    | ... |
 ```
 
-**Преимущества:**
-- Всегда виден вне зависимости от состояния фильтров
-- Стандартный паттерн навигации (tabs в header)
-- Работает на всех размерах экрана
+### 3. Убрать "привязок" из статистики
+
+Заменить на что-то более полезное или убрать совсем:
+
+```text
+Было:    3 чел. • 7 инициатив • 12 привязок
+Станет:  3 чел. • 7 инициатив
+```
+
+### 4. Шаг input = 5%
+
+Добавить `step={5}` к input полям:
+
+```tsx
+<Input
+  type="number"
+  min={0}
+  max={100}
+  step={5}  // Добавить
+  ...
+/>
+```
+
+Это касается:
+- `EffortInput.tsx` — страница Люди
+- `QuarterCell.tsx` — админка инициатив
 
 ---
 
@@ -74,133 +75,166 @@ Toggle для переключения между вкладками **уже с
 
 | Файл | Изменение |
 |------|-----------|
-| `src/components/admin/ScopeSelector.tsx` | Улучшить стили toggle, убрать условие показа |
-| `src/components/admin/AdminHeader.tsx` | Добавить вкладки навигации (если выберем вариант в хедере) |
+| `AdminPeople.tsx` | Исправить структуру flex/overflow для скролла, убрать "привязок" |
+| `PeopleAssignmentsTable.tsx` | Переделать на CSS Grid с фиксированными колонками для кварталов |
+| `PersonGroupRow.tsx` | Адаптировать под grid-структуру, фиксированная ширина ячеек |
+| `InitiativeGroupRow.tsx` | Адаптировать под grid-структуру |
+| `EffortInput.tsx` | Добавить `step={5}` |
+| `QuarterCell.tsx` | Добавить `step={5}` к input |
 
-### Вариант А: Только улучшить ScopeSelector (рекомендуется)
-
-Минимальные изменения, toggle остается на своем месте, но становится заметнее:
+### Шаг 1: Grid-структура для таблицы
 
 ```tsx
-// В ScopeSelector.tsx, строки 207-231
-{/* View mode toggle - ВСЕГДА виден */}
-<div className="ml-auto flex items-center gap-3">
-  {/* Разделитель */}
-  <div className="h-6 w-px bg-border" />
+// PeopleAssignmentsTable.tsx
+
+// Динамическое создание grid-template-columns
+const gridCols = `minmax(300px, 1fr) repeat(${displayQuarters.length}, 70px) 90px`;
+
+return (
+  <div className="flex flex-col h-full overflow-hidden">
+    {/* Header row */}
+    <div 
+      className="grid items-center px-4 py-3 bg-muted/50 border-b sticky top-0 z-10"
+      style={{ gridTemplateColumns: gridCols }}
+    >
+      <ToggleGroup>...</ToggleGroup>
+      
+      {displayQuarters.map(q => (
+        <div key={q} className="text-xs font-medium text-center">
+          {q.replace('20', '').replace('-', ' ')}
+        </div>
+      ))}
+      
+      <div>{/* Placeholder for badge column */}</div>
+    </div>
+
+    {/* Scrollable content */}
+    <div className="flex-1 overflow-y-auto">
+      {byPerson.map(...)}
+    </div>
+  </div>
+);
+```
+
+### Шаг 2: Строки с такой же grid-структурой
+
+```tsx
+// PersonGroupRow.tsx
+
+<div 
+  className="grid items-center px-4 py-3 cursor-pointer hover:bg-muted/50"
+  style={{ gridTemplateColumns: gridCols }}
+>
+  {/* Имя человека */}
+  <div className="flex items-center gap-3">
+    <ChevronDown />
+    <div>
+      <span className="font-medium">{person.full_name}</span>
+      <div className="text-xs text-muted-foreground">{person.team}</div>
+    </div>
+  </div>
   
-  {/* Toggle с улучшенными стилями */}
-  <ToggleGroup 
-    type="single" 
-    value={currentView} 
-    className="bg-secondary border border-border rounded-lg p-1"
-  >
-    <Link to={initiativesUrl}>
-      <ToggleGroupItem 
-        value="initiatives" 
-        className="gap-1.5 px-3 h-8 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-      >
-        <ClipboardList className="h-4 w-4" />
-        <span>Инициативы</span>  {/* Убрать hidden sm:inline */}
-      </ToggleGroupItem>
-    </Link>
-    <Link to={peopleUrl}>
-      <ToggleGroupItem 
-        value="people" 
-        className="gap-1.5 px-3 h-8 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
-      >
-        <Users className="h-4 w-4" />
-        <span>Люди</span>  {/* Убрать hidden sm:inline */}
-      </ToggleGroupItem>
-    </Link>
-  </ToggleGroup>
+  {/* Кварталы — каждый в своей ячейке grid */}
+  {quarters.map(q => (
+    <div key={q} className="text-center">
+      {quarterTotals[q]}%
+    </div>
+  ))}
+  
+  {/* Badge */}
+  <Badge>7 инициатив</Badge>
 </div>
 ```
 
-### Вариант Б: Добавить вкладки в AdminHeader
+### Шаг 3: Передача gridCols через props или context
 
-Более существенное изменение — дублировать навигацию в хедере:
+Чтобы все строки использовали одинаковую структуру:
 
 ```tsx
-// В AdminHeader.tsx
-{/* Navigation tabs */}
-<nav className="flex gap-1 ml-6">
-  <Link 
-    to={buildFilteredUrl('/admin')}
-    className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-1.5 ${
-      isInitiativesView 
-        ? 'bg-primary/10 text-primary' 
-        : 'text-muted-foreground hover:bg-secondary'
-    }`}
-  >
-    <ClipboardList size={16} />
-    Инициативы
-  </Link>
-  <Link 
-    to={buildFilteredUrl('/admin/people')}
-    className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-1.5 ${
-      isPeopleView 
-        ? 'bg-primary/10 text-primary' 
-        : 'text-muted-foreground hover:bg-secondary'
-    }`}
-  >
-    <Users size={16} />
-    Люди
-  </Link>
-</nav>
+// Вариант 1: props
+<PersonGroupRow gridCols={gridCols} ... />
+
+// Вариант 2: CSS-переменная
+<div style={{ '--grid-cols': gridCols } as React.CSSProperties}>
+  ...
+</div>
+```
+
+### Шаг 4: Исправить скролл в AdminPeople
+
+```tsx
+// AdminPeople.tsx
+
+<div className="h-screen bg-background flex flex-col overflow-hidden">
+  {/* Header - fixed */}
+  <header className="h-14 shrink-0 ...">...</header>
+
+  {/* Scope Selector - fixed */}
+  <div className="shrink-0">
+    <ScopeSelector ... />
+  </div>
+
+  {/* Main Content - scrollable */}
+  <main className="flex-1 overflow-hidden">
+    <PeopleAssignmentsTable ... />
+  </main>
+</div>
+```
+
+### Шаг 5: Step=5 для input
+
+```tsx
+// EffortInput.tsx, строка 67-77
+<Input
+  type="number"
+  min={0}
+  max={100}
+  step={5}  // ДОБАВИТЬ
+  ...
+/>
+
+// QuarterCell.tsx, строки 89-103 и 162-170
+<Input
+  type="number"
+  min={0}
+  max={100}
+  step={5}  // ДОБАВИТЬ
+  ...
+/>
 ```
 
 ---
 
-## Рекомендация
+## Визуальный результат
 
-**Выбираю Вариант А** (улучшить ScopeSelector):
-- Меньше изменений в коде
-- Toggle уже на правильном месте (рядом с фильтрами)
-- Нужно только сделать его визуально заметнее
-- Убрать условие `showViewToggle` — всегда показывать
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ← Админка  👥 Люди  3 чел. • 7 инициатив                 [Импорт] [Экспорт] │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [Client Platform ▾] [Auth&Security ▾]  1 юнит  │ [Инициативы] [👥 Люди]    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [👥 По людям] [📋 По инициативам]    25Q1  25Q2  25Q3  25Q4  26Q1  26Q2  .. │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ ▼ Завгородний Артём Вадимович         40%   26%   69%   77%   40%   8%  .. │ ← ВЫРОВНЕНО
+│   Auth&Security                                                             │
+│ ────────────────────────────────────────────────────────────────────────────│
+│   Анализ уязвимостей                  40%   2%    69%   77%   40%   8%  .. │ ← ВЫРОВНЕНО
+│   Auth&Security                                                             │
+│ ────────────────────────────────────────────────────────────────────────────│
+│   Антифрод                            —     7%    —     —     —     —   .. │
+│   ...                                                                       │
+│                                    ↕ СКРОЛЛИТСЯ                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Изменения в коде
+## Порядок реализации
 
-### ScopeSelector.tsx
-
-1. Убрать `showViewToggle` prop и условие — toggle всегда виден
-2. Добавить визуальный разделитель перед toggle
-3. Улучшить стили:
-   - Фон: `bg-secondary` (чуть темнее)
-   - Активная вкладка: `bg-primary text-primary-foreground`
-   - Всегда показывать текст (убрать `hidden sm:inline`)
-4. Обеспечить корректную генерацию URL даже без `buildFilteredUrl`
-
-```tsx
-// Новая структура toggle-блока
-<div className="ml-auto flex items-center gap-3">
-  <div className="h-6 w-px bg-border" />
-  <ToggleGroup 
-    type="single" 
-    value={currentView} 
-    className="bg-secondary rounded-lg p-1 shadow-sm"
-  >
-    <Link to={initiativesUrl}>
-      <ToggleGroupItem 
-        value="initiatives" 
-        className="gap-1.5 px-4 h-9 text-sm font-medium data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-      >
-        <ClipboardList className="h-4 w-4" />
-        Инициативы
-      </ToggleGroupItem>
-    </Link>
-    <Link to={peopleUrl}>
-      <ToggleGroupItem 
-        value="people" 
-        className="gap-1.5 px-4 h-9 text-sm font-medium data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-      >
-        <Users className="h-4 w-4" />
-        Люди
-      </ToggleGroupItem>
-    </Link>
-  </ToggleGroup>
-</div>
-```
+1. `EffortInput.tsx` — добавить `step={5}`
+2. `QuarterCell.tsx` — добавить `step={5}` ко всем input
+3. `AdminPeople.tsx` — исправить структуру для скролла, убрать "привязок"
+4. `PeopleAssignmentsTable.tsx` — переделать на CSS Grid
+5. `PersonGroupRow.tsx` — адаптировать под grid
+6. `InitiativeGroupRow.tsx` — адаптировать под grid
 

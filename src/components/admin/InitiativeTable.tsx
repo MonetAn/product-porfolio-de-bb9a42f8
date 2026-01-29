@@ -21,7 +21,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
-import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData, INITIATIVE_TYPES, validateTeamQuarterEffort, getTeamQuarterEffortSums, getInheritedSupportInfo } from '@/lib/adminDataManager';
 
 interface InitiativeTableProps {
   data: AdminDataRow[];
@@ -324,6 +324,25 @@ const InitiativeTable = ({
                   {/* Quarter cells */}
                   {quarters.map(q => {
                     const teamEffort = validateTeamQuarterEffort(allData, row.unit, row.team, q);
+                    const supportInfo = getInheritedSupportInfo(row.quarterlyData, q, quarters);
+                    
+                    // Handle cascading support change
+                    const handleSupportChange = (value: boolean) => {
+                      if (value) {
+                        // Enable support for this and all subsequent quarters
+                        const quarterIndex = quarters.indexOf(q);
+                        for (let i = quarterIndex; i < quarters.length; i++) {
+                          onQuarterDataChange(row.id, quarters[i], 'support', true);
+                        }
+                      } else {
+                        // Disable support - also disable for all subsequent quarters
+                        const quarterIndex = quarters.indexOf(q);
+                        for (let i = quarterIndex; i < quarters.length; i++) {
+                          onQuarterDataChange(row.id, quarters[i], 'support', false);
+                        }
+                      }
+                    };
+                    
                     return (
                       <TableCell key={q} className="p-2" onClick={(e) => e.stopPropagation()}>
                         <QuarterCell
@@ -344,6 +363,9 @@ const InitiativeTable = ({
                           teamEffort={teamEffort}
                           isExpanded={expandedRowIds.has(row.id)}
                           onToggleExpand={() => toggleRowExpanded(row.id)}
+                          isInheritedSupport={supportInfo.isInherited}
+                          inheritedFromQuarter={supportInfo.fromQuarter || undefined}
+                          onSupportChange={handleSupportChange}
                         />
                       </TableCell>
                     );

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Wrench, Lock, AlertCircle, Info } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,10 @@ interface QuarterCellProps {
   teamEffort?: { total: number; isValid: boolean };
   isExpanded: boolean;
   onToggleExpand: () => void;
+  // Cascading support props
+  isInheritedSupport?: boolean;
+  inheritedFromQuarter?: string;
+  onSupportChange?: (value: boolean) => void;
 }
 
 // Get list of missing required fields
@@ -32,7 +36,19 @@ const getMissingFields = (data: AdminQuarterData): string[] => {
   return missing;
 };
 
-const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEffort, isExpanded, onToggleExpand }: QuarterCellProps) => {
+const QuarterCell = ({ 
+  quarter, 
+  data, 
+  onChange, 
+  isModified, 
+  expandedView, 
+  teamEffort, 
+  isExpanded, 
+  onToggleExpand,
+  isInheritedSupport = false,
+  inheritedFromQuarter,
+  onSupportChange
+}: QuarterCellProps) => {
   const [isEditingEffort, setIsEditingEffort] = useState(false);
   const [effortInputValue, setEffortInputValue] = useState('');
 
@@ -78,9 +94,6 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
               {/* Compact View - Always Visible */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  {/* OnTrack indicator */}
-                  <div className={`w-2 h-2 rounded-full ${data.onTrack ? 'bg-green-500' : 'bg-red-500'}`} />
-            
                   {/* Cost */}
                   <span className="text-sm font-medium">{formatCurrency(totalCost)} ₽</span>
                   
@@ -116,9 +129,24 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                     </Badge>
                   )}
             
-                  {/* Support badge */}
+                  {/* Support indicator - wrench icon with tooltip */}
                   {data.support && (
-                    <Badge variant="secondary" className="text-[10px] px-1 py-0">S</Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center text-muted-foreground">
+                          <Wrench size={12} />
+                          {isInheritedSupport && <Lock size={10} className="ml-0.5" />}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-xs">
+                          {isInheritedSupport 
+                            ? `Режим поддержки (унаследовано от ${inheritedFromQuarter})`
+                            : 'Режим поддержки'
+                          }
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
           
@@ -177,6 +205,39 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                       Всего: {teamEffort.total}%{!teamEffort.isValid && ' ⚠'}
                     </div>
                   )}
+                </div>
+
+                {/* Support Mode Toggle - NEW */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground">Режим поддержки</span>
+                      {isInheritedSupport && <Lock size={12} className="text-muted-foreground" />}
+                    </div>
+                    <Switch
+                      checked={data.support}
+                      onCheckedChange={(checked) => {
+                        if (onSupportChange) {
+                          onSupportChange(checked);
+                        } else {
+                          onChange('support', checked);
+                        }
+                      }}
+                      disabled={isInheritedSupport}
+                    />
+                  </div>
+                  {/* Support hint */}
+                  {isInheritedSupport ? (
+                    <div className="flex items-start gap-1 text-[10px] text-muted-foreground">
+                      <Info size={10} className="mt-0.5 flex-shrink-0" />
+                      <span>Унаследовано от {inheritedFromQuarter}</span>
+                    </div>
+                  ) : data.support ? (
+                    <div className="flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-500">
+                      <AlertCircle size={10} className="mt-0.5 flex-shrink-0" />
+                      <span>Все последующие кварталы будут в режиме поддержки</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* OnTrack Toggle */}

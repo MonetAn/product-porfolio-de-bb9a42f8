@@ -608,6 +608,23 @@ const GanttView = ({
         </div>
       </div>
 
+      {/* Budget Statistics Bar */}
+      <div className="gantt-stats-bar">
+        <div className="gantt-stats-total">
+          Итого за период: <strong>{formatBudget(grandTotal)}</strong>
+        </div>
+        <div className="gantt-stats-breakdown">
+          <span className="gantt-stats-development">
+            <span className="gantt-stats-dot development" />
+            Development: {formatBudget(developmentTotal)} ({100 - supportPercent}%)
+          </span>
+          <span className="gantt-stats-support">
+            <span className="gantt-stats-dot support" />
+            Support: {formatBudget(supportTotal)} ({supportPercent}%)
+          </span>
+        </div>
+      </div>
+
       {/* Rows */}
       <div className="gantt-rows" ref={rowsContainerRef}>
         {filteredData.map((row, idx) => {
@@ -721,7 +738,7 @@ const GanttView = ({
       {/* Quarter detail popup */}
       {renderQuarterPopup()}
 
-      {/* Legend */}
+      {/* Legend - only color indicators */}
       <div className="gantt-legend">
         <div className="gantt-legend-item">
           <div className="gantt-legend-color development"></div>
@@ -734,18 +751,6 @@ const GanttView = ({
         <div className="gantt-legend-item">
           <div className="gantt-legend-color hatched"></div>
           <span>Off-track</span>
-        </div>
-        
-        {/* Budget statistics */}
-        <div className="gantt-legend-divider" />
-        <div className="gantt-legend-stats">
-          <span className="gantt-legend-stats-total">Итого: {formatBudget(grandTotal)}</span>
-          <span className="gantt-legend-stats-development">
-            Development: {formatBudget(developmentTotal)} ({100 - supportPercent}%)
-          </span>
-          <span className="gantt-legend-stats-support">
-            Support: {formatBudget(supportTotal)} ({supportPercent}%)
-          </span>
         </div>
       </div>
     </div>

@@ -26,6 +26,7 @@ interface AdminHeaderProps {
   onDownloadAll: () => void;
   onDownloadFiltered: () => void;
   onRetry: () => void;
+  peopleUrl?: string;
 }
 
 const AdminHeader = ({
@@ -38,7 +39,8 @@ const AdminHeader = ({
   onImportClick,
   onDownloadAll,
   onDownloadFiltered,
-  onRetry
+  onRetry,
+  peopleUrl = '/admin/people'
 }: AdminHeaderProps) => {
   const navigate = useNavigate();
 
@@ -144,7 +146,7 @@ const AdminHeader = ({
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
-        <Link to="/admin/people">
+        <Link to={peopleUrl}>
           <Button variant="outline" size="sm" className="gap-2">
             <Users size={16} />
             <span className="hidden sm:inline">Люди</span>

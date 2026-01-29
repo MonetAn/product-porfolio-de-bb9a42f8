@@ -66,7 +66,8 @@ export default function PersonDetailDialog({
     await createAssignment.mutateAsync({
       person_id: person.id,
       initiative_id: newInitiativeId,
-      quarterly_effort: {}
+      quarterly_effort: {},
+      is_auto: false // Manual addition
     });
     
     setNewInitiativeId('');
@@ -81,7 +82,8 @@ export default function PersonDetailDialog({
       quarterly_effort: {
         ...assignment.quarterly_effort,
         [quarter]: value
-      }
+      },
+      is_auto: false // Manual edit marks as not auto
     });
   };
 

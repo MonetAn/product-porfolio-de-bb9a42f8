@@ -54,6 +54,7 @@ export interface PersonAssignment {
   person_id: string;
   initiative_id: string;
   quarterly_effort: Record<string, number>; // { "2025-Q1": 30, "2025-Q2": 25 }
+  is_auto: boolean; // true = автопроставлено из initiative, false = вручную отредактировано
   created_at: string | null;
   updated_at: string | null;
 }

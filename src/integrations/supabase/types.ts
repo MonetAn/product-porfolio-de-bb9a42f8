@@ -213,6 +213,7 @@ export type Database = {
           created_by: string | null
           id: string
           initiative_id: string
+          is_auto: boolean
           person_id: string
           quarterly_effort: Json
           updated_at: string
@@ -223,6 +224,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           initiative_id: string
+          is_auto?: boolean
           person_id: string
           quarterly_effort?: Json
           updated_at?: string
@@ -233,6 +235,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           initiative_id?: string
+          is_auto?: boolean
           person_id?: string
           quarterly_effort?: Json
           updated_at?: string

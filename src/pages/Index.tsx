@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, DragEvent } from 'react';
-import { Upload } from 'lucide-react';
+import { Upload, Loader2 } from 'lucide-react';
 import Header, { ViewType } from '@/components/Header';
 import FilterBar from '@/components/FilterBar';
 import BudgetTreemap from '@/components/BudgetTreemap';
@@ -7,6 +7,7 @@ import StakeholdersTreemap from '@/components/StakeholdersTreemap';
 import GanttView from '@/components/GanttView';
 import {
   parseCSV,
+  convertFromDB,
   buildBudgetTree,
   buildStakeholdersTree,
   RawDataRow,
@@ -15,15 +16,20 @@ import {
   calculateBudget,
   isInitiativeOffTrack,
 } from '@/lib/dataManager';
+import { useInitiatives } from '@/hooks/useInitiatives';
 import { toast } from 'sonner';
 
 const Index = () => {
-  // Data state
+  // Fetch data from database
+  const { data: dbData, isLoading, error } = useInitiatives();
+  
+  // Data state (derived from DB or CSV fallback)
   const [rawData, setRawData] = useState<RawDataRow[]>([]);
   const [availableYears, setAvailableYears] = useState<string[]>([]);
   const [availableQuarters, setAvailableQuarters] = useState<string[]>([]);
   const [selectedQuarters, setSelectedQuarters] = useState<string[]>([]);
   const [stakeholderCombinations, setStakeholderCombinations] = useState<string[]>([]);
+  const [isUsingCSV, setIsUsingCSV] = useState(false);
 
   // View state
   const [currentView, setCurrentView] = useState<ViewType>('budget');
@@ -57,10 +63,32 @@ const Index = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+  
+  // Track if quarters were already initialized
+  const quartersInitializedRef = useRef(false);
 
   // Get unique units and teams
   const units = [...new Set(rawData.map(r => r.unit))].sort();
   const teams = [...new Set(rawData.filter(r => r.team).map(r => r.team))].sort();
+
+  // Load data from database when available
+  useEffect(() => {
+    if (dbData && dbData.length > 0 && !isUsingCSV) {
+      const result = convertFromDB(dbData);
+      setRawData(result.rawData);
+      setAvailableYears(result.availableYears);
+      setAvailableQuarters(result.availableQuarters);
+      setStakeholderCombinations(result.stakeholderCombinations);
+      
+      // Only set selectedQuarters on first load
+      if (!quartersInitializedRef.current && result.availableQuarters.length > 0) {
+        setSelectedQuarters([...result.availableQuarters]);
+        quartersInitializedRef.current = true;
+      }
+      
+      console.log('Данные загружены из базы:', result.rawData.length, 'инициатив');
+    }
+  }, [dbData, isUsingCSV]);
 
   // Build tree whenever filters change
   const rebuildTree = useCallback(() => {
@@ -95,32 +123,7 @@ const Index = () => {
   useEffect(() => {
     rebuildTree();
   }, [rebuildTree]);
-
-  // Auto-load CSV from public/data/ on mount
-  useEffect(() => {
-    const loadDefaultData = async () => {
-      try {
-        const response = await fetch('./data/portfolio.csv');
-        if (response.ok) {
-          const text = await response.text();
-          const result = parseCSV(text);
-          
-          setRawData(result.rawData);
-          setAvailableYears(result.availableYears);
-          setAvailableQuarters(result.availableQuarters);
-          setSelectedQuarters([...result.availableQuarters]);
-          setStakeholderCombinations(result.stakeholderCombinations);
-          
-          console.log('Автозагрузка данных: portfolio.csv');
-        }
-      } catch (error) {
-        console.log('Файл данных не найден, ожидание загрузки вручную');
-      }
-    };
-    
-    loadDefaultData();
-  }, []);
-  // Process CSV file - shared logic for upload and drag-drop
+  // Process CSV file - shared logic for upload and drag-drop (fallback mode)
   const processCSVFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
       toast.error('Пожалуйста, загрузите файл в формате .csv');
@@ -137,8 +140,10 @@ const Index = () => {
       setAvailableQuarters(result.availableQuarters);
       setSelectedQuarters([...result.availableQuarters]);
       setStakeholderCombinations(result.stakeholderCombinations);
+      setIsUsingCSV(true);
+      quartersInitializedRef.current = true;
 
-      toast.success('CSV загружен: ' + file.name);
+      toast.success('CSV загружен: ' + file.name + ' (режим просмотра)');
     };
     reader.readAsText(file, 'UTF-8');
   }, []);
@@ -385,6 +390,30 @@ const Index = () => {
     const budget = calculateBudget(row, selectedQuarters);
     return budget > 0 && isInitiativeOffTrack(row, selectedQuarters);
   });
+
+  // Show loading state
+  if (isLoading && rawData.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="text-muted-foreground">Загрузка данных...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && rawData.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <span className="text-destructive">Ошибка загрузки данных</span>
+          <span className="text-sm text-muted-foreground">{error.message}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 

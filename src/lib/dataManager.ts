@@ -1,3 +1,5 @@
+import { AdminDataRow, AdminQuarterData } from './adminDataManager';
+
 // ===== DATA TYPES =====
 export interface QuarterData {
   budget: number;
@@ -31,6 +33,71 @@ export interface TreeNode {
   isInitiative?: boolean;
   isRoot?: boolean;
   isStakeholder?: boolean;
+}
+
+// ===== CONVERT FROM DATABASE =====
+// Convert AdminDataRow (from Supabase) to RawDataRow (for Dashboard)
+export function convertFromDB(dbRows: AdminDataRow[]): {
+  rawData: RawDataRow[];
+  availableYears: string[];
+  availableQuarters: string[];
+  stakeholderCombinations: string[];
+} {
+  // Collect all quarters from all rows
+  const quarterSet = new Set<string>();
+  const yearSet = new Set<string>();
+  const stakeholderSet = new Set<string>();
+
+  dbRows.forEach(row => {
+    Object.keys(row.quarterlyData || {}).forEach(q => {
+      quarterSet.add(q);
+      // Extract year from quarter (e.g., "2025-Q1" -> "2025")
+      const year = q.split('-')[0];
+      if (year) yearSet.add(year);
+    });
+    
+    // Collect stakeholder combinations
+    if (row.stakeholders) {
+      stakeholderSet.add(row.stakeholders);
+    }
+  });
+
+  const availableQuarters = Array.from(quarterSet).sort();
+  const availableYears = Array.from(yearSet).sort();
+  const stakeholderCombinations = Array.from(stakeholderSet).sort();
+
+  // Convert rows
+  const rawData: RawDataRow[] = dbRows.map(row => {
+    const quarterlyData: Record<string, QuarterData> = {};
+    
+    Object.entries(row.quarterlyData || {}).forEach(([quarter, qData]) => {
+      const adminQData = qData as AdminQuarterData;
+      quarterlyData[quarter] = {
+        budget: (adminQData.cost || 0) + (adminQData.otherCosts || 0),
+        support: adminQData.support ?? false,
+        onTrack: adminQData.onTrack ?? true,
+        metricPlan: adminQData.metricPlan || '',
+        metricFact: adminQData.metricFact || '',
+        comment: adminQData.comment || ''
+      };
+    });
+
+    return {
+      unit: row.unit,
+      team: row.team,
+      initiative: row.initiative,
+      description: row.description || '',
+      stakeholders: row.stakeholders || '',
+      quarterlyData
+    };
+  });
+
+  return {
+    rawData,
+    availableYears,
+    availableQuarters,
+    stakeholderCombinations
+  };
 }
 
 // ===== CSV PARSING =====

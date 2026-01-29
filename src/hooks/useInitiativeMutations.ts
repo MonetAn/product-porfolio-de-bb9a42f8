@@ -4,6 +4,8 @@ import { useRef, useCallback, useState, useEffect } from 'react';
 import { AdminDataRow, AdminQuarterData, createEmptyQuarterData } from '@/lib/adminDataManager';
 import { quarterlyDataToJson } from './useInitiatives';
 import { useToast } from '@/hooks/use-toast';
+import { Person } from '@/lib/peopleDataManager';
+import { Json } from '@/integrations/supabase/types';
 
 // Field to DB column mapping
 const FIELD_TO_COLUMN: Record<string, string> = {
@@ -213,6 +215,79 @@ export function useInitiativeMutations() {
     debounceTimers.current.set(key, timer);
   }, [updateMutation, queryClient]);
 
+  // Sync assignments when effortCoefficient changes
+  const syncAssignments = useCallback(async (
+    initiative: AdminDataRow,
+    quarter: string,
+    effortValue: number
+  ) => {
+    try {
+      // Get all people matching initiative's unit/team
+      const { data: people, error: peopleError } = await supabase
+        .from('people')
+        .select('*')
+        .eq('unit', initiative.unit)
+        .eq('team', initiative.team)
+        .is('terminated_at', null);
+      
+      if (peopleError) throw peopleError;
+      if (!people || people.length === 0) return;
+
+      // Get existing assignments for this initiative
+      const { data: existingAssignments, error: assignError } = await supabase
+        .from('person_initiative_assignments')
+        .select('*')
+        .eq('initiative_id', initiative.id);
+      
+      if (assignError) throw assignError;
+
+      const existingByPerson = new Map(
+        (existingAssignments || []).map(a => [a.person_id, a])
+      );
+
+      let created = 0;
+      let updated = 0;
+
+      for (const person of people as Person[]) {
+        const existing = existingByPerson.get(person.id);
+        
+        if (!existing) {
+          // Create new assignment
+          await supabase
+            .from('person_initiative_assignments')
+            .insert({
+              person_id: person.id,
+              initiative_id: initiative.id,
+              quarterly_effort: { [quarter]: effortValue } as unknown as Json,
+              is_auto: true
+            });
+          created++;
+        } else if (existing.is_auto) {
+          // Only update if is_auto = true
+          const newEffort = {
+            ...(existing.quarterly_effort as Record<string, number>),
+            [quarter]: effortValue
+          };
+          await supabase
+            .from('person_initiative_assignments')
+            .update({ quarterly_effort: newEffort as unknown as Json })
+            .eq('id', existing.id);
+          updated++;
+        }
+      }
+
+      if (created > 0 || updated > 0) {
+        queryClient.invalidateQueries({ queryKey: ['person_assignments'] });
+        toast({ 
+          title: 'Привязки обновлены',
+          description: `Создано: ${created}, обновлено: ${updated}`
+        });
+      }
+    } catch (err) {
+      console.error('Sync assignments error:', err);
+    }
+  }, [queryClient, toast]);
+
   // Update quarterly data (merges with existing)
   const updateQuarterData = useCallback((
     id: string,
@@ -255,19 +330,26 @@ export function useInitiativeMutations() {
     const delay = typeof value === 'boolean' ? 0 : 
                   typeof value === 'number' ? 500 : 1000;
     
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       updateMutation.mutate({ 
         id, 
         field: 'quarterlyData', 
         value: quarterlyDataToJson(updatedQuarterlyData) 
       });
+      
+      // If effortCoefficient changed, sync people assignments
+      if (field === 'effortCoefficient' && typeof value === 'number' && value > 0) {
+        const updatedRow = { ...currentRow, quarterlyData: updatedQuarterlyData };
+        await syncAssignments(updatedRow, quarter, value);
+      }
+      
       debounceTimers.current.delete(key);
       setPendingCount(debounceTimers.current.size);
     }, delay);
     
     debounceTimers.current.set(key, timer);
     setPendingCount(debounceTimers.current.size);
-  }, [updateMutation, queryClient]);
+  }, [updateMutation, queryClient, syncAssignments]);
 
   // Immediate update (no debounce)
   const immediateUpdate = useCallback((

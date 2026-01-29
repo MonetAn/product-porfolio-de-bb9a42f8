@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { Upload, ClipboardList, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AdminHeader from '@/components/admin/AdminHeader';
@@ -18,6 +18,8 @@ import {
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
 import { useInitiativeMutations } from '@/hooks/useInitiativeMutations';
 import { useCSVExport } from '@/hooks/useCSVExport';
+import { useFilterParams } from '@/hooks/useFilterParams';
+import { useState } from 'react';
 
 const Admin = () => {
   const { toast } = useToast();
@@ -40,9 +42,14 @@ const Admin = () => {
   // CSV Export
   const { exportAll, exportFiltered } = useCSVExport({ quarters });
 
-  // Filter state
-  const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
-  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  // Filter state from URL
+  const { 
+    selectedUnits, 
+    selectedTeams, 
+    setSelectedUnits, 
+    setSelectedTeams,
+    buildFilteredUrl 
+  } = useFilterParams();
 
   // UI state
   const [newDialogOpen, setNewDialogOpen] = useState(false);
@@ -173,6 +180,7 @@ const Admin = () => {
         onDownloadAll={handleDownloadAll}
         onDownloadFiltered={handleDownloadFiltered}
         onRetry={retry}
+        peopleUrl={buildFilteredUrl('/admin/people')}
       />
 
       <main className="pt-14">

@@ -1,95 +1,105 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Upload, Download, Users, Loader2 } from 'lucide-react';
+import { ArrowLeft, Upload, Download, Users, Loader2, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { usePeople, usePeopleFilters } from '@/hooks/usePeople';
-import { usePersonAssignments } from '@/hooks/usePeopleAssignments';
+import { usePeople } from '@/hooks/usePeople';
+import { usePersonAssignments, useAssignmentMutations } from '@/hooks/usePeopleAssignments';
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
-import PeopleTable from '@/components/admin/people/PeopleTable';
-import PeopleFilters from '@/components/admin/people/PeopleFilters';
+import { useFilterParams } from '@/hooks/useFilterParams';
+import ScopeSelector from '@/components/admin/ScopeSelector';
+import PeopleAssignmentsTable from '@/components/admin/people/PeopleAssignmentsTable';
 import CSVPeopleImportDialog from '@/components/admin/people/CSVPeopleImportDialog';
-import PersonDetailDialog from '@/components/admin/people/PersonDetailDialog';
-import { Person } from '@/lib/peopleDataManager';
+import { getUniqueUnits, getTeamsForUnits, filterData } from '@/lib/adminDataManager';
+
+type GroupMode = 'person' | 'initiative';
 
 export default function AdminPeople() {
-  const { data: people, isLoading: peopleLoading } = usePeople();
-  const { data: assignments } = usePersonAssignments();
-  const { data: initiatives } = useInitiatives();
+  const { data: people = [], isLoading: peopleLoading } = usePeople();
+  const { data: assignments = [] } = usePersonAssignments();
+  const { data: initiatives = [] } = useInitiatives();
   const quarters = useQuarters(initiatives);
   
-  const { units, teams } = usePeopleFilters(people);
+  // URL-synced filters
+  const { 
+    selectedUnits, 
+    selectedTeams, 
+    setSelectedUnits, 
+    setSelectedTeams,
+    buildFilteredUrl 
+  } = useFilterParams();
   
-  // Filters
-  const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
-  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-  const [showActive, setShowActive] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Dialogs
+  // Dialogs & UI state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  const [groupMode, setGroupMode] = useState<GroupMode>('person');
   
-  // Filter people
+  // Mutations
+  const { updateAssignment } = useAssignmentMutations();
+
+  // Derived data - units/teams from initiatives (to match Admin page behavior)
+  const units = useMemo(() => getUniqueUnits(initiatives), [initiatives]);
+  const teams = useMemo(() => getTeamsForUnits(initiatives, selectedUnits), [initiatives, selectedUnits]);
+  
+  // Filter initiatives by selected scope
+  const filteredInitiatives = useMemo(() => {
+    return filterData(initiatives, selectedUnits, selectedTeams);
+  }, [initiatives, selectedUnits, selectedTeams]);
+
+  // Filter people by unit/team
   const filteredPeople = useMemo(() => {
-    if (!people) return [];
+    if (selectedUnits.length === 0) return [];
     
     return people.filter(person => {
       // Unit filter
-      if (selectedUnits.length > 0 && person.unit && !selectedUnits.includes(person.unit)) {
+      if (person.unit && !selectedUnits.includes(person.unit)) {
         return false;
       }
       
-      // Team filter
+      // Team filter (if teams selected)
       if (selectedTeams.length > 0 && person.team && !selectedTeams.includes(person.team)) {
         return false;
       }
       
-      // Active filter (no termination date or future termination)
-      if (showActive && person.terminated_at) {
+      // Only active employees
+      if (person.terminated_at) {
         const terminationDate = new Date(person.terminated_at);
         if (terminationDate < new Date()) {
           return false;
         }
       }
       
-      // Search
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchesName = person.full_name.toLowerCase().includes(q);
-        const matchesEmail = person.email?.toLowerCase().includes(q);
-        const matchesTeam = person.team?.toLowerCase().includes(q);
-        if (!matchesName && !matchesEmail && !matchesTeam) {
-          return false;
-        }
-      }
-      
       return true;
     });
-  }, [people, selectedUnits, selectedTeams, showActive, searchQuery]);
+  }, [people, selectedUnits, selectedTeams]);
 
-  // Calculate effort sums for each person per quarter
-  const personEffortSums = useMemo(() => {
-    if (!assignments || !people) return {};
+  // Filter assignments to only show those for filtered initiatives and people
+  const filteredAssignments = useMemo(() => {
+    const initiativeIds = new Set(filteredInitiatives.map(i => i.id));
+    const personIds = new Set(filteredPeople.map(p => p.id));
     
-    const sums: Record<string, Record<string, number>> = {};
+    return assignments.filter(a => 
+      initiativeIds.has(a.initiative_id) && personIds.has(a.person_id)
+    );
+  }, [assignments, filteredInitiatives, filteredPeople]);
+
+  // Handle effort change
+  const handleEffortChange = useCallback(async (assignmentId: string, quarter: string, value: number) => {
+    const assignment = assignments.find(a => a.id === assignmentId);
+    if (!assignment) return;
     
-    people.forEach(person => {
-      sums[person.id] = {};
-      quarters.forEach(q => {
-        sums[person.id][q] = 0;
-      });
+    await updateAssignment.mutateAsync({
+      id: assignmentId,
+      quarterly_effort: {
+        ...assignment.quarterly_effort,
+        [quarter]: value
+      },
+      is_auto: false // Manual edit marks as not auto
     });
-    
-    assignments.forEach(assignment => {
-      Object.entries(assignment.quarterly_effort).forEach(([quarter, effort]) => {
-        if (sums[assignment.person_id]) {
-          sums[assignment.person_id][quarter] = (sums[assignment.person_id][quarter] || 0) + effort;
-        }
-      });
-    });
-    
-    return sums;
-  }, [assignments, people, quarters]);
+  }, [assignments, updateAssignment]);
+
+  // Count stats
+  const assignmentCount = filteredAssignments.length;
+  const peopleCount = filteredPeople.length;
+  const initiativeCount = filteredInitiatives.length;
 
   if (peopleLoading) {
     return (
@@ -99,75 +109,86 @@ export default function AdminPeople() {
     );
   }
 
+  const needsSelection = selectedUnits.length === 0;
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b">
-        <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-4">
-            <Link to="/admin">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              <h1 className="text-xl font-semibold">Управление людьми</h1>
-            </div>
-            <span className="text-sm text-muted-foreground">
-              {filteredPeople.length} из {people?.length || 0}
-            </span>
+      <header className="h-14 bg-card border-b border-border flex items-center px-6 fixed top-0 left-0 right-0 z-50">
+        <Link to={buildFilteredUrl('/admin')}>
+          <Button variant="ghost" size="sm" className="gap-2">
+            <ArrowLeft size={16} />
+            <span className="hidden sm:inline">Админка</span>
+          </Button>
+        </Link>
+
+        <div className="flex items-center gap-2 font-semibold text-foreground ml-4">
+          <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-sm font-bold">
+            <Users size={14} />
           </div>
-          
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Импорт CSV
-            </Button>
-            <Button variant="outline" disabled>
-              <Download className="h-4 w-4 mr-2" />
-              Экспорт коэффициентов
-            </Button>
+          <span>Люди</span>
+        </div>
+
+        {/* Stats */}
+        {!needsSelection && (
+          <div className="ml-6 flex items-center gap-3 text-sm text-muted-foreground">
+            <span>{peopleCount} чел.</span>
+            <span>•</span>
+            <span>{initiativeCount} инициатив</span>
+            <span>•</span>
+            <span>{assignmentCount} привязок</span>
           </div>
+        )}
+
+        {/* Actions */}
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+            <Upload size={16} className="mr-2" />
+            <span className="hidden sm:inline">Импорт CSV</span>
+          </Button>
+          <Button variant="default" size="sm" disabled>
+            <Download size={16} className="mr-2" />
+            <span className="hidden sm:inline">Экспорт</span>
+          </Button>
         </div>
       </header>
 
-      {/* Filters */}
-      <PeopleFilters
-        units={units}
-        teams={teams}
-        selectedUnits={selectedUnits}
-        selectedTeams={selectedTeams}
-        onUnitsChange={setSelectedUnits}
-        onTeamsChange={setSelectedTeams}
-        showActive={showActive}
-        onShowActiveChange={setShowActive}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        quarters={quarters}
-      />
+      {/* Scope Selector */}
+      <div className="pt-14">
+        <ScopeSelector
+          units={units}
+          teams={teams}
+          selectedUnits={selectedUnits}
+          selectedTeams={selectedTeams}
+          onUnitsChange={setSelectedUnits}
+          onTeamsChange={setSelectedTeams}
+        />
+      </div>
 
-      {/* Table */}
-      <main className="p-6">
-        {people && people.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Users className="h-12 w-12 text-muted-foreground mb-4" />
-            <h2 className="text-lg font-medium mb-2">Нет сотрудников</h2>
-            <p className="text-muted-foreground mb-4">
-              Загрузите CSV-файл с данными сотрудников из HR-системы
-            </p>
-            <Button onClick={() => setImportDialogOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Импортировать CSV
-            </Button>
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {needsSelection ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8">
+            <div className="border border-dashed border-border rounded-xl p-12 text-center max-w-md">
+              <ClipboardList size={48} className="mx-auto text-muted-foreground mb-4" />
+              <h2 className="text-xl font-semibold mb-2">Выберите Unit</h2>
+              <p className="text-muted-foreground">
+                Для просмотра и редактирования привязок людей к инициативам выберите Unit в фильтрах выше
+              </p>
+            </div>
           </div>
         ) : (
-          <PeopleTable
-            people={filteredPeople}
-            quarters={quarters}
-            effortSums={personEffortSums}
-            onPersonClick={setSelectedPerson}
-          />
+          <div className="flex-1 overflow-hidden">
+            <PeopleAssignmentsTable
+              people={filteredPeople}
+              initiatives={filteredInitiatives}
+              assignments={filteredAssignments}
+              quarters={quarters}
+              groupMode={groupMode}
+              onGroupModeChange={setGroupMode}
+              onEffortChange={handleEffortChange}
+            />
+          </div>
         )}
       </main>
 
@@ -178,16 +199,6 @@ export default function AdminPeople() {
         existingUnits={units}
         existingTeams={teams}
       />
-
-      {selectedPerson && (
-        <PersonDetailDialog
-          person={selectedPerson}
-          open={!!selectedPerson}
-          onOpenChange={(open) => !open && setSelectedPerson(null)}
-          initiatives={initiatives || []}
-          quarters={quarters}
-        />
-      )}
     </div>
   );
 }

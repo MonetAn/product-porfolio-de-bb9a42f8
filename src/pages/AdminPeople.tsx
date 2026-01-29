@@ -162,6 +162,7 @@ export default function AdminPeople() {
           selectedTeams={selectedTeams}
           onUnitsChange={setSelectedUnits}
           onTeamsChange={setSelectedTeams}
+          buildFilteredUrl={buildFilteredUrl}
         />
       </div>
 

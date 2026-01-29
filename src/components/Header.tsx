@@ -1,5 +1,12 @@
 import { Search, Upload, Keyboard, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export type ViewType = 'budget' | 'stakeholders' | 'timeline';
 
@@ -26,7 +33,7 @@ const Header = ({
         <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-sm font-bold">
           P
         </div>
-        <span>ProductDashboard</span>
+        <span>Product Portfolio</span>
       </div>
 
       {/* Tabs */}
@@ -99,13 +106,24 @@ const Header = ({
           <Keyboard size={20} />
         </button>
 
-        <button
-          onClick={() => navigate('/admin')}
-          className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-          title="Админка"
-        >
-          <Settings size={20} />
-        </button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => navigate('/admin')}
+              >
+                <Settings size={16} />
+                <span className="hidden sm:inline">Управление</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Редактировать инициативы, людей и настройки
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </header>
   );

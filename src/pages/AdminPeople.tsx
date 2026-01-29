@@ -10,7 +10,7 @@ import ScopeSelector from '@/components/admin/ScopeSelector';
 import PeopleAssignmentsTable from '@/components/admin/people/PeopleAssignmentsTable';
 import CSVPeopleImportDialog from '@/components/admin/people/CSVPeopleImportDialog';
 import { getUniqueUnits, getTeamsForUnits, filterData } from '@/lib/adminDataManager';
-
+import { VirtualAssignment } from '@/lib/peopleDataManager';
 type GroupMode = 'person' | 'initiative';
 
 export default function AdminPeople() {
@@ -33,7 +33,7 @@ export default function AdminPeople() {
   const [groupMode, setGroupMode] = useState<GroupMode>('person');
   
   // Mutations
-  const { updateAssignment } = useAssignmentMutations();
+  const { createAssignment, updateAssignment } = useAssignmentMutations();
 
   // Derived data - units/teams from initiatives (to match Admin page behavior)
   const units = useMemo(() => getUniqueUnits(initiatives), [initiatives]);
@@ -81,20 +81,28 @@ export default function AdminPeople() {
     );
   }, [assignments, filteredInitiatives, filteredPeople]);
 
-  // Handle effort change
-  const handleEffortChange = useCallback(async (assignmentId: string, quarter: string, value: number) => {
-    const assignment = assignments.find(a => a.id === assignmentId);
-    if (!assignment) return;
-    
-    await updateAssignment.mutateAsync({
-      id: assignmentId,
-      quarterly_effort: {
-        ...assignment.quarterly_effort,
-        [quarter]: value
-      },
-      is_auto: false // Manual edit marks as not auto
-    });
-  }, [assignments, updateAssignment]);
+  // Handle effort change — create assignment if virtual, update if exists
+  const handleEffortChange = useCallback(async (assignment: VirtualAssignment, quarter: string, value: number) => {
+    if (assignment.isVirtual || !assignment.id) {
+      // Create new assignment (virtual → real)
+      await createAssignment.mutateAsync({
+        person_id: assignment.person_id,
+        initiative_id: assignment.initiative_id,
+        quarterly_effort: { [quarter]: value },
+        is_auto: false // Manual edit
+      });
+    } else {
+      // Update existing assignment
+      await updateAssignment.mutateAsync({
+        id: assignment.id,
+        quarterly_effort: {
+          ...assignment.quarterly_effort,
+          [quarter]: value
+        },
+        is_auto: false // Manual edit marks as not auto
+      });
+    }
+  }, [createAssignment, updateAssignment]);
 
   // Count stats
   const assignmentCount = filteredAssignments.length;

@@ -215,6 +215,7 @@ const Admin = () => {
               selectedTeams={selectedTeams}
               onUnitsChange={setSelectedUnits}
               onTeamsChange={setSelectedTeams}
+              allData={rawData}
             />
 
             {needsSelection ? (

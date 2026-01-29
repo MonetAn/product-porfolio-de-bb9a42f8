@@ -170,6 +170,7 @@ export default function AdminPeople() {
           selectedTeams={selectedTeams}
           onUnitsChange={setSelectedUnits}
           onTeamsChange={setSelectedTeams}
+          allData={initiatives}
         />
       </div>
 

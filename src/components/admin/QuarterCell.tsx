@@ -100,6 +100,7 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                       onClick={(e) => e.stopPropagation()}
                       min={0}
                       max={100}
+                      step={5}
                     />
                   ) : (
                     <Badge 
@@ -166,6 +167,7 @@ const QuarterCell = ({ quarter, data, onChange, isModified, expandedView, teamEf
                       onClick={(e) => e.stopPropagation()}
                       min={0}
                       max={100}
+                      step={5}
                       className="w-20 h-8"
                     />
                     <span className="text-xs text-muted-foreground">%</span>

@@ -3,7 +3,6 @@ import { Users, ClipboardList } from 'lucide-react';
 import { Person, PersonAssignment, VirtualAssignment } from '@/lib/peopleDataManager';
 import { AdminDataRow } from '@/lib/adminDataManager';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import PersonGroupRow from './PersonGroupRow';
 import InitiativeGroupRow from './InitiativeGroupRow';
 
@@ -30,6 +29,12 @@ export default function PeopleAssignmentsTable({
 }: PeopleAssignmentsTableProps) {
   // Display all available quarters from initiatives (earliest to latest)
   const displayQuarters = useMemo(() => quarters, [quarters]);
+
+  // CSS Grid template columns: flex name column + fixed quarter columns + badge column
+  const gridCols = useMemo(() => 
+    `minmax(300px, 1fr) repeat(${displayQuarters.length}, 70px) 100px`,
+    [displayQuarters.length]
+  );
 
   // Create lookup map for existing assignments
   const assignmentMap = useMemo(() => {
@@ -132,14 +137,17 @@ export default function PeopleAssignmentsTable({
   }, [initiatives, people, assignmentMap]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header with toggle and quarter labels */}
-      <div className="flex items-center justify-between px-4 py-3 bg-muted/50 border-b">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header with toggle and quarter labels - uses CSS Grid for alignment */}
+      <div 
+        className="grid items-center px-4 py-3 bg-muted/50 border-b sticky top-0 z-10"
+        style={{ gridTemplateColumns: gridCols }}
+      >
         <ToggleGroup 
           type="single" 
           value={groupMode} 
           onValueChange={(v) => v && onGroupModeChange(v as GroupMode)}
-          className="bg-background rounded-md p-1"
+          className="bg-background rounded-md p-1 justify-start"
         >
           <ToggleGroupItem value="person" className="gap-2 px-3">
             <Users className="h-4 w-4" />
@@ -151,18 +159,19 @@ export default function PeopleAssignmentsTable({
           </ToggleGroupItem>
         </ToggleGroup>
 
-        {/* Quarter headers */}
-        <div className="flex items-center gap-2">
-          {displayQuarters.map(q => (
-            <div key={q} className="text-xs font-medium text-muted-foreground w-[50px] text-center">
-              {q.replace('20', '').replace('-', ' ')}
-            </div>
-          ))}
-        </div>
+        {/* Quarter headers - each in its own grid cell */}
+        {displayQuarters.map(q => (
+          <div key={q} className="text-xs font-medium text-muted-foreground text-center">
+            {q.replace('20', '').replace('-', ' ')}
+          </div>
+        ))}
+        
+        {/* Placeholder for badge column */}
+        <div />
       </div>
 
-      {/* Content */}
-      <ScrollArea className="flex-1">
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
         {groupMode === 'person' ? (
           // Group by person
           byPerson.length > 0 ? (
@@ -173,6 +182,7 @@ export default function PeopleAssignmentsTable({
                 assignments={personAssignments}
                 initiatives={personInitiatives}
                 quarters={displayQuarters}
+                gridCols={gridCols}
                 onEffortChange={onEffortChange}
               />
             ))
@@ -195,6 +205,7 @@ export default function PeopleAssignmentsTable({
                 assignments={initiativeAssignments}
                 people={initiativePeople}
                 quarters={displayQuarters}
+                gridCols={gridCols}
                 onEffortChange={onEffortChange}
               />
             ))
@@ -208,7 +219,7 @@ export default function PeopleAssignmentsTable({
             </div>
           )
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

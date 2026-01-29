@@ -120,9 +120,9 @@ export default function AdminPeople() {
   const needsSelection = selectedUnits.length === 0;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="h-14 bg-card border-b border-border flex items-center px-6 fixed top-0 left-0 right-0 z-50">
+      <header className="h-14 bg-card border-b border-border flex items-center px-6 shrink-0">
         <Link to={buildFilteredUrl('/admin')}>
           <Button variant="ghost" size="sm" className="gap-2">
             <ArrowLeft size={16} />
@@ -137,14 +137,12 @@ export default function AdminPeople() {
           <span>Люди</span>
         </div>
 
-        {/* Stats */}
+        {/* Stats - removed "привязок" as no longer meaningful */}
         {!needsSelection && (
           <div className="ml-6 flex items-center gap-3 text-sm text-muted-foreground">
             <span>{peopleCount} чел.</span>
             <span>•</span>
             <span>{initiativeCount} инициатив</span>
-            <span>•</span>
-            <span>{assignmentCount} привязок</span>
           </div>
         )}
 
@@ -162,7 +160,7 @@ export default function AdminPeople() {
       </header>
 
       {/* Scope Selector */}
-      <div className="pt-14">
+      <div className="shrink-0">
         <ScopeSelector
           units={units}
           teams={teams}

@@ -1,163 +1,117 @@
 
-# План: Улучшение UX админки и дашборда
+# План: Синхронизация фильтров Unit↔Team в админке
 
-## Текущее состояние
+## Проблема
 
-```text
-Дашборд (Index.tsx):
-┌─────────────────────────────────────────────────────────────────────┐
-│ [P] Product Portfolio   Budget  Stakeholders  Timeline              │
-│                                    [🔍] [📤 Upload] [⌨️] [⚙️ Упр.]  │
-└─────────────────────────────────────────────────────────────────────┘
-                                          ↑ Upload CSV (только фронт!)
-                                                      ↑ Шестерёнка
+Сценарий:
+1. Пользователь выбирает команду `AI Lab`
+2. Затем выбирает юнит `Client Platform` (в который AI Lab не входит)
+3. Результат: "Нет инициатив для отображения"
 
-Админка Инициативы (Admin.tsx → AdminHeader):
-┌─────────────────────────────────────────────────────────────────────┐
-│ [← Дашборд] [A] Админка  │ 25 иниц. │  [Импорт CSV] [Экспорт CSV ▼] │
-└─────────────────────────────────────────────────────────────────────┘
-                                          ↑ Отдельные кнопки
+## Решение
 
-ScopeSelector (фильтры Unit/Team):
-┌─────────────────────────────────────────────────────────────────────┐
-│ [Выберите юнит ▼]  [Все команды ▼]  ← disabled пока нет юнита      │
-└─────────────────────────────────────────────────────────────────────┘
+Перенести логику из `FilterBar.tsx` (дашборд) в `ScopeSelector.tsx` (админка):
+- При добавлении юнита → автоматически выбирать все его команды
+- При удалении юнита → очищать команды, которые больше не относятся к выбранным юнитам
 
-Админка Люди (AdminPeople.tsx):
-┌─────────────────────────────────────────────────────────────────────┐
-│ [← Админка]  [👥] Люди  │  [Импорт] [Экспорт] [⚙️ SettingsMenu]    │
-└─────────────────────────────────────────────────────────────────────┘
-                                                     ↑ Уже есть!
+---
+
+## Изменения
+
+### Файл: `src/components/admin/ScopeSelector.tsx`
+
+**1. Добавить prop для доступа к данным:**
+
+```typescript
+interface ScopeSelectorProps {
+  units: string[];
+  teams: string[];
+  selectedUnits: string[];
+  selectedTeams: string[];
+  onUnitsChange: (units: string[]) => void;
+  onTeamsChange: (teams: string[]) => void;
+  allData: AdminDataRow[];  // ← Добавить для поиска команд юнита
+}
+```
+
+**2. Изменить логику `toggleUnit`:**
+
+Было:
+```typescript
+const toggleUnit = (u: string) => {
+  if (selectedUnits.includes(u)) {
+    const newUnits = selectedUnits.filter(x => x !== u);
+    onUnitsChange(newUnits);
+    if (newUnits.length === 0) {
+      onTeamsChange([]);
+    }
+  } else {
+    onUnitsChange([...selectedUnits, u]);
+  }
+};
+```
+
+Станет:
+```typescript
+const toggleUnit = (u: string) => {
+  if (selectedUnits.includes(u)) {
+    // Удаление юнита
+    const newUnits = selectedUnits.filter(x => x !== u);
+    onUnitsChange(newUnits);
+    
+    // Очистить команды, которые больше не валидны
+    if (newUnits.length > 0) {
+      const validTeams = allData
+        .filter(r => newUnits.includes(r.unit))
+        .map(r => r.team);
+      onTeamsChange(selectedTeams.filter(t => validTeams.includes(t)));
+    } else {
+      onTeamsChange([]);
+    }
+  } else {
+    // Добавление юнита → авто-выбор всех его команд
+    const newUnits = [...selectedUnits, u];
+    onUnitsChange(newUnits);
+    
+    const teamsFromNewUnit = [...new Set(allData
+      .filter(r => r.unit === u)
+      .map(r => r.team)
+      .filter(Boolean))];
+    
+    const newTeams = [...new Set([...selectedTeams, ...teamsFromNewUnit])];
+    onTeamsChange(newTeams);
+  }
+};
+```
+
+**3. Обновить вызов в Admin.tsx:**
+
+```typescript
+<ScopeSelector
+  units={units}
+  teams={teams}
+  selectedUnits={selectedUnits}
+  selectedTeams={selectedTeams}
+  onUnitsChange={setSelectedUnits}
+  onTeamsChange={setSelectedTeams}
+  allData={rawData}  // ← Добавить
+/>
 ```
 
 ---
 
-## Целевое состояние
+## Результат
 
-```text
-Дашборд (Index.tsx):
-┌─────────────────────────────────────────────────────────────────────┐
-│ [P] Product Portfolio   Budget  Stakeholders  Timeline              │
-│                                    [🔍] [⌨️] [📋 Управление]        │
-└─────────────────────────────────────────────────────────────────────┘
-                                       ↑ Upload убран (есть drag-drop)
-                                            ↑ Новый значок (не шестерёнка)
-
-ScopeSelector (фильтры Unit/Team):
-┌─────────────────────────────────────────────────────────────────────┐
-│ [Выберите юнит ▼]  [Все команды ▼]  ← Team ВСЕГДА активен          │
-└─────────────────────────────────────────────────────────────────────┘
-
-Админка Инициативы + Люди:
-┌─────────────────────────────────────────────────────────────────────┐
-│ [← Дашборд] [A] Админка  │ 25 иниц. │  [Импорт CSV]  [⚙️]           │
-│                                                       ↑ Settings     │
-│                                          (Экспорт внутри ⚙️)         │
-└─────────────────────────────────────────────────────────────────────┘
-```
+| Действие | Сейчас | После |
+|----------|--------|-------|
+| Выбрать Client Platform | Только юнит выбран | Юнит + все его команды выбраны |
+| Снять DTIP (остаётся Client Platform) | Команды DTIP остаются выбраны | Команды DTIP убраны |
+| Сначала AI Lab, потом Client Platform | AI Lab остаётся, но нет данных | AI Lab убран, добавлены команды Client Platform |
 
 ---
 
-## 1. Team-селектор всегда активен
+## Файлы для изменения
 
-**Проблема:** Сейчас нельзя выбрать команду без выбора юнита
-**Решение:** Убрать `disabled={selectedUnits.length === 0}` и показывать ВСЕ команды, если юнит не выбран
-
-**Файл:** `src/components/admin/ScopeSelector.tsx`
-
-Изменения:
-- Убрать `disabled` с кнопки Team
-- Передавать все команды из всех юнитов, если `selectedUnits.length === 0`
-
----
-
-## 2. Шестерёнка-меню в AdminHeader (страница инициатив)
-
-**Текущее:** Отдельные кнопки "Импорт CSV" и "Экспорт CSV"
-**Цель:** Перенести "Экспорт CSV" в SettingsMenu (⚙️), оставить "Импорт CSV" как отдельную кнопку
-
-**Файлы:**
-- `src/components/admin/AdminHeader.tsx` — добавить SettingsMenu, убрать dropdown экспорта
-- Создать `src/components/admin/AdminSettingsMenu.tsx` — новый компонент с экспортом
-
-Структура меню:
-```
-⚙️ Settings Menu
-├── 📥 Экспорт: Все инициативы (25)
-├── 📥 Экспорт: Отфильтрованные (12)  ← если есть фильтры
-└── ─────────────────
-    (можно добавить другие настройки позже)
-```
-
----
-
-## 3. Замена значка "Управление" на дашборде
-
-**Текущее:** `<Settings size={16} />` (шестерёнка)
-**Проблема:** Шестерёнка теперь = настройки внутри админки
-
-**Варианты замены:**
-| Иконка | Название | Смысл |
-|--------|----------|-------|
-| `LayoutDashboard` | Dashboard | Панель управления |
-| `PanelLeft` | Panel | Боковая панель |
-| `Sliders` | Sliders | Ползунки настроек |
-| `ClipboardEdit` | ClipboardEdit | Редактирование списка |
-| `Pencil` | Pencil | Редактирование |
-
-**Рекомендация:** `Sliders` или `PanelLeft`
-- `Sliders` — передаёт идею "управления параметрами"
-- `PanelLeft` — открытие панели управления
-
-**Файл:** `src/components/Header.tsx`
-
----
-
-## 4. Убрать кнопку Upload CSV с дашборда
-
-**Текущее:** Кнопка Upload в хедере + drag-drop
-**Проблема:** CSV загружается только во фронт (не сохраняется в базу)
-**Решение:** Убрать кнопку, оставить drag-drop как "скрытую фичу"
-
-**Файл:** `src/components/Header.tsx`
-
-Изменения:
-- Убрать `onUploadClick` из props
-- Убрать кнопку Upload из JSX
-- Оставить drag-drop в Index.tsx как fallback для продвинутых пользователей
-
-**Примечание:** Drag-drop CSV загружает данные только во фронт и НЕ сохраняет в базу. При обновлении страницы данные исчезнут. Это legacy-режим для быстрого просмотра.
-
----
-
-## Порядок изменений файлов
-
-1. `src/components/admin/ScopeSelector.tsx` — Team всегда активен
-2. Создать `src/components/admin/AdminSettingsMenu.tsx` — меню с экспортом
-3. `src/components/admin/AdminHeader.tsx` — заменить Export dropdown на SettingsMenu
-4. `src/components/Header.tsx`:
-   - Заменить Settings на Sliders (или другую иконку по выбору)
-   - Убрать кнопку Upload CSV и `onUploadClick` из props
-5. `src/pages/Index.tsx` — убрать `onUploadClick` из вызова Header
-
----
-
-## Визуальный результат
-
-**Дашборд:**
-```
-[P] Product Portfolio   Budget  Stakeholders  Timeline
-                              [🔍 Поиск] [⌨️] [🎛️ Управление]
-```
-
-**Админка инициатив:**
-```
-[← Дашборд] [A] Админка  25 иниц.  [📤 Импорт CSV]  [⚙️]
-                                                     └─ Экспорт: Все
-                                                        Экспорт: Фильтр.
-```
-
-**Фильтры:**
-```
-[DTIP ▼]  [Core Team ▼]    ← оба активны, можно выбрать Team без Unit
-```
+1. `src/components/admin/ScopeSelector.tsx` — добавить prop `allData`, изменить `toggleUnit`
+2. `src/pages/Admin.tsx` — передать `rawData` в `ScopeSelector`
+3. `src/pages/AdminPeople.tsx` — передать `rawData` в `ScopeSelector`

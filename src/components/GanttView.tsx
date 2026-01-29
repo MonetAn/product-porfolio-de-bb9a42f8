@@ -134,6 +134,35 @@ const GanttView = ({
     return result;
   }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedUnits, selectedTeams, selectedStakeholders, costSortOrder, costFilterMin, costFilterMax, costType]);
 
+  // Calculate Support/Development budget breakdown
+  const { supportTotal, developmentTotal, grandTotal, supportPercent } = useMemo(() => {
+    let support = 0;
+    let development = 0;
+    
+    filteredData.forEach(row => {
+      selectedQuarters.forEach(q => {
+        const qData = row.quarterlyData[q];
+        if (qData && qData.budget > 0) {
+          if (qData.support) {
+            support += qData.budget;
+          } else {
+            development += qData.budget;
+          }
+        }
+      });
+    });
+    
+    const total = support + development;
+    const percent = total > 0 ? Math.round((support / total) * 100) : 0;
+    
+    return { 
+      supportTotal: support, 
+      developmentTotal: development, 
+      grandTotal: total,
+      supportPercent: percent 
+    };
+  }, [filteredData, selectedQuarters]);
+
   // Scroll to highlighted initiative
   useEffect(() => {
     if (highlightedInitiative && highlightedRef.current) {
@@ -705,6 +734,18 @@ const GanttView = ({
         <div className="gantt-legend-item">
           <div className="gantt-legend-color hatched"></div>
           <span>Off-track</span>
+        </div>
+        
+        {/* Budget statistics */}
+        <div className="gantt-legend-divider" />
+        <div className="gantt-legend-stats">
+          <span className="gantt-legend-stats-total">Итого: {formatBudget(grandTotal)}</span>
+          <span className="gantt-legend-stats-development">
+            Development: {formatBudget(developmentTotal)} ({100 - supportPercent}%)
+          </span>
+          <span className="gantt-legend-stats-support">
+            Support: {formatBudget(supportTotal)} ({supportPercent}%)
+          </span>
         </div>
       </div>
     </div>

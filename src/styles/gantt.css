@@ -244,6 +244,7 @@
   padding: 8px 16px;
   border-top: 1px solid hsl(var(--border));
   background: hsl(var(--card));
+  flex-wrap: wrap;
 }
 
 .gantt-legend-item {
@@ -278,6 +279,35 @@
     rgba(139, 0, 0, 0.5) 2px,
     rgba(139, 0, 0, 0.5) 4px
   );
+}
+
+.gantt-legend-divider {
+  width: 1px;
+  height: 20px;
+  background: hsl(var(--border));
+  margin: 0 8px;
+}
+
+.gantt-legend-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.gantt-legend-stats-total {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.gantt-legend-stats-development {
+  color: hsl(var(--development));
+  font-weight: 500;
+}
+
+.gantt-legend-stats-support {
+  color: hsl(var(--support-color));
+  font-weight: 500;
 }
 
 /* Empty State */

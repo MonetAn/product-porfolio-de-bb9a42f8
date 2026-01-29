@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Upload, Download, Users, Loader2, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Upload, Download, Users, Loader2, ClipboardList, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePeople } from '@/hooks/usePeople';
 import { usePersonAssignments, useAssignmentMutations } from '@/hooks/usePeopleAssignments';
@@ -9,6 +9,7 @@ import { useFilterParams } from '@/hooks/useFilterParams';
 import ScopeSelector from '@/components/admin/ScopeSelector';
 import PeopleAssignmentsTable from '@/components/admin/people/PeopleAssignmentsTable';
 import CSVPeopleImportDialog from '@/components/admin/people/CSVPeopleImportDialog';
+import SettingsMenu from '@/components/admin/people/SettingsMenu';
 import { getUniqueUnits, getTeamsForUnits, filterData } from '@/lib/adminDataManager';
 import { VirtualAssignment } from '@/lib/peopleDataManager';
 type GroupMode = 'person' | 'initiative';
@@ -156,6 +157,7 @@ export default function AdminPeople() {
             <Download size={16} className="mr-2" />
             <span className="hidden sm:inline">Экспорт</span>
           </Button>
+          <SettingsMenu />
         </div>
       </header>
 

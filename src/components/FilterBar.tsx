@@ -776,9 +776,6 @@ const FilterBar = ({
           <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
             <span className="font-bold">{totals.count}</span> иниц.
           </div>
-          <div className="px-2 py-1 bg-secondary rounded text-[11px] font-bold whitespace-nowrap">
-            {formatBudgetCompact(totals.budget)} ₽
-          </div>
           <button
             onClick={onOfftrackClick}
             className="flex items-center gap-1 px-2 py-1 bg-destructive/10 text-destructive rounded text-[11px] font-medium cursor-pointer hover:bg-destructive/20 transition-colors whitespace-nowrap"

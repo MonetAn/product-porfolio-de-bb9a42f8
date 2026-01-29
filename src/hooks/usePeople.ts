@@ -130,5 +130,43 @@ export function usePeopleMutations() {
     }
   });
 
-  return { createPerson, updatePerson, deletePerson, importPeople };
+  // Bulk update unit for all people matching a value
+  const bulkUpdateUnit = useMutation({
+    mutationFn: async ({ fromValue, toValue }: { fromValue: string; toValue: string }) => {
+      const { error } = await supabase
+        .from('people')
+        .update({ unit: toValue })
+        .eq('unit', fromValue);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['people'] });
+      toast({ title: 'Unit обновлён' });
+    },
+    onError: (error) => {
+      toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
+    }
+  });
+
+  // Bulk update team for all people matching a value
+  const bulkUpdateTeam = useMutation({
+    mutationFn: async ({ fromValue, toValue }: { fromValue: string; toValue: string }) => {
+      const { error } = await supabase
+        .from('people')
+        .update({ team: toValue })
+        .eq('team', fromValue);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['people'] });
+      toast({ title: 'Team обновлён' });
+    },
+    onError: (error) => {
+      toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
+    }
+  });
+
+  return { createPerson, updatePerson, deletePerson, importPeople, bulkUpdateUnit, bulkUpdateTeam };
 }

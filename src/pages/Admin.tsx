@@ -215,7 +215,6 @@ const Admin = () => {
               selectedTeams={selectedTeams}
               onUnitsChange={setSelectedUnits}
               onTeamsChange={setSelectedTeams}
-              buildFilteredUrl={buildFilteredUrl}
             />
 
             {needsSelection ? (

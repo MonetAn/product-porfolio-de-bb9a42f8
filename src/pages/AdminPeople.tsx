@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Upload, Download, Users, Loader2, ClipboardList, Settings } from 'lucide-react';
+import { ArrowLeft, Users, Loader2, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePeople } from '@/hooks/usePeople';
 import { usePersonAssignments, useAssignmentMutations } from '@/hooks/usePeopleAssignments';
@@ -9,7 +9,7 @@ import { useFilterParams } from '@/hooks/useFilterParams';
 import ScopeSelector from '@/components/admin/ScopeSelector';
 import PeopleAssignmentsTable from '@/components/admin/people/PeopleAssignmentsTable';
 import CSVPeopleImportDialog from '@/components/admin/people/CSVPeopleImportDialog';
-import SettingsMenu from '@/components/admin/people/SettingsMenu';
+import UnifiedSettingsMenu from '@/components/admin/UnifiedSettingsMenu';
 import { getUniqueUnits, getTeamsForUnits, filterData } from '@/lib/adminDataManager';
 import { VirtualAssignment } from '@/lib/peopleDataManager';
 type GroupMode = 'person' | 'initiative';
@@ -149,15 +149,9 @@ export default function AdminPeople() {
 
         {/* Actions */}
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
-            <Upload size={16} className="mr-2" />
-            <span className="hidden sm:inline">Импорт CSV</span>
-          </Button>
-          <Button variant="default" size="sm" disabled>
-            <Download size={16} className="mr-2" />
-            <span className="hidden sm:inline">Экспорт</span>
-          </Button>
-          <SettingsMenu />
+          <UnifiedSettingsMenu
+            onImportPeople={() => setImportDialogOpen(true)}
+          />
         </div>
       </header>
 

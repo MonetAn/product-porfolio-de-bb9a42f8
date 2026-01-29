@@ -143,21 +143,16 @@ const ScopeSelector = ({
         )}
       </div>
 
-      {/* Team selector */}
+      {/* Team selector - always enabled */}
       <div ref={teamRef} className="relative">
         <button
           onClick={() => setTeamMenuOpen(!teamMenuOpen)}
-          disabled={selectedUnits.length === 0}
-          className={`flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm transition-colors min-w-[180px] ${
-            selectedUnits.length === 0 
-              ? 'opacity-50 cursor-not-allowed' 
-              : 'hover:border-muted-foreground cursor-pointer'
-          }`}
+          className="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-lg text-sm transition-colors min-w-[180px] hover:border-muted-foreground cursor-pointer"
         >
           <span className="flex-1 text-left truncate">{getTeamLabel()}</span>
           <ChevronDown size={16} className="text-muted-foreground flex-shrink-0" />
         </button>
-        {teamMenuOpen && selectedUnits.length > 0 && (
+        {teamMenuOpen && (
           <div className="absolute top-full mt-1 left-0 min-w-[220px] max-h-[300px] bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
             <div className="flex justify-between p-2 border-b border-border">
               <button 

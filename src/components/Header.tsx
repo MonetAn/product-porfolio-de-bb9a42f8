@@ -1,4 +1,4 @@
-import { Search, Upload, Keyboard, Settings } from 'lucide-react';
+import { Search, Keyboard, Sliders } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,7 +14,6 @@ interface HeaderProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
   onSearchClick: () => void;
-  onUploadClick: () => void;
   onShortcutsClick: () => void;
 }
 
@@ -22,7 +21,6 @@ const Header = ({
   currentView,
   onViewChange,
   onSearchClick,
-  onUploadClick,
   onShortcutsClick
 }: HeaderProps) => {
   const navigate = useNavigate();
@@ -91,14 +89,6 @@ const Header = ({
         </button>
 
         <button
-          onClick={onUploadClick}
-          className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-          title="Загрузить CSV"
-        >
-          <Upload size={20} />
-        </button>
-
-        <button
           onClick={onShortcutsClick}
           className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           title="Горячие клавиши"
@@ -115,7 +105,7 @@ const Header = ({
                 className="gap-2"
                 onClick={() => navigate('/admin')}
               >
-                <Settings size={16} />
+                <Sliders size={16} />
                 <span className="hidden sm:inline">Управление</span>
               </Button>
             </TooltipTrigger>

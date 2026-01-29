@@ -1,12 +1,6 @@
-import { ArrowLeft, Upload, Download, FileSpreadsheet, ChevronDown, Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Upload, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Tooltip,
   TooltipContent,
@@ -14,6 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { SyncStatus } from '@/hooks/useInitiativeMutations';
+import AdminSettingsMenu from './AdminSettingsMenu';
 
 interface AdminHeaderProps {
   initiativeCount: number;
@@ -154,31 +149,14 @@ const AdminHeader = ({
           <span className="hidden sm:inline">Импорт CSV</span>
         </Button>
 
-        {/* Download dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="default"
-              size="sm"
-              className="gap-2"
-              disabled={!hasData}
-            >
-              <Download size={16} />
-              <span className="hidden sm:inline">Экспорт CSV</span>
-              <ChevronDown size={14} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onDownloadAll}>
-              Все инициативы ({totalCount})
-            </DropdownMenuItem>
-            {hasFilters && (
-              <DropdownMenuItem onClick={onDownloadFiltered}>
-                Отфильтрованные ({initiativeCount})
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AdminSettingsMenu
+          totalCount={totalCount}
+          filteredCount={initiativeCount}
+          hasFilters={hasFilters}
+          hasData={hasData}
+          onDownloadAll={onDownloadAll}
+          onDownloadFiltered={onDownloadFiltered}
+        />
       </div>
     </header>
   );

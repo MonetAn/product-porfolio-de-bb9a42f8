@@ -117,11 +117,23 @@ const QuarterCell = ({
               onClick={handleCellClick}
             >
               
-              {/* Compact View - Simplified: only cost + status */}
+              {/* Compact View - Effort input + status */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  {/* Cost */}
-                  <span className="text-sm font-medium">{formatCurrency(totalCost)} ₽</span>
+                  {/* Effort Input */}
+                  <Input
+                    type="number"
+                    value={effortValue || ''}
+                    onChange={(e) => onChange('effortCoefficient', parseInt(e.target.value) || 0)}
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) => effortValue === 0 && e.target.select()}
+                    min={0}
+                    max={100}
+                    step={5}
+                    className="w-14 h-7 text-sm"
+                    placeholder="0"
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
                   
                   {/* Single status indicator */}
                   {getStatusIndicator()}
@@ -143,9 +155,9 @@ const QuarterCell = ({
               {/* Expanded View Preview - shown when toggle is on */}
               {expandedView && !isExpanded && (
                 <div className="text-xs text-muted-foreground space-y-1">
-                  {effortValue > 0 && (
+                  {totalCost > 0 && (
                     <div>
-                      <span className="font-medium">Effort:</span> {effortValue}%
+                      <span className="font-medium">Стоимость:</span> {formatCurrency(totalCost)} ₽
                     </div>
                   )}
                   {data.metricPlan && (
@@ -163,29 +175,6 @@ const QuarterCell = ({
 
               {/* Full Expanded Content */}
               <CollapsibleContent className="space-y-3 pt-2 border-t border-border/50">
-                {/* Effort Coefficient - moved from compact view */}
-                <div className="space-y-1">
-                  <span className="text-xs text-muted-foreground">Коэфф. трудозатрат</span>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      value={effortValue || ''}
-                      onChange={(e) => onChange('effortCoefficient', parseInt(e.target.value) || 0)}
-                      onClick={(e) => e.stopPropagation()}
-                      min={0}
-                      max={100}
-                      step={5}
-                      className="w-20 h-8"
-                    />
-                    <span className="text-xs text-muted-foreground">%</span>
-                  </div>
-                  {teamEffort && (
-                    <div className={`text-[10px] ${teamEffort.isValid ? 'text-muted-foreground' : 'text-destructive'}`}>
-                      Всего: {teamEffort.total}%{!teamEffort.isValid && ' ⚠'}
-                    </div>
-                  )}
-                </div>
-
                 {/* Support Mode Toggle */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -227,19 +216,6 @@ const QuarterCell = ({
                   />
                 </div>
 
-                {/* Other Costs */}
-                <div className="space-y-1">
-                  <span className="text-xs text-muted-foreground">Доп. расходы</span>
-                  <Input
-                    type="number"
-                    value={data.otherCosts || ''}
-                    onChange={(e) => onChange('otherCosts', parseFloat(e.target.value) || 0)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="h-7 text-sm"
-                    placeholder="0"
-                  />
-                </div>
-
                 {/* Metric Plan */}
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">План метрики</span>
@@ -264,7 +240,23 @@ const QuarterCell = ({
                   />
                 </div>
 
-                {/* Comment */}
+                {/* Other Costs - team field */}
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Доп. расходы</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={data.otherCosts || ''}
+                      onChange={(e) => onChange('otherCosts', parseFloat(e.target.value) || 0)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-7 text-sm flex-1"
+                      placeholder="0"
+                    />
+                    <span className="text-xs text-muted-foreground">₽</span>
+                  </div>
+                </div>
+
+                {/* Comment - team field */}
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Комментарий</span>
                   <Input
@@ -274,6 +266,30 @@ const QuarterCell = ({
                     className="h-7 text-sm"
                     placeholder="..."
                   />
+                </div>
+
+                {/* Separator before admin fields */}
+                <div className="border-t border-border/50 pt-3 mt-3 space-y-2">
+                  {/* Base Cost - admin field */}
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Базовая стоимость</span>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        value={data.cost || ''}
+                        onChange={(e) => onChange('cost', parseFloat(e.target.value) || 0)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-7 text-sm flex-1"
+                        placeholder="0"
+                      />
+                      <span className="text-xs text-muted-foreground">₽</span>
+                    </div>
+                  </div>
+
+                  {/* Total */}
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Итого: {formatCurrency(totalCost)} ₽
+                  </div>
                 </div>
               </CollapsibleContent>
             </div>

@@ -6,12 +6,20 @@ import { usePeople } from '@/hooks/usePeople';
 import { usePersonAssignments, useAssignmentMutations } from '@/hooks/usePeopleAssignments';
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
 import { useFilterParams } from '@/hooks/useFilterParams';
+import { 
+  useTeamSnapshots, 
+  getEffectiveTeamMembers, 
+  getEffectiveTeamMembersAllQuarters,
+  useSnapshotStatuses 
+} from '@/hooks/useTeamSnapshots';
 import ScopeSelector from '@/components/admin/ScopeSelector';
 import PeopleAssignmentsTable from '@/components/admin/people/PeopleAssignmentsTable';
 import CSVPeopleImportDialog from '@/components/admin/people/CSVPeopleImportDialog';
+import QuarterSelector from '@/components/admin/people/QuarterSelector';
 import UnifiedSettingsMenu from '@/components/admin/UnifiedSettingsMenu';
 import { getUniqueUnits, getTeamsForUnits, filterData } from '@/lib/adminDataManager';
 import { VirtualAssignment } from '@/lib/peopleDataManager';
+
 type GroupMode = 'person' | 'initiative';
 
 export default function AdminPeople() {
@@ -33,6 +41,7 @@ export default function AdminPeople() {
   // Dialogs & UI state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>('person');
+  const [selectedQuarter, setSelectedQuarter] = useState<string | 'all'>('all');
   
   // Mutations
   const { createAssignment, updateAssignment } = useAssignmentMutations();
@@ -41,16 +50,38 @@ export default function AdminPeople() {
   const units = useMemo(() => getUniqueUnits(initiatives), [initiatives]);
   const teams = useMemo(() => getTeamsForUnits(initiatives, selectedUnits), [initiatives, selectedUnits]);
   
+  // Fetch team snapshots for selected units/teams
+  const { data: snapshots = [] } = useTeamSnapshots(selectedUnits, selectedTeams.length > 0 ? selectedTeams : teams);
+  
   // Filter initiatives by selected scope
   const filteredInitiatives = useMemo(() => {
     return filterData(initiatives, selectedUnits, selectedTeams);
   }, [initiatives, selectedUnits, selectedTeams]);
 
-  // Filter people by unit/team
+  // Get snapshot statuses for quarter indicators (use first selected unit/team)
+  const snapshotStatuses = useMemo(() => {
+    if (selectedUnits.length === 0 || teams.length === 0) {
+      return new Map();
+    }
+    
+    // Calculate for first team (simplified; in real scenario, combine all)
+    const firstUnit = selectedUnits[0];
+    const firstTeam = selectedTeams.length > 0 ? selectedTeams[0] : teams[0];
+    
+    const statusMap = new Map();
+    for (const quarter of quarters) {
+      const { status } = getEffectiveTeamMembers(firstUnit, firstTeam, quarter, snapshots, people, quarters);
+      statusMap.set(quarter, status);
+    }
+    return statusMap;
+  }, [selectedUnits, selectedTeams, teams, quarters, snapshots, people]);
+
+  // Filter people by unit/team AND by quarterly membership (snapshot logic)
   const filteredPeople = useMemo(() => {
     if (selectedUnits.length === 0) return [];
     
-    return people.filter(person => {
+    // First filter by unit/team
+    const byUnitTeam = people.filter(person => {
       // Unit filter
       if (person.unit && !selectedUnits.includes(person.unit)) {
         return false;
@@ -61,17 +92,47 @@ export default function AdminPeople() {
         return false;
       }
       
-      // Only active employees
-      if (person.terminated_at) {
-        const terminationDate = new Date(person.terminated_at);
-        if (terminationDate < new Date()) {
-          return false;
+      return true;
+    });
+    
+    // If viewing all quarters, include people who are in ANY quarter
+    if (selectedQuarter === 'all') {
+      // Build membership for all quarters
+      const allMemberships = new Set<string>();
+      
+      for (const person of byUnitTeam) {
+        if (!person.unit || !person.team) continue;
+        
+        for (const quarter of quarters) {
+          const { people: effectiveMembers } = getEffectiveTeamMembers(
+            person.unit, person.team, quarter, snapshots, people, quarters
+          );
+          if (effectiveMembers.some(p => p.id === person.id)) {
+            allMemberships.add(person.id);
+            break;
+          }
         }
       }
       
-      return true;
-    });
-  }, [people, selectedUnits, selectedTeams]);
+      return byUnitTeam.filter(p => allMemberships.has(p.id));
+    }
+    
+    // Specific quarter selected — filter to only people in that quarter's snapshot
+    const quarterMembers = new Set<string>();
+    
+    for (const person of byUnitTeam) {
+      if (!person.unit || !person.team) continue;
+      
+      const { people: effectiveMembers } = getEffectiveTeamMembers(
+        person.unit, person.team, selectedQuarter, snapshots, people, quarters
+      );
+      if (effectiveMembers.some(p => p.id === person.id)) {
+        quarterMembers.add(person.id);
+      }
+    }
+    
+    return byUnitTeam.filter(p => quarterMembers.has(p.id));
+  }, [people, selectedUnits, selectedTeams, selectedQuarter, quarters, snapshots]);
 
   // Filter assignments to only show those for filtered initiatives and people
   const filteredAssignments = useMemo(() => {
@@ -82,6 +143,12 @@ export default function AdminPeople() {
       initiativeIds.has(a.initiative_id) && personIds.has(a.person_id)
     );
   }, [assignments, filteredInitiatives, filteredPeople]);
+
+  // Quarters to display in table
+  const displayQuarters = useMemo(() => {
+    if (selectedQuarter === 'all') return quarters;
+    return [selectedQuarter];
+  }, [quarters, selectedQuarter]);
 
   // Handle effort change — create assignment if virtual, update if exists
   const handleEffortChange = useCallback(async (assignment: VirtualAssignment, quarter: string, value: number) => {
@@ -170,6 +237,18 @@ export default function AdminPeople() {
         />
       </div>
 
+      {/* Quarter Selector */}
+      {!needsSelection && quarters.length > 0 && (
+        <div className="px-6 py-3 border-b border-border shrink-0">
+          <QuarterSelector
+            quarters={quarters}
+            selectedQuarter={selectedQuarter}
+            onQuarterChange={setSelectedQuarter}
+            snapshotStatuses={snapshotStatuses}
+          />
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {needsSelection ? (
@@ -188,7 +267,7 @@ export default function AdminPeople() {
               people={filteredPeople}
               initiatives={filteredInitiatives}
               assignments={filteredAssignments}
-              quarters={quarters}
+              quarters={displayQuarters}
               groupMode={groupMode}
               onGroupModeChange={setGroupMode}
               onEffortChange={handleEffortChange}
@@ -203,6 +282,7 @@ export default function AdminPeople() {
         onOpenChange={setImportDialogOpen}
         existingUnits={units}
         existingTeams={teams}
+        quarters={quarters}
       />
     </div>
   );

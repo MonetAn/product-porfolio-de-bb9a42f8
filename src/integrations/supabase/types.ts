@@ -282,6 +282,39 @@ export type Database = {
         }
         Relationships: []
       }
+      team_quarter_snapshots: {
+        Row: {
+          created_by: string | null
+          id: string
+          imported_at: string | null
+          person_ids: string[]
+          quarter: string
+          source: string
+          team: string
+          unit: string
+        }
+        Insert: {
+          created_by?: string | null
+          id?: string
+          imported_at?: string | null
+          person_ids?: string[]
+          quarter: string
+          source?: string
+          team: string
+          unit: string
+        }
+        Update: {
+          created_by?: string | null
+          id?: string
+          imported_at?: string | null
+          person_ids?: string[]
+          quarter?: string
+          source?: string
+          team?: string
+          unit?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -22,24 +22,26 @@
 }
 
 /* Animated state - uses current duration */
+/* NO opacity in transition - blocks slide without fading */
 .treemap-node.animate {
   transition: 
     left var(--transition-current) ease-out,
     top var(--transition-current) ease-out,
     width var(--transition-current) ease-out,
-    height var(--transition-current) ease-out,
-    opacity var(--transition-current) ease-out;
+    height var(--transition-current) ease-out;
 }
 
-/* Enter animation - start invisible for fade-in */
+/* Enter animation - for NEW elements, fade in separately */
 .treemap-node.entering {
   opacity: 0;
+  transition: opacity var(--transition-current) ease-out;
 }
 
-/* Exit animation - fade out */
+/* Exit animation - NO fade, just disable pointer events */
+/* Blocks stay visible as they slide away */
 .treemap-node.exiting {
-  opacity: 0;
   pointer-events: none;
+  /* opacity stays 1 - block slides away visible */
 }
 
 /* Zoom-in target - node that expands to fullscreen */
@@ -51,6 +53,12 @@
 .treemap-node.zoom-out {
   z-index: 50;
   opacity: 1 !important; /* Stay visible while sliding out */
+  pointer-events: none;
+}
+
+/* Zoom-in - nodes that fly in during navigate-up */
+.treemap-node.zoom-in {
+  z-index: 50;
 }
 
 /* Treemap Node Styles */

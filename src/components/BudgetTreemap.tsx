@@ -476,13 +476,15 @@ const BudgetTreemap = ({
         zoomTargetEl.style.height = height + 'px';
         
         // Push other top-level nodes away from the clicked node
+        // Child nodes (depth > 0) will slide away WITH their parent automatically
         unprocessedNodes.forEach((el: Element) => {
           const htmlEl = el as HTMLElement;
           if (htmlEl === zoomTargetEl) return;
           
-          // Only animate depth-0 nodes (top level)
+          // Only push depth-0 nodes - children ride along inside their parent
           if (!htmlEl.classList.contains('depth-0')) {
-            htmlEl.classList.add('exiting', 'animate');
+            // Don't add exiting class - child nodes stay visible inside parent
+            // They will be removed after the animation completes
             setTimeout(() => htmlEl.remove(), durationMs);
             return;
           }
@@ -497,7 +499,7 @@ const BudgetTreemap = ({
           const distance = Math.sqrt(dx * dx + dy * dy) || 1;
           
           // Push factor - push nodes beyond the container edge
-          const pushFactor = Math.max(width, height);
+          const pushFactor = Math.max(width, height) * 1.2;
           
           // Calculate new position (pushed away)
           const currentLeft = parseFloat(htmlEl.style.left) || 0;
@@ -515,16 +517,70 @@ const BudgetTreemap = ({
           unprocessedNodes.forEach(el => el.remove());
         }, durationMs);
       } else {
-        // Fallback to simple fade-out if target not found
+        // Fallback - just remove without animation
         unprocessedNodes.forEach(el => {
-          el.classList.add('exiting', 'animate');
+          el.classList.add('exiting');
           setTimeout(() => el.remove(), durationMs);
         });
       }
-    } else {
-      // Standard fade-out for non-drilldown animations
+    } else if (animationType === 'navigate-up') {
+      // NAVIGATE UP: New nodes fly in from outside, current view shrinks
+      const containerRect = container.getBoundingClientRect();
+      const centerX = containerRect.width / 2;
+      const centerY = containerRect.height / 2;
+      
+      // The current expanded node should shrink to its new position
+      // This is handled by the UPDATE logic above
+      
+      // For any nodes that need to be removed, just remove them
       unprocessedNodes.forEach(el => {
-        el.classList.add('exiting', 'animate');
+        setTimeout(() => el.remove(), durationMs);
+      });
+      
+      // For NEW nodes that were just created by renderNodeAnimated,
+      // we need to start them from outside and animate in
+      // Find all newly created depth-0 nodes (they have 'entering' class)
+      container.querySelectorAll('.treemap-node.depth-0.entering').forEach((el: Element) => {
+        const htmlEl = el as HTMLElement;
+        
+        // Get the final position (already set by renderNodeAnimated)
+        const finalLeft = parseFloat(htmlEl.style.left) || 0;
+        const finalTop = parseFloat(htmlEl.style.top) || 0;
+        const nodeWidth = parseFloat(htmlEl.style.width) || 0;
+        const nodeHeight = parseFloat(htmlEl.style.height) || 0;
+        
+        // Calculate center of this node
+        const nodeCenterX = finalLeft + nodeWidth / 2;
+        const nodeCenterY = finalTop + nodeHeight / 2;
+        
+        // Direction from container center to this node
+        const dx = nodeCenterX - centerX;
+        const dy = nodeCenterY - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        const pushFactor = Math.max(containerRect.width, containerRect.height) * 1.2;
+        
+        // Start position - far outside the container
+        const startLeft = finalLeft + (dx / distance) * pushFactor;
+        const startTop = finalTop + (dy / distance) * pushFactor;
+        
+        // Set initial position (outside)
+        htmlEl.style.left = startLeft + 'px';
+        htmlEl.style.top = startTop + 'px';
+        htmlEl.classList.remove('entering');
+        htmlEl.classList.add('zoom-in');
+        
+        // Animate to final position
+        requestAnimationFrame(() => {
+          htmlEl.classList.add('animate');
+          htmlEl.style.left = finalLeft + 'px';
+          htmlEl.style.top = finalTop + 'px';
+        });
+      });
+    } else {
+      // Standard filter animation - just update positions (already done)
+      // Remove unprocessed nodes without animation
+      unprocessedNodes.forEach(el => {
+        el.classList.add('exiting');
         setTimeout(() => el.remove(), durationMs);
       });
     }

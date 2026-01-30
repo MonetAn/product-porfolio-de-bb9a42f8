@@ -133,6 +133,7 @@ export default function PersonGroupRow({
                 <div key={q} className="flex justify-center">
                   <EffortInput
                     value={assignment.quarterly_effort[q] || 0}
+                    expectedValue={assignment.expected_effort?.[q]}
                     isAuto={assignment.is_auto}
                     isVirtual={assignment.isVirtual}
                     onChange={(value) => onEffortChange(assignment, q, value)}

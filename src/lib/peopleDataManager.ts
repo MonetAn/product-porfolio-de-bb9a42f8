@@ -65,6 +65,7 @@ export interface VirtualAssignment {
   person_id: string;
   initiative_id: string;
   quarterly_effort: Record<string, number>;
+  expected_effort?: Record<string, number>; // From initiative's effortCoefficient
   is_auto: boolean;
   isVirtual: boolean; // true if not in DB
 }

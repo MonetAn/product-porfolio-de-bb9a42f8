@@ -47,6 +47,7 @@ const Index = () => {
   const [showTeams, setShowTeams] = useState(false);
   const [showInitiatives, setShowInitiatives] = useState(false);
   const [highlightedInitiative, setHighlightedInitiative] = useState<string | null>(null);
+  const [clickedNodeName, setClickedNodeName] = useState<string | null>(null);
 
   // Cost filter state (Timeline only)
   const [costSortOrder, setCostSortOrder] = useState<'none' | 'asc' | 'desc'>('none');
@@ -123,6 +124,13 @@ const Index = () => {
   useEffect(() => {
     rebuildTree();
   }, [rebuildTree]);
+
+  // Auto-enable Teams toggle when single Unit is selected (fixes sync bug)
+  useEffect(() => {
+    if (selectedUnits.length === 1 && !showTeams) {
+      setShowTeams(true);
+    }
+  }, [selectedUnits.length, showTeams]);
   // Process CSV file - shared logic for upload and drag-drop (fallback mode)
   const processCSVFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -234,6 +242,12 @@ const Index = () => {
 
   // Handle click on treemap node - select single item in filter and enable corresponding toggle
   const handleNodeClick = (node: TreeNode) => {
+    // Store clicked node name for zoom animation
+    setClickedNodeName(node.name);
+    
+    // Clear after animation completes
+    setTimeout(() => setClickedNodeName(null), 600);
+    
     if (node.isStakeholder) {
       // Clicking a stakeholder - filter by this stakeholder and enable Teams toggle
       setSelectedStakeholders([node.name]);
@@ -518,6 +532,7 @@ const Index = () => {
             hasData={rawData.length > 0}
             onResetFilters={resetFilters}
             selectedUnitsCount={selectedUnits.length}
+            clickedNodeName={clickedNodeName}
           />
         )}
 
@@ -535,6 +550,7 @@ const Index = () => {
             }}
             onResetFilters={resetFilters}
             selectedUnitsCount={selectedUnits.length}
+            clickedNodeName={clickedNodeName}
           />
         )}
 

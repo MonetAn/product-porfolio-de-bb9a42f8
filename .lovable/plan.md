@@ -1,212 +1,266 @@
 
-# План: Фиксы фильтрации и наследование коэффициентов
 
-## Проблема 1: Выбор команды без юнита
+# План: Квартальные составы команд и протягивание людей
 
-### Текущее поведение
-При выборе только команды (без юнита) → ничего не отображается, потому что:
-```typescript
-// AdminPeople.tsx, строка 51
-if (selectedUnits.length === 0) return [];
-```
+## Суть изменения
 
-### Решение
-При выборе команды — автоматически определять и выбирать юнит, к которому относится эта команда.
+Сейчас люди привязаны к командам "навсегда". Нужно сделать так, чтобы состав команды мог меняться от квартала к кварталу, с автоматическим "протягиванием" вперёд.
 
-**Изменения в `ScopeSelector.tsx`:**
-
-```typescript
-const toggleTeam = (t: string) => {
-  if (selectedTeams.includes(t)) {
-    // Убираем команду
-    onTeamsChange(selectedTeams.filter(x => x !== t));
-  } else {
-    // Добавляем команду
-    const newTeams = [...selectedTeams, t];
-    
-    // Находим юнит этой команды
-    const teamUnit = allData.find(r => r.team === t)?.unit;
-    
-    // Если юнит не выбран — добавляем его
-    if (teamUnit && !selectedUnits.includes(teamUnit)) {
-      const newUnits = [...selectedUnits, teamUnit];
-      if (onFiltersChange) {
-        onFiltersChange(newUnits, newTeams);
-      } else {
-        onUnitsChange(newUnits);
-        onTeamsChange(newTeams);
-      }
-    } else {
-      onTeamsChange(newTeams);
-    }
-  }
-};
+```text
+                    Q1'25        Q2'25        Q3'25        Q4'25
+                   ─────────────────────────────────────────────
+Загружен CSV:      [✓ снимок]                [✓ снимок]         
+                   
+Состав:            Иванов       Иванов       Иванов       Иванов     (протянут →)
+                   Петров       Петров       (уволен)     
+                                             Сидоров      Сидоров    (пришёл)
+                                             
+Откуда состав:     из CSV Q1    протянут     из CSV Q3    протянут
 ```
 
 ---
 
-## Проблема 2: Коэффициенты из инициатив не отображаются
+## Новая модель данных
 
-### Текущее поведение
-- Виртуальные assignments создаются с `quarterly_effort: {}`
-- EffortInput показывает "—" (нет значения)
-- Коэффициент из инициативы (`effortCoefficient`) не используется
+### Новая таблица: `team_quarter_snapshots`
 
-### Бизнес-логика
-1. Если нет сохранённого значения → показывать значение из инициативы (как "авто")
-2. Если есть сохранённое значение (вручную) → показывать его + ненавязчиво показать исходное значение
+Хранит "снимки" состава команды на конкретный квартал:
 
-### Решение
+| Поле | Тип | Описание |
+|------|-----|----------|
+| id | uuid | PK |
+| unit | text | Unit команды |
+| team | text | Название команды |
+| quarter | text | "2025-Q1" |
+| person_ids | uuid[] | Список ID людей в команде |
+| source | text | "csv_import" / "carried_forward" |
+| imported_at | timestamp | Когда загружен |
+| created_by | uuid | Кто загрузил |
 
-**1. Передавать expected effort из инициативы в компоненты:**
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ PeopleAssignmentsTable                                       │
-│   └─ При создании VirtualAssignment добавить поле:           │
-│        expectedEffort: Record<string, number>                │
-│                                                              │
-│   └─ expectedEffort берётся из initiative.quarterlyData[q]   │
-│        .effortCoefficient                                    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**2. Изменить интерфейс VirtualAssignment:**
-
-```typescript
-// peopleDataManager.ts
-export interface VirtualAssignment {
-  id: string | null;
-  person_id: string;
-  initiative_id: string;
-  quarterly_effort: Record<string, number>;
-  expected_effort?: Record<string, number>; // NEW: коэффициент из инициативы
-  is_auto: boolean;
-  isVirtual: boolean;
-}
-```
-
-**3. Заполнять expected_effort при создании виртуальных assignments:**
-
-```typescript
-// PeopleAssignmentsTable.tsx - generateVirtualAssignments
-return teamInitiatives.map(initiative => {
-  const key = `${person.id}:${initiative.id}`;
-  const existing = assignmentMap.get(key);
-  
-  // Собираем expected effort из инициативы
-  const expectedEffort: Record<string, number> = {};
-  quarters.forEach(q => {
-    const qData = initiative.quarterlyData[q];
-    if (qData?.effortCoefficient > 0) {
-      expectedEffort[q] = qData.effortCoefficient;
-    }
-  });
-  
-  if (existing) {
-    return {
-      ...existing,
-      expected_effort: expectedEffort,
-      isVirtual: false
-    };
-  }
-  
-  return {
-    id: null,
-    person_id: person.id,
-    initiative_id: initiative.id,
-    quarterly_effort: {},
-    expected_effort: expectedEffort,
-    is_auto: true,
-    isVirtual: true
-  };
-});
-```
-
-**4. Обновить EffortInput для отображения обоих значений:**
-
-Добавить prop `expectedValue` и показывать его ненавязчиво:
-
-```typescript
-interface EffortInputProps {
-  value: number;
-  expectedValue?: number; // NEW: значение из инициативы
-  isAuto: boolean;
-  isVirtual?: boolean;
-  onChange: (value: number) => void;
-}
-```
-
-**UI логика:**
+### Логика определения состава
 
 ```text
-Случай 1: Нет сохранённого значения, есть expected
-┌──────────────┐
-│   35%        │  ← показываем expected как "авто"
-│  (серый)     │    подсказка: "Из инициативы"
-└──────────────┘
+getTeamMembersForQuarter(unit, team, quarter):
+  
+  1. Ищем снимок для этого квартала
+     → если есть: возвращаем людей из снимка
+  
+  2. Если нет снимка:
+     a) Квартал ≤ текущий: ищем ближайший ПРОШЛЫЙ снимок
+     b) Квартал > текущий: берём ТЕКУЩИЙ состав (hired + не terminated)
+     
+  3. Если вообще нет снимков: используем текущий состав
+```
 
-Случай 2: Сохранённое значение отличается от expected
-┌──────────────────┐
-│  50% ✎ (25%)    │  ← основное — вручную, в скобках — исходное
-│                  │    стиль: 25% приглушённый, мелкий
-└──────────────────┘
+---
 
-Случай 3: Нет сохранённого, нет expected
-┌──────────────┐
-│     —        │  ← пунктирная рамка (как сейчас)
-└──────────────┘
+## Изменения UI
 
-Случай 4: Сохранённое = expected
-┌──────────────┐
-│   35%        │  ← как авто, но без подсветки "вручную"
-└──────────────┘
+### 1. Страница "Люди" — добавляем фильтр по кварталу
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ ← Админка    [👥 Люди]    12 чел. • 5 инициатив                │
+├─────────────────────────────────────────────────────────────────┤
+│ Unit: [B2B Pizza ▼]   Team: [Kitchen ▼]                         │
+│                                                                 │
+│ Квартал: [● 25 Q1] [25 Q2] [25 Q3] [25 Q4] [Все]    ← НОВОЕ    │
+│          ────────                                               │
+│          "снимок загружен 15.01.2025"                           │
+├─────────────────────────────────────────────────────────────────┤
+│ [По людям] [По инициативам]        25 Q1  25 Q2  25 Q3  25 Q4  │
+│ ─────────────────────────────────────────────────────────────  │
+│ ▼ Иванов Иван                       35%    35%    —      —     │
+│   └─ Инициатива X                   35%    35%    —      —     │
+│ ▼ Петров Пётр                       25%    —      —      —     │
+│   └─ (показан только в Q1, т.к. уволен)                         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**При выборе конкретного квартала:**
+- Таблица показывает только колонку этого квартала (упрощённый вид)
+- Показываются только люди, активные в этом квартале
+- Виден статус: "Снимок загружен" / "Протянуто из Q2" / "Текущий состав"
+
+**При выборе "Все":**
+- Показываются все кварталы (как сейчас)
+- Люди видны в колонках кварталов, где они активны
+- Пустые ячейки для кварталов, где человека нет в команде
+
+### 2. Импорт CSV — выбор квартала
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ Импорт сотрудников из CSV                                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ Квартал для импорта:   [2025-Q1 ▼]   ← НОВЫЙ СЕЛЕКТ             │
+│                                                                 │
+│ ┌─────────────────────────────────────────────────────────┐     │
+│ │                                                          │     │
+│ │        📁 Перетащите CSV-файл сюда                       │     │
+│ │           или нажмите для выбора                         │     │
+│ │                                                          │     │
+│ └─────────────────────────────────────────────────────────┘     │
+│                                                                 │
+│ ⓘ Этот снимок заменит состав команды для выбранного квартала   │
+│   Предыдущие и будущие кварталы не будут затронуты             │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                            [Отмена] [Далее →]   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 3. Индикатор источника состава
+
+В хедере квартала показываем статус:
+
+```text
+25 Q1           25 Q2           25 Q3           25 Q4
+[📥 Снимок]     [→ из Q1]       [📥 Снимок]     [👥 Текущие]
+   ↓               ↓               ↓               ↓
+загружен CSV   протянут        загружен CSV    текущий состав
+15.01.2025     из Q1           01.10.2025      (будущий)
 ```
 
 ---
 
 ## Файлы для изменения
 
-### 1. `src/lib/peopleDataManager.ts`
-- Добавить `expected_effort?: Record<string, number>` в `VirtualAssignment`
+### 1. База данных — новая миграция
 
-### 2. `src/components/admin/ScopeSelector.tsx`
-- В `toggleTeam()` добавить автоматический выбор юнита
+```sql
+CREATE TABLE team_quarter_snapshots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  unit text NOT NULL,
+  team text NOT NULL,
+  quarter text NOT NULL,
+  person_ids uuid[] NOT NULL DEFAULT '{}',
+  source text NOT NULL DEFAULT 'csv_import',
+  imported_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES auth.users(id),
+  
+  UNIQUE(unit, team, quarter)
+);
 
-### 3. `src/components/admin/people/PeopleAssignmentsTable.tsx`
-- В `generateVirtualAssignments` заполнять `expected_effort` из инициативы
-- Аналогично в `byInitiative` computed
+-- RLS
+ALTER TABLE team_quarter_snapshots ENABLE ROW LEVEL SECURITY;
+-- ... policies for dodo employees
+```
 
-### 4. `src/components/admin/people/EffortInput.tsx`
-- Добавить prop `expectedValue`
-- Обновить логику отображения:
-  - Если `value === 0` и `expectedValue > 0` → показывать expected
-  - Если `value !== expectedValue` и оба > 0 → показывать "(expected)" рядом
+### 2. Новый hook: `useTeamSnapshots.ts`
 
-### 5. `src/components/admin/people/PersonGroupRow.tsx`
-- Передавать `expectedValue` в EffortInput
+- `useTeamSnapshots(unit, team)` — загрузка всех снимков команды
+- `useCreateSnapshot()` — создание снимка при импорте
+- `getEffectiveTeamMembers(unit, team, quarter, snapshots, people)` — вычисление состава
 
-### 6. `src/components/admin/people/InitiativeGroupRow.tsx`  
-- Передавать `expectedValue` в EffortInput
+### 3. `CSVPeopleImportDialog.tsx`
+
+- Добавить Select для выбора квартала
+- При импорте:
+  1. Upsert людей в таблицу `people`
+  2. Создать/обновить снимок в `team_quarter_snapshots`
+
+### 4. `AdminPeople.tsx`
+
+- Добавить состояние `selectedQuarter: string | 'all'`
+- Добавить QuarterFilter компонент
+- Изменить фильтрацию `filteredPeople` с учётом снимков
+
+### 5. `PeopleAssignmentsTable.tsx`
+
+- Принимать `selectedQuarter` prop
+- Если выбран конкретный квартал → показывать одну колонку
+- Фильтровать людей через `getEffectiveTeamMembers()`
+
+### 6. Новый компонент: `QuarterSelector.tsx`
+
+Toggle-группа для выбора квартала с индикаторами статуса (снимок/протянуто/текущие)
 
 ---
 
-## Визуальный результат
+## Логика протягивания (детали)
 
-**До (текущее):**
-```
-Инициатива X     Q1       Q2       Q3
-├─ Иванов       [—]      [—]      [—]
-├─ Петров       [—]      [—]      [—]
+```typescript
+function getEffectiveTeamMembers(
+  unit: string,
+  team: string,
+  quarter: string,
+  snapshots: TeamSnapshot[],
+  allPeople: Person[],
+  quarters: string[]
+): Person[] {
+  // 1. Есть ли снимок для этого квартала?
+  const snapshot = snapshots.find(s => 
+    s.unit === unit && s.team === team && s.quarter === quarter
+  );
+  
+  if (snapshot) {
+    return allPeople.filter(p => snapshot.person_ids.includes(p.id));
+  }
+  
+  // 2. Нет снимка — определяем откуда брать
+  const currentQuarter = getCurrentQuarter(); // "2025-Q4"
+  const quarterIndex = quarters.indexOf(quarter);
+  const currentIndex = quarters.indexOf(currentQuarter);
+  
+  if (quarterIndex <= currentIndex) {
+    // Прошлый/текущий квартал без снимка → ищем ближайший прошлый снимок
+    for (let i = quarterIndex - 1; i >= 0; i--) {
+      const prevSnapshot = snapshots.find(s => 
+        s.unit === unit && s.team === team && s.quarter === quarters[i]
+      );
+      if (prevSnapshot) {
+        return allPeople.filter(p => prevSnapshot.person_ids.includes(p.id));
+      }
+    }
+  }
+  
+  // 3. Будущий квартал или нет прошлых снимков → текущий активный состав
+  return allPeople.filter(p => 
+    p.unit === unit && 
+    p.team === team && 
+    !p.terminated_at
+  );
+}
 ```
 
-**После:**
-```
-Инициатива X     Q1       Q2       Q3
-├─ Иванов       [35%]    [35%]    [—]     ← из инициативы (серые)
-├─ Петров       [50% ✎ (35%)]  [—]  [—]   ← 50% вручную, 35% было
-```
+---
 
-При наведении tooltip объяснит:
-- "35%" (серый) → "Значение из инициативы"
-- "50% (35%)" → "Изменено вручную, исходное: 35%"
+## Сценарии использования
+
+**Сценарий 1: Первоначальная настройка**
+1. Захожу на страницу "Люди"
+2. Вижу текущий состав (из таблицы people, без снимков)
+3. Проставляю коэффициенты — они применяются к этому составу
+
+**Сценарий 2: Загрузка исторического снимка**
+1. Выбираю квартал Q1 в фильтре
+2. Импортирую CSV для Q1
+3. Вижу состав Q1 с меткой "Снимок загружен"
+4. Q2, Q3, Q4 автоматически "протягивают" этот состав
+
+**Сценарий 3: Изменение состава в середине года**
+1. Квартал Q3, кто-то уволился, пришёл новый
+2. Импортирую CSV для Q3
+3. Q3 и Q4 показывают новый состав
+4. Q1 и Q2 остаются со старым составом
+
+**Сценарий 4: Планирование на будущее**
+1. Сейчас Q4'25, планирую Q1'26
+2. Вижу текущий состав, протянутый в Q1'26
+3. Проставляю коэффициенты
+4. Когда наступит Q1'26 — смогу загрузить актуальный снимок
+
+---
+
+## Порядок реализации
+
+1. **Миграция БД** — создание таблицы `team_quarter_snapshots`
+2. **Hook `useTeamSnapshots`** — CRUD для снимков
+3. **Helper `getEffectiveTeamMembers`** — логика протягивания
+4. **`QuarterSelector`** — UI-компонент выбора квартала
+5. **`CSVPeopleImportDialog`** — добавить выбор квартала
+6. **`AdminPeople`** — интеграция фильтра
+7. **`PeopleAssignmentsTable`** — адаптация под выбранный квартал
+

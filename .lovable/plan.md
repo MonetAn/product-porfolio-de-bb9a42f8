@@ -1,228 +1,212 @@
 
+# План: Фиксы фильтрации и наследование коэффициентов
 
-# План: Support с каскадной логикой
+## Проблема 1: Выбор команды без юнита
 
-## Бизнес-логика
+### Текущее поведение
+При выборе только команды (без юнита) → ничего не отображается, потому что:
+```typescript
+// AdminPeople.tsx, строка 51
+if (selectedUnits.length === 0) return [];
+```
+
+### Решение
+При выборе команды — автоматически определять и выбирать юнит, к которому относится эта команда.
+
+**Изменения в `ScopeSelector.tsx`:**
+
+```typescript
+const toggleTeam = (t: string) => {
+  if (selectedTeams.includes(t)) {
+    // Убираем команду
+    onTeamsChange(selectedTeams.filter(x => x !== t));
+  } else {
+    // Добавляем команду
+    const newTeams = [...selectedTeams, t];
+    
+    // Находим юнит этой команды
+    const teamUnit = allData.find(r => r.team === t)?.unit;
+    
+    // Если юнит не выбран — добавляем его
+    if (teamUnit && !selectedUnits.includes(teamUnit)) {
+      const newUnits = [...selectedUnits, teamUnit];
+      if (onFiltersChange) {
+        onFiltersChange(newUnits, newTeams);
+      } else {
+        onUnitsChange(newUnits);
+        onTeamsChange(newTeams);
+      }
+    } else {
+      onTeamsChange(newTeams);
+    }
+  }
+};
+```
+
+---
+
+## Проблема 2: Коэффициенты из инициатив не отображаются
+
+### Текущее поведение
+- Виртуальные assignments создаются с `quarterly_effort: {}`
+- EffortInput показывает "—" (нет значения)
+- Коэффициент из инициативы (`effortCoefficient`) не используется
+
+### Бизнес-логика
+1. Если нет сохранённого значения → показывать значение из инициативы (как "авто")
+2. Если есть сохранённое значение (вручную) → показывать его + ненавязчиво показать исходное значение
+
+### Решение
+
+**1. Передавать expected effort из инициативы в компоненты:**
 
 ```text
-Инициатива переходит в режим поддержки и остаётся там навсегда:
-
-Q1        Q2        Q3        Q4
-[Dev]  →  [Dev]  →  [Support] →  [Support]
-                       ↑           ↑
-                    можно      заблокировано
-                    выбрать    (автоматически)
+┌─────────────────────────────────────────────────────────────┐
+│ PeopleAssignmentsTable                                       │
+│   └─ При создании VirtualAssignment добавить поле:           │
+│        expectedEffort: Record<string, number>                │
+│                                                              │
+│   └─ expectedEffort берётся из initiative.quarterlyData[q]   │
+│        .effortCoefficient                                    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Правила:**
-- Если `support = true` в квартале N, все кварталы > N тоже `support = true`
-- Нельзя снять Support в квартале, если в предыдущем квартале уже Support
-- Первый Support-квартал — единственный редактируемый (можно снять, если передумал)
+**2. Изменить интерфейс VirtualAssignment:**
 
----
-
-## Изменения UI
-
-### Компактный вид (QuarterCell)
-
-**Было:**
-```
-[●] 150K ₽ [35%] [S]
- ↑                 ↑
-OnTrack         Support
-```
-
-**Станет:**
-```
-150K ₽ [35%] [🔧]
-              ↑
-           Support (иконка wrench)
-```
-
-- Убираем точку OnTrack (как ты предложил — не показываем, посмотрим нужно ли)
-- Заменяем бейдж "S" на иконку 🔧 (wrench) — визуально понятнее
-- Добавляем tooltip "Режим поддержки" при наведении
-
-### Развёрнутый вид
-
-**Станет:**
-```
-┌─────────────────────────────────────┐
-│ Коэфф. трудозатрат   [35] %        │
-│ ─────────────────────────────────  │
-│ Режим поддержки      [○──●]  ← NEW │
-│   └ "Все последующие кварталы      │
-│      будут в режиме поддержки"     │
-│ ─────────────────────────────────  │
-│ On-Track             [●──○]        │
-│ Доп. расходы         [____]        │
-│ План метрики         [____]        │
-│ Факт метрики         [____]        │
-│ Комментарий          [____]        │
-└─────────────────────────────────────┘
-```
-
-Если квартал унаследовал Support от предыдущего:
-```
-│ Режим поддержки      [●──●] 🔒     │
-│   └ "Унаследовано от Q2"           │
-```
-
----
-
-## Изменения файлов
-
-### 1. `src/components/admin/QuarterCell.tsx`
-
-**Новые props:**
 ```typescript
-interface QuarterCellProps {
-  quarter: string;
-  data: AdminQuarterData;
-  onChange: (field: keyof AdminQuarterData, value: string | number | boolean) => void;
-  // ... existing props
-  
-  // NEW: для логики каскадного Support
-  isInheritedSupport?: boolean;  // true если Support унаследован от предыдущего квартала
-  inheritedFromQuarter?: string; // "2025-Q2" — от какого квартала унаследовано
+// peopleDataManager.ts
+export interface VirtualAssignment {
+  id: string | null;
+  person_id: string;
+  initiative_id: string;
+  quarterly_effort: Record<string, number>;
+  expected_effort?: Record<string, number>; // NEW: коэффициент из инициативы
+  is_auto: boolean;
+  isVirtual: boolean;
 }
 ```
 
-**Изменения UI:**
-
-1. **Компактный вид:**
-   - Убрать цветную точку OnTrack
-   - Заменить `<Badge>S</Badge>` на `<Wrench size={12} />` с tooltip
-
-2. **Развёрнутый вид:**
-   - Добавить toggle "Режим поддержки" между "Коэфф. трудозатрат" и "On-Track"
-   - Если `isInheritedSupport = true`: toggle disabled + иконка замка + подсказка
-
-### 2. `src/components/admin/InitiativeTable.tsx`
-
-**Добавить логику определения inherited support:**
+**3. Заполнять expected_effort при создании виртуальных assignments:**
 
 ```typescript
-// Для каждой строки и каждого квартала определяем:
-const getInheritedSupportInfo = (row: AdminDataRow, quarter: string, quarters: string[]) => {
-  const quarterIndex = quarters.indexOf(quarter);
+// PeopleAssignmentsTable.tsx - generateVirtualAssignments
+return teamInitiatives.map(initiative => {
+  const key = `${person.id}:${initiative.id}`;
+  const existing = assignmentMap.get(key);
   
-  // Ищем первый квартал с support = true до текущего
-  for (let i = 0; i < quarterIndex; i++) {
-    const prevQ = quarters[i];
-    if (row.quarterlyData[prevQ]?.support) {
-      return {
-        isInherited: true,
-        fromQuarter: prevQ
-      };
+  // Собираем expected effort из инициативы
+  const expectedEffort: Record<string, number> = {};
+  quarters.forEach(q => {
+    const qData = initiative.quarterlyData[q];
+    if (qData?.effortCoefficient > 0) {
+      expectedEffort[q] = qData.effortCoefficient;
     }
+  });
+  
+  if (existing) {
+    return {
+      ...existing,
+      expected_effort: expectedEffort,
+      isVirtual: false
+    };
   }
   
-  return { isInherited: false, fromQuarter: null };
-};
+  return {
+    id: null,
+    person_id: person.id,
+    initiative_id: initiative.id,
+    quarterly_effort: {},
+    expected_effort: expectedEffort,
+    is_auto: true,
+    isVirtual: true
+  };
+});
 ```
 
-**При изменении support — каскадное обновление:**
+**4. Обновить EffortInput для отображения обоих значений:**
+
+Добавить prop `expectedValue` и показывать его ненавязчиво:
 
 ```typescript
-const handleSupportChange = (rowId: string, quarter: string, value: boolean) => {
-  if (value) {
-    // Включаем support для этого и всех последующих кварталов
-    const quarterIndex = quarters.indexOf(quarter);
-    for (let i = quarterIndex; i < quarters.length; i++) {
-      onQuarterDataChange(rowId, quarters[i], 'support', true);
-    }
-  } else {
-    // Можно выключить только если предыдущий квартал не Support
-    onQuarterDataChange(rowId, quarter, 'support', false);
-  }
-};
-```
-
-### 3. `src/lib/adminDataManager.ts`
-
-Добавить helper-функцию для валидации Support:
-
-```typescript
-// Проверка: можно ли изменить support в этом квартале
-export function canToggleSupport(
-  quarterlyData: Record<string, AdminQuarterData>,
-  quarter: string,
-  quarters: string[]
-): { canToggle: boolean; reason?: string; inheritedFrom?: string } {
-  const quarterIndex = quarters.indexOf(quarter);
-  
-  // Проверяем предыдущие кварталы
-  for (let i = 0; i < quarterIndex; i++) {
-    if (quarterlyData[quarters[i]]?.support) {
-      return {
-        canToggle: false,
-        reason: 'Унаследовано от предыдущего квартала',
-        inheritedFrom: quarters[i]
-      };
-    }
-  }
-  
-  return { canToggle: true };
+interface EffortInputProps {
+  value: number;
+  expectedValue?: number; // NEW: значение из инициативы
+  isAuto: boolean;
+  isVirtual?: boolean;
+  onChange: (value: number) => void;
 }
 ```
+
+**UI логика:**
+
+```text
+Случай 1: Нет сохранённого значения, есть expected
+┌──────────────┐
+│   35%        │  ← показываем expected как "авто"
+│  (серый)     │    подсказка: "Из инициативы"
+└──────────────┘
+
+Случай 2: Сохранённое значение отличается от expected
+┌──────────────────┐
+│  50% ✎ (25%)    │  ← основное — вручную, в скобках — исходное
+│                  │    стиль: 25% приглушённый, мелкий
+└──────────────────┘
+
+Случай 3: Нет сохранённого, нет expected
+┌──────────────┐
+│     —        │  ← пунктирная рамка (как сейчас)
+└──────────────┘
+
+Случай 4: Сохранённое = expected
+┌──────────────┐
+│   35%        │  ← как авто, но без подсветки "вручную"
+└──────────────┘
+```
+
+---
+
+## Файлы для изменения
+
+### 1. `src/lib/peopleDataManager.ts`
+- Добавить `expected_effort?: Record<string, number>` в `VirtualAssignment`
+
+### 2. `src/components/admin/ScopeSelector.tsx`
+- В `toggleTeam()` добавить автоматический выбор юнита
+
+### 3. `src/components/admin/people/PeopleAssignmentsTable.tsx`
+- В `generateVirtualAssignments` заполнять `expected_effort` из инициативы
+- Аналогично в `byInitiative` computed
+
+### 4. `src/components/admin/people/EffortInput.tsx`
+- Добавить prop `expectedValue`
+- Обновить логику отображения:
+  - Если `value === 0` и `expectedValue > 0` → показывать expected
+  - Если `value !== expectedValue` и оба > 0 → показывать "(expected)" рядом
+
+### 5. `src/components/admin/people/PersonGroupRow.tsx`
+- Передавать `expectedValue` в EffortInput
+
+### 6. `src/components/admin/people/InitiativeGroupRow.tsx`  
+- Передавать `expectedValue` в EffortInput
 
 ---
 
 ## Визуальный результат
 
-**Компактный вид (без Support):**
+**До (текущее):**
 ```
-150K ₽ [35%]        [▼]
-```
-
-**Компактный вид (с Support):**
-```
-150K ₽ [35%] 🔧     [▼]
-        ↑
-     tooltip: "Режим поддержки"
+Инициатива X     Q1       Q2       Q3
+├─ Иванов       [—]      [—]      [—]
+├─ Петров       [—]      [—]      [—]
 ```
 
-**Развёрнутый вид (Support редактируемый):**
+**После:**
 ```
-┌───────────────────────────────────┐
-│ Коэфф. трудозатрат  [35] %       │
-│ Режим поддержки     [○───●]      │
-│   ⚠ Все кварталы далее станут    │
-│     в режиме поддержки           │
-│ On-Track            [●───○]      │
-│ ...                              │
-└───────────────────────────────────┘
+Инициатива X     Q1       Q2       Q3
+├─ Иванов       [35%]    [35%]    [—]     ← из инициативы (серые)
+├─ Петров       [50% ✎ (35%)]  [—]  [—]   ← 50% вручную, 35% было
 ```
 
-**Развёрнутый вид (Support унаследован):**
-```
-┌───────────────────────────────────┐
-│ Коэфф. трудозатрат  [35] %       │
-│ Режим поддержки     [●───●] 🔒   │
-│   ℹ Унаследовано от 2025-Q2      │
-│ On-Track            [●───○]      │
-│ ...                              │
-└───────────────────────────────────┘
-```
-
----
-
-## Сценарии использования
-
-**Сценарий 1: Перевод в Support**
-1. Пользователь открывает Q3
-2. Включает "Режим поддержки"
-3. Q3 и Q4 автоматически становятся Support
-4. Q4 показывает "🔒 Унаследовано от Q3"
-
-**Сценарий 2: Отмена (пока не сохранено)**
-1. Пользователь может выключить Support в Q3
-2. Q4 автоматически тоже теряет Support
-3. (работает только если Q2 не Support)
-
-**Сценарий 3: Попытка изменить унаследованный**
-1. Пользователь открывает Q4 (унаследован от Q3)
-2. Toggle заблокирован
-3. Tooltip объясняет: "Сначала снимите Support с Q3"
-
+При наведении tooltip объяснит:
+- "35%" (серый) → "Значение из инициативы"
+- "50% (35%)" → "Изменено вручную, исходное: 35%"

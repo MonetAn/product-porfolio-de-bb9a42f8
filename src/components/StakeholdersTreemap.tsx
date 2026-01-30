@@ -378,6 +378,152 @@ const StakeholdersTreemap = ({
       return div;
     };
 
+    // ===== HELPER: Render new tree (reusable) =====
+    const renderNewTree = () => {
+      // Clear processed flags
+      container.querySelectorAll('[data-processed]').forEach(el => {
+        el.removeAttribute('data-processed');
+      });
+
+      // Render all top-level nodes
+      root.children!.forEach((node, index) => {
+        renderNodeAnimated(node, container, 0, index, 0, 0);
+      });
+
+      // Remove any unprocessed nodes (standard behavior)
+      container.querySelectorAll('.treemap-node:not([data-processed])').forEach(el => {
+        el.remove();
+      });
+    };
+
+    // ===== DRILLDOWN: Animate EXISTING nodes BEFORE rendering new tree =====
+    if (animationType === 'drilldown' && zoomTargetName) {
+      // PHASE 1: Find ALL current depth-0 nodes BEFORE any rendering
+      const existingNodes = container.querySelectorAll('.treemap-node.depth-0');
+      const containerRect = container.getBoundingClientRect();
+      
+      // Find the clicked node among EXISTING nodes
+      const zoomTargetEl = Array.from(existingNodes).find(
+        el => el.getAttribute('data-key')?.includes(zoomTargetName)
+      ) as HTMLElement | null;
+      
+      if (zoomTargetEl && existingNodes.length > 0) {
+        const zoomTargetRect = zoomTargetEl.getBoundingClientRect();
+        const clickedCenterX = zoomTargetRect.left + zoomTargetRect.width / 2 - containerRect.left;
+        const clickedCenterY = zoomTargetRect.top + zoomTargetRect.height / 2 - containerRect.top;
+        
+        // PHASE 2: Animate zoom target to fullscreen
+        zoomTargetEl.classList.add('animate', 'zoom-target');
+        zoomTargetEl.style.left = '0px';
+        zoomTargetEl.style.top = '0px';
+        zoomTargetEl.style.width = width + 'px';
+        zoomTargetEl.style.height = height + 'px';
+        zoomTargetEl.style.zIndex = '100';
+        
+        // PHASE 3: Push OTHER nodes away (shrink + slide)
+        existingNodes.forEach((el: Element) => {
+          const htmlEl = el as HTMLElement;
+          if (htmlEl === zoomTargetEl) return;
+          
+          const elRect = htmlEl.getBoundingClientRect();
+          const elCenterX = elRect.left + elRect.width / 2 - containerRect.left;
+          const elCenterY = elRect.top + elRect.height / 2 - containerRect.top;
+          
+          // Direction from clicked node center
+          const dx = elCenterX - clickedCenterX;
+          const dy = elCenterY - clickedCenterY;
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+          const pushFactor = Math.max(width, height) * 1.5;
+          
+          // Calculate exit position
+          const currentLeft = parseFloat(htmlEl.style.left) || 0;
+          const currentTop = parseFloat(htmlEl.style.top) || 0;
+          const newLeft = currentLeft + (dx / distance) * pushFactor;
+          const newTop = currentTop + (dy / distance) * pushFactor;
+          
+          // Shrink to 0 while moving away
+          htmlEl.classList.add('animate', 'zoom-out');
+          htmlEl.style.left = newLeft + 'px';
+          htmlEl.style.top = newTop + 'px';
+          htmlEl.style.width = '0px';
+          htmlEl.style.height = '0px';
+        });
+        
+        // PHASE 4: After animation, remove old nodes and render new tree
+        setTimeout(() => {
+          existingNodes.forEach(el => el.remove());
+          renderNewTree();
+        }, durationMs);
+        
+        return; // Don't render immediately
+      }
+    }
+
+    // ===== NAVIGATE UP: Animate new nodes flying in =====
+    if (animationType === 'navigate-up') {
+      const containerRect = container.getBoundingClientRect();
+      const centerX = containerRect.width / 2;
+      const centerY = containerRect.height / 2;
+      
+      // Get current fullscreen node before rendering
+      const currentFullscreen = container.querySelector('.treemap-node.depth-0') as HTMLElement | null;
+      const currentFullscreenKey = currentFullscreen?.getAttribute('data-key');
+      
+      // Render new tree first
+      renderNewTree();
+      
+      // Find all newly created depth-0 nodes and animate them in from outside
+      container.querySelectorAll('.treemap-node.depth-0').forEach((el: Element) => {
+        const htmlEl = el as HTMLElement;
+        const nodeKey = htmlEl.getAttribute('data-key');
+        
+        // Skip the node that was previously fullscreen
+        if (nodeKey === currentFullscreenKey) return;
+        
+        // Get the final position
+        const finalLeft = parseFloat(htmlEl.style.left) || 0;
+        const finalTop = parseFloat(htmlEl.style.top) || 0;
+        const nodeWidth = parseFloat(htmlEl.style.width) || 0;
+        const nodeHeight = parseFloat(htmlEl.style.height) || 0;
+        
+        // Calculate center of this node
+        const nodeCenterX = finalLeft + nodeWidth / 2;
+        const nodeCenterY = finalTop + nodeHeight / 2;
+        
+        // Direction from container center to this node
+        const dx = nodeCenterX - centerX;
+        const dy = nodeCenterY - centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        const pushFactor = Math.max(containerRect.width, containerRect.height) * 1.5;
+        
+        // Start position - far outside the container, size 0
+        const startLeft = centerX + (dx / distance) * pushFactor;
+        const startTop = centerY + (dy / distance) * pushFactor;
+        
+        // Set initial position (outside, size 0)
+        htmlEl.classList.remove('entering', 'animate');
+        htmlEl.style.left = startLeft + 'px';
+        htmlEl.style.top = startTop + 'px';
+        htmlEl.style.width = '0px';
+        htmlEl.style.height = '0px';
+        htmlEl.classList.add('zoom-in');
+        
+        // Animate to final position
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            htmlEl.classList.add('animate');
+            htmlEl.style.left = finalLeft + 'px';
+            htmlEl.style.top = finalTop + 'px';
+            htmlEl.style.width = nodeWidth + 'px';
+            htmlEl.style.height = nodeHeight + 'px';
+          });
+        });
+      });
+      
+      return;
+    }
+
+    // ===== STANDARD FILTER: Just render with morphing =====
     // Clear processed flags
     container.querySelectorAll('[data-processed]').forEach(el => {
       el.removeAttribute('data-processed');
@@ -388,129 +534,11 @@ const StakeholdersTreemap = ({
       renderNodeAnimated(node, container, 0, index, 0, 0);
     });
 
-    // EXIT: Remove nodes that weren't processed
-    // For drilldown with zoom target, use zoom animation instead of simple fade
-    const unprocessedNodes = container.querySelectorAll('.treemap-node:not([data-processed])');
-    
-    if (animationType === 'drilldown' && zoomTargetName) {
-      // Find the zoom target node (the one that was clicked)
-      const zoomTargetEl = Array.from(unprocessedNodes).find(
-        el => el.getAttribute('data-key')?.includes(zoomTargetName)
-      ) as HTMLElement | null;
-      
-      if (zoomTargetEl) {
-        // Get container dimensions for calculating push directions
-        const containerRect = container.getBoundingClientRect();
-        const zoomTargetRect = zoomTargetEl.getBoundingClientRect();
-        
-        // Center of the clicked node (relative to container)
-        const clickedCenterX = zoomTargetRect.left + zoomTargetRect.width / 2 - containerRect.left;
-        const clickedCenterY = zoomTargetRect.top + zoomTargetRect.height / 2 - containerRect.top;
-        
-        // Animate zoom target to fullscreen
-        zoomTargetEl.classList.add('animate', 'zoom-target');
-        zoomTargetEl.style.left = '0px';
-        zoomTargetEl.style.top = '0px';
-        zoomTargetEl.style.width = width + 'px';
-        zoomTargetEl.style.height = height + 'px';
-        
-        // Push other top-level nodes away from the clicked node
-        // Push other top-level nodes away from the clicked node
-        // Child nodes (depth > 0) will slide away WITH their parent automatically
-        unprocessedNodes.forEach((el: Element) => {
-          const htmlEl = el as HTMLElement;
-          if (htmlEl === zoomTargetEl) return;
-          
-          // Only push depth-0 nodes - children ride along inside their parent
-          if (!htmlEl.classList.contains('depth-0')) {
-            // Don't add exiting class - child nodes stay visible inside parent
-            setTimeout(() => htmlEl.remove(), durationMs);
-            return;
-          }
-          
-          const elRect = htmlEl.getBoundingClientRect();
-          const elCenterX = elRect.left + elRect.width / 2 - containerRect.left;
-          const elCenterY = elRect.top + elRect.height / 2 - containerRect.top;
-          
-          // Direction vector from clicked node to this node
-          const dx = elCenterX - clickedCenterX;
-          const dy = elCenterY - clickedCenterY;
-          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-          
-          // Push factor - push nodes beyond the container edge
-          const pushFactor = Math.max(width, height) * 1.2;
-          
-          // Calculate new position (pushed away)
-          const currentLeft = parseFloat(htmlEl.style.left) || 0;
-          const currentTop = parseFloat(htmlEl.style.top) || 0;
-          const newLeft = currentLeft + (dx / distance) * pushFactor;
-          const newTop = currentTop + (dy / distance) * pushFactor;
-          
-          htmlEl.classList.add('animate', 'zoom-out');
-          htmlEl.style.left = newLeft + 'px';
-          htmlEl.style.top = newTop + 'px';
-        });
-        
-        // Remove all after animation
-        setTimeout(() => {
-          unprocessedNodes.forEach(el => el.remove());
-        }, durationMs);
-      } else {
-        // Fallback - just remove without animation
-        unprocessedNodes.forEach(el => {
-          el.classList.add('exiting');
-          setTimeout(() => el.remove(), durationMs);
-        });
-      }
-    } else if (animationType === 'navigate-up') {
-      // NAVIGATE UP: New nodes fly in from outside
-      const containerRect = container.getBoundingClientRect();
-      const centerX = containerRect.width / 2;
-      const centerY = containerRect.height / 2;
-      
-      // Remove old nodes
-      unprocessedNodes.forEach(el => {
-        setTimeout(() => el.remove(), durationMs);
-      });
-      
-      // Animate NEW depth-0 nodes from outside
-      container.querySelectorAll('.treemap-node.depth-0.entering').forEach((el: Element) => {
-        const htmlEl = el as HTMLElement;
-        
-        const finalLeft = parseFloat(htmlEl.style.left) || 0;
-        const finalTop = parseFloat(htmlEl.style.top) || 0;
-        const nodeWidth = parseFloat(htmlEl.style.width) || 0;
-        const nodeHeight = parseFloat(htmlEl.style.height) || 0;
-        
-        const nodeCenterX = finalLeft + nodeWidth / 2;
-        const nodeCenterY = finalTop + nodeHeight / 2;
-        
-        const dx = nodeCenterX - centerX;
-        const dy = nodeCenterY - centerY;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        const pushFactor = Math.max(containerRect.width, containerRect.height) * 1.2;
-        
-        const startLeft = finalLeft + (dx / distance) * pushFactor;
-        const startTop = finalTop + (dy / distance) * pushFactor;
-        
-        htmlEl.style.left = startLeft + 'px';
-        htmlEl.style.top = startTop + 'px';
-        htmlEl.classList.remove('entering');
-        htmlEl.classList.add('zoom-in');
-        
-        requestAnimationFrame(() => {
-          htmlEl.classList.add('animate');
-          htmlEl.style.left = finalLeft + 'px';
-          htmlEl.style.top = finalTop + 'px';
-        });
-      });
-    } else {
-      // Standard filter animation
-      unprocessedNodes.forEach(el => {
-        el.classList.add('exiting');
-        setTimeout(() => el.remove(), durationMs);
-      });
-    }
+    // Remove unprocessed nodes with fade
+    container.querySelectorAll('.treemap-node:not([data-processed])').forEach(el => {
+      el.classList.add('exiting');
+      setTimeout(() => el.remove(), durationMs);
+    });
 
     setShowHint(true);
     setTimeout(() => setShowHint(false), 3000);

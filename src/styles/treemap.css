@@ -42,6 +42,16 @@
   pointer-events: none;
 }
 
+/* Zoom-in target - node that expands to fullscreen */
+.treemap-node.zoom-target {
+  z-index: 100;
+}
+
+/* Zoom-out - nodes that are pushed away during drill-down */
+.treemap-node.zoom-out {
+  z-index: 50;
+}
+
 /* Treemap Node Styles */
 .treemap-node {
   position: absolute;

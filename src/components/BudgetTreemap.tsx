@@ -37,6 +37,7 @@ interface BudgetTreemapProps {
   hasData?: boolean;
   onResetFilters?: () => void;
   selectedUnitsCount?: number;
+  clickedNodeName?: string | null;
 }
 
 const BudgetTreemap = ({
@@ -55,7 +56,8 @@ const BudgetTreemap = ({
   onFileDrop,
   hasData = false,
   onResetFilters,
-  selectedUnitsCount = 0
+  selectedUnitsCount = 0,
+  clickedNodeName = null
 }: BudgetTreemapProps) => {
   const d3ContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -107,7 +109,7 @@ const BudgetTreemap = ({
   }, [onFileDrop]);
 
   // ===== TREEMAP RENDERING WITH MORPHING ANIMATIONS =====
-  const renderTreemap = useCallback((animationType: AnimationType = 'filter') => {
+  const renderTreemap = useCallback((animationType: AnimationType = 'filter', zoomTargetName?: string | null) => {
     const container = d3ContainerRef.current;
     if (!container || isEmpty) return;
 
@@ -448,11 +450,85 @@ const BudgetTreemap = ({
     });
 
     // EXIT: Remove nodes that weren't processed (no longer in data)
+    // For drilldown with zoom target, use zoom animation instead of simple fade
     const unprocessedNodes = container.querySelectorAll('.treemap-node:not([data-processed])');
-    unprocessedNodes.forEach(el => {
-      el.classList.add('exiting', 'animate');
-      setTimeout(() => el.remove(), durationMs);
-    });
+    
+    if (animationType === 'drilldown' && zoomTargetName) {
+      // Find the zoom target node (the one that was clicked)
+      const zoomTargetEl = Array.from(unprocessedNodes).find(
+        el => el.getAttribute('data-key')?.includes(zoomTargetName)
+      ) as HTMLElement | null;
+      
+      if (zoomTargetEl) {
+        // Get container dimensions for calculating push directions
+        const containerRect = container.getBoundingClientRect();
+        const zoomTargetRect = zoomTargetEl.getBoundingClientRect();
+        
+        // Center of the clicked node (relative to container)
+        const clickedCenterX = zoomTargetRect.left + zoomTargetRect.width / 2 - containerRect.left;
+        const clickedCenterY = zoomTargetRect.top + zoomTargetRect.height / 2 - containerRect.top;
+        
+        // Animate zoom target to fullscreen
+        zoomTargetEl.classList.add('animate', 'zoom-target');
+        zoomTargetEl.style.left = '0px';
+        zoomTargetEl.style.top = '0px';
+        zoomTargetEl.style.width = width + 'px';
+        zoomTargetEl.style.height = height + 'px';
+        
+        // Push other top-level nodes away from the clicked node
+        unprocessedNodes.forEach((el: Element) => {
+          const htmlEl = el as HTMLElement;
+          if (htmlEl === zoomTargetEl) return;
+          
+          // Only animate depth-0 nodes (top level)
+          if (!htmlEl.classList.contains('depth-0')) {
+            htmlEl.classList.add('exiting', 'animate');
+            setTimeout(() => htmlEl.remove(), durationMs);
+            return;
+          }
+          
+          const elRect = htmlEl.getBoundingClientRect();
+          const elCenterX = elRect.left + elRect.width / 2 - containerRect.left;
+          const elCenterY = elRect.top + elRect.height / 2 - containerRect.top;
+          
+          // Direction vector from clicked node to this node
+          const dx = elCenterX - clickedCenterX;
+          const dy = elCenterY - clickedCenterY;
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+          
+          // Push factor - push nodes beyond the container edge
+          const pushFactor = Math.max(width, height);
+          
+          // Calculate new position (pushed away)
+          const currentLeft = parseFloat(htmlEl.style.left) || 0;
+          const currentTop = parseFloat(htmlEl.style.top) || 0;
+          const newLeft = currentLeft + (dx / distance) * pushFactor;
+          const newTop = currentTop + (dy / distance) * pushFactor;
+          
+          htmlEl.classList.add('animate', 'zoom-out');
+          htmlEl.style.left = newLeft + 'px';
+          htmlEl.style.top = newTop + 'px';
+          htmlEl.style.opacity = '0';
+        });
+        
+        // Remove all after animation
+        setTimeout(() => {
+          unprocessedNodes.forEach(el => el.remove());
+        }, durationMs);
+      } else {
+        // Fallback to simple fade-out if target not found
+        unprocessedNodes.forEach(el => {
+          el.classList.add('exiting', 'animate');
+          setTimeout(() => el.remove(), durationMs);
+        });
+      }
+    } else {
+      // Standard fade-out for non-drilldown animations
+      unprocessedNodes.forEach(el => {
+        el.classList.add('exiting', 'animate');
+        setTimeout(() => el.remove(), durationMs);
+      });
+    }
 
     // Show hint briefly
     if (!showBackButton) {
@@ -479,11 +555,12 @@ const BudgetTreemap = ({
       prevDataNameRef.current = data.name;
 
       const timeoutId = setTimeout(() => {
-        renderTreemap(animationType);
+        // Pass clickedNodeName for zoom-in animation during drilldown
+        renderTreemap(animationType, animationType === 'drilldown' ? clickedNodeName : null);
       }, 0);
       return () => clearTimeout(timeoutId);
     }
-  }, [renderTreemap, isEmpty, data.name, canNavigateBack]);
+  }, [renderTreemap, isEmpty, data.name, canNavigateBack, clickedNodeName]);
 
   // Handle resize with fast animation
   useEffect(() => {

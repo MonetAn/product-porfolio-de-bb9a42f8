@@ -12,6 +12,34 @@
   border-radius: 0;
   overflow: hidden;
   position: relative;
+
+  /* Animation durations as CSS variables */
+  --transition-filter: 800ms;
+  --transition-drilldown: 500ms;
+  --transition-navigate-up: 600ms;
+  --transition-resize: 300ms;
+  --transition-current: var(--transition-filter);
+}
+
+/* Animated state - uses current duration */
+.treemap-node.animate {
+  transition: 
+    left var(--transition-current) ease-out,
+    top var(--transition-current) ease-out,
+    width var(--transition-current) ease-out,
+    height var(--transition-current) ease-out,
+    opacity var(--transition-current) ease-out;
+}
+
+/* Enter animation - start invisible for fade-in */
+.treemap-node.entering {
+  opacity: 0;
+}
+
+/* Exit animation - fade out */
+.treemap-node.exiting {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Treemap Node Styles */

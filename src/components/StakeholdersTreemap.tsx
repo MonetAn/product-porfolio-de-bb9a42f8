@@ -10,16 +10,26 @@ import {
 } from '@/lib/dataManager';
 import '@/styles/treemap.css';
 
+// Animation type determines duration
+type AnimationType = 'filter' | 'drilldown' | 'navigate-up' | 'resize';
+
+const ANIMATION_DURATIONS: Record<AnimationType, number> = {
+  'filter': 800,
+  'drilldown': 500,
+  'navigate-up': 600,
+  'resize': 300
+};
+
 interface StakeholdersTreemapProps {
   data: TreeNode;
   onNodeClick?: (node: TreeNode) => void;
   onNavigateBack?: () => void;
   canNavigateBack?: boolean;
   selectedQuarters?: string[];
-  hasData?: boolean; // true if rawData.length > 0
+  hasData?: boolean;
   onInitiativeClick?: (initiativeName: string) => void;
   onResetFilters?: () => void;
-  selectedUnitsCount?: number; // Number of selected units (0 = all)
+  selectedUnitsCount?: number;
 }
 
 // Separate color palette for stakeholders
@@ -49,24 +59,32 @@ const StakeholdersTreemap = ({
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [showHint, setShowHint] = useState(true);
 
+  // Track previous data root for detecting animation type
+  const prevDataNameRef = useRef<string | null>(null);
+  const isFirstRenderRef = useRef(true);
+
   const isEmpty = !data.children || data.children.length === 0;
   const lastQuarter = selectedQuarters.length > 0 ? selectedQuarters[selectedQuarters.length - 1] : null;
 
-  const renderTreemap = useCallback(() => {
+  // ===== TREEMAP RENDERING WITH MORPHING ANIMATIONS =====
+  const renderTreemap = useCallback((animationType: AnimationType = 'filter') => {
     const container = d3ContainerRef.current;
     if (!container || isEmpty) return;
 
     const width = container.clientWidth;
     const height = container.clientHeight;
 
-    while (container.firstChild) {
-      container.removeChild(container.firstChild);
+    // Set animation duration via CSS variable
+    const durationMs = ANIMATION_DURATIONS[animationType];
+    container.style.setProperty('--transition-current', `${durationMs}ms`);
+
+    if (!data.children || data.children.length === 0) {
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+      return;
     }
 
-    if (!data.children || data.children.length === 0) return;
-
-    // Stakeholders tree: Stakeholder -> Unit -> Team -> Initiative
-    // Render depth controls how deep we show
     let renderDepth = 3;
 
     const root = d3.hierarchy(data)
@@ -84,9 +102,9 @@ const StakeholdersTreemap = ({
 
     if (!root.children) return;
 
-    // Total value for percentage calculation
     const totalValue = root.value || 1;
 
+    // ===== TOOLTIP FUNCTIONS =====
     const showTooltip = (e: MouseEvent, nodeData: TreeNode, nodeValue: number, stakeholderValue: number) => {
       const tooltip = tooltipRef.current;
       if (!tooltip) return;
@@ -103,22 +121,17 @@ const StakeholdersTreemap = ({
 
       html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(nodeValue)}</span></div>`;
 
-      // Percentage of Stakeholder - show only for child elements (not for stakeholders themselves)
       if (nodeValue !== stakeholderValue) {
         const percentOfStakeholder = stakeholderValue > 0 ? ((nodeValue / stakeholderValue) * 100).toFixed(1) : '100.0';
         html += `<div class="tooltip-row"><span class="tooltip-label">% от Стейкхолдера</span><span class="tooltip-value">${percentOfStakeholder}%</span></div>`;
       }
 
-      // Percentage of Total - show only if 0 (all) or >1 units selected
       const showPercentOfTotal = selectedUnitsCount === 0 || selectedUnitsCount > 1;
       if (showPercentOfTotal) {
         const percentOfTotal = totalValue > 0 ? ((nodeValue / totalValue) * 100).toFixed(1) : '0.0';
         html += `<div class="tooltip-row"><span class="tooltip-label tooltip-label-group"><span>% от бюджета</span><span class="tooltip-label-sub">выбранного на экране</span></span><span class="tooltip-value">${percentOfTotal}%</span></div>`;
       }
 
-      // Description removed from treemap tooltips for consistency
-
-      // Plan/Fact for initiatives - truncated, last quarter
       if (isInitiative && nodeData.quarterlyData && lastQuarter) {
         const qData = nodeData.quarterlyData[lastQuarter];
         if (qData && (qData.metricPlan || qData.metricFact)) {
@@ -168,24 +181,19 @@ const StakeholdersTreemap = ({
       const tooltipWidth = rect.width;
       const tooltipHeight = rect.height;
       
-      // Start with position to the right and below cursor
       let x = e.clientX + padding;
       let y = e.clientY + padding;
 
-      // Flip horizontally if overflows right edge
       if (x + tooltipWidth > window.innerWidth - padding) {
         x = e.clientX - tooltipWidth - padding;
       }
-      // Clamp to left edge if still overflows
       if (x < padding) {
         x = padding;
       }
 
-      // Flip vertically if overflows bottom edge
       if (y + tooltipHeight > window.innerHeight - padding) {
         y = e.clientY - tooltipHeight - padding;
       }
-      // Clamp to top edge if flipped position goes above viewport
       if (y < padding) {
         y = padding;
       }
@@ -201,18 +209,114 @@ const StakeholdersTreemap = ({
       }
     };
 
-    const renderNode = (
+    // ===== HELPER: Generate unique key for a node =====
+    const getNodeKey = (node: d3.HierarchyRectangularNode<TreeNode>, depth: number): string => {
+      const parts: string[] = [];
+      let current: d3.HierarchyRectangularNode<TreeNode> | null = node;
+      while (current && current.data.name) {
+        parts.unshift(current.data.name);
+        current = current.parent;
+      }
+      return `d${depth}-${parts.join('/')}`;
+    };
+
+    // ===== HELPER: Find stakeholder name for color =====
+    const getStakeholderName = (node: d3.HierarchyRectangularNode<TreeNode>): string => {
+      let stakeholderName = node.data.name;
+      let current: d3.HierarchyRectangularNode<TreeNode> | null = node;
+      while (current.parent && current.parent.parent) {
+        current = current.parent;
+        stakeholderName = current.data.name;
+      }
+      return stakeholderName;
+    };
+
+    // ===== ANIMATED RENDER NODE =====
+    const renderNodeAnimated = (
       node: d3.HierarchyRectangularNode<TreeNode>,
       parentElement: HTMLElement,
       depth: number,
-      colorIndex: number
+      colorIndex: number,
+      parentX0: number,
+      parentY0: number
     ) => {
-      const div = document.createElement('div');
-      div.className = 'treemap-node depth-' + depth;
-
+      const nodeKey = getNodeKey(node, depth);
       const nodeWidth = node.x1 - node.x0;
       const nodeHeight = node.y1 - node.y0;
 
+      const left = depth === 0 ? node.x0 : (node.x0 - parentX0);
+      const top = depth === 0 ? node.y0 : (node.y0 - parentY0);
+
+      let div = parentElement.querySelector(`[data-key="${nodeKey}"]`) as HTMLElement | null;
+      const isNew = !div;
+
+      if (!div) {
+        div = document.createElement('div');
+        div.setAttribute('data-key', nodeKey);
+        div.className = 'treemap-node depth-' + depth;
+        div.classList.add('entering');
+
+        // Color by stakeholder
+        const stakeholderName = getStakeholderName(node);
+        const baseColor = getStakeholderColor(stakeholderName);
+        if (depth === 0) {
+          div.style.backgroundColor = baseColor;
+        } else if (depth === 1) {
+          div.style.backgroundColor = adjustBrightness(baseColor, -15);
+        } else if (depth === 2 && node.data.isTeam) {
+          div.style.backgroundColor = adjustBrightness(baseColor, -25);
+          div.style.borderLeft = '3px solid ' + adjustBrightness(baseColor, 20);
+        } else {
+          div.style.backgroundColor = adjustBrightness(baseColor, -35);
+        }
+
+        div.style.left = left + 'px';
+        div.style.top = top + 'px';
+        div.style.width = nodeWidth + 'px';
+        div.style.height = nodeHeight + 'px';
+
+        div.addEventListener('click', (e: MouseEvent) => {
+          e.stopPropagation();
+          if (node.data.isInitiative && onInitiativeClick) {
+            onInitiativeClick(node.data.name);
+          } else if (onNodeClick) {
+            onNodeClick(node.data);
+          }
+        });
+
+        div.addEventListener('mouseenter', (e: MouseEvent) => {
+          e.stopPropagation();
+          let stakeholderNode: d3.HierarchyRectangularNode<TreeNode> = node;
+          while (stakeholderNode.parent && stakeholderNode.depth > 1) {
+            stakeholderNode = stakeholderNode.parent;
+          }
+          const stakeholderValue = stakeholderNode.value || node.value || 0;
+          showTooltip(e, node.data, node.value || 0, stakeholderValue);
+        });
+
+        div.addEventListener('mousemove', (e: MouseEvent) => moveTooltip(e));
+        div.addEventListener('mouseleave', () => hideTooltip());
+
+        parentElement.appendChild(div);
+
+        requestAnimationFrame(() => {
+          if (div) {
+            div.classList.add('animate');
+            div.classList.remove('entering');
+          }
+        });
+      } else {
+        div.classList.add('animate');
+        div.classList.remove('exiting');
+        
+        div.style.left = left + 'px';
+        div.style.top = top + 'px';
+        div.style.width = nodeWidth + 'px';
+        div.style.height = nodeHeight + 'px';
+      }
+
+      // Update size classes
+      div.classList.remove('treemap-node-tiny', 'treemap-node-small');
       if (nodeWidth < 60 || nodeHeight < 40) {
         div.classList.add('treemap-node-tiny');
       } else if (nodeWidth < 100 || nodeHeight < 60) {
@@ -222,130 +326,116 @@ const StakeholdersTreemap = ({
       const hasChildren = node.children && node.children.length > 0;
       const shouldRenderChildren = hasChildren && depth < renderDepth;
 
-      if (hasChildren) div.classList.add('has-children');
+      div.classList.toggle('has-children', !!hasChildren);
+      div.classList.toggle('is-team', !!node.data.isTeam);
+      div.classList.toggle('is-initiative', !!node.data.isInitiative);
 
       const isLeafNode = !node.data.children || node.data.children.length === 0;
-      if (isLeafNode && node.data.offTrack) {
-        div.classList.add('off-track');
-      }
+      div.classList.toggle('off-track', isLeafNode && !!node.data.offTrack);
 
-      // Add visual distinction for Team level (depth 2) vs Initiative level (depth 3)
-      if (node.data.isTeam) {
-        div.classList.add('is-team');
-      }
-      if (node.data.isInitiative) {
-        div.classList.add('is-initiative');
-      }
-
-      // Color by top-level stakeholder
-      let stakeholderName = node.data.name;
-      let current: d3.HierarchyRectangularNode<TreeNode> | null = node;
-      while (current.parent && current.parent.parent) {
-        current = current.parent;
-        stakeholderName = current.data.name;
-      }
-      
-      const baseColor = getStakeholderColor(stakeholderName);
-      if (depth === 0) {
-        div.style.backgroundColor = baseColor;
-      } else if (depth === 1) {
-        div.style.backgroundColor = adjustBrightness(baseColor, -15);
-      } else if (depth === 2 && node.data.isTeam) {
-        // Teams get a distinct visual treatment - slightly darker with border
-        div.style.backgroundColor = adjustBrightness(baseColor, -25);
-        div.style.borderLeft = '3px solid ' + adjustBrightness(baseColor, 20);
-      } else {
-        // Initiatives - darkest
-        div.style.backgroundColor = adjustBrightness(baseColor, -35);
-      }
-
-      if (depth === 0) {
-        div.style.left = node.x0 + 'px';
-        div.style.top = node.y0 + 'px';
-      } else {
-        div.style.left = (node.x0 - (node.parent?.x0 || 0)) + 'px';
-        div.style.top = (node.y0 - (node.parent?.y0 || 0)) + 'px';
-      }
-      div.style.width = nodeWidth + 'px';
-      div.style.height = nodeHeight + 'px';
-
+      // Update content
+      let content = div.querySelector('.treemap-node-content') as HTMLElement | null;
       if (!shouldRenderChildren || nodeHeight > 50) {
-        const content = document.createElement('div');
-        content.className = 'treemap-node-content';
-
-        const label = document.createElement('div');
-        label.className = 'treemap-node-label';
-        label.textContent = node.data.name;
-        content.appendChild(label);
-
-        if (!shouldRenderChildren && nodeHeight > 40) {
-          const value = document.createElement('div');
-          value.className = 'treemap-node-value';
-          value.textContent = formatBudget(node.value || 0);
-          content.appendChild(value);
+        if (!content) {
+          content = document.createElement('div');
+          content.className = 'treemap-node-content';
+          div.appendChild(content);
         }
+        
+        let label = content.querySelector('.treemap-node-label') as HTMLElement | null;
+        if (!label) {
+          label = document.createElement('div');
+          label.className = 'treemap-node-label';
+          content.appendChild(label);
+        }
+        label.textContent = node.data.name;
 
-        div.appendChild(content);
+        let value = content.querySelector('.treemap-node-value') as HTMLElement | null;
+        if (!shouldRenderChildren && nodeHeight > 40) {
+          if (!value) {
+            value = document.createElement('div');
+            value.className = 'treemap-node-value';
+            content.appendChild(value);
+          }
+          value.textContent = formatBudget(node.value || 0);
+        } else if (value) {
+          value.remove();
+        }
+      } else if (content) {
+        content.remove();
       }
 
-      div.addEventListener('click', (e: MouseEvent) => {
-        e.stopPropagation();
-        // If it's an initiative, navigate to Gantt
-        if (node.data.isInitiative && onInitiativeClick) {
-          onInitiativeClick(node.data.name);
-        } else if (onNodeClick) {
-          onNodeClick(node.data);
-        }
-      });
-
-      div.addEventListener('mouseenter', (e: MouseEvent) => {
-        e.stopPropagation();
-        // Find stakeholder value for percentage calculation
-        let stakeholderNode: d3.HierarchyRectangularNode<TreeNode> = node;
-        while (stakeholderNode.parent && stakeholderNode.depth > 1) {
-          stakeholderNode = stakeholderNode.parent;
-        }
-        const stakeholderValue = stakeholderNode.value || node.value || 0;
-        showTooltip(e, node.data, node.value || 0, stakeholderValue);
-      });
-
-      div.addEventListener('mousemove', (e: MouseEvent) => moveTooltip(e));
-      div.addEventListener('mouseleave', () => hideTooltip());
-
-      parentElement.appendChild(div);
+      div.setAttribute('data-processed', 'true');
 
       if (shouldRenderChildren && node.children) {
         node.children.forEach(child => {
-          renderNode(child, div, depth + 1, colorIndex);
+          renderNodeAnimated(child, div!, depth + 1, colorIndex, node.x0, node.y0);
         });
       }
+
+      return div;
     };
 
+    // Clear processed flags
+    container.querySelectorAll('[data-processed]').forEach(el => {
+      el.removeAttribute('data-processed');
+    });
+
+    // Render all top-level nodes
     root.children.forEach((node, index) => {
-      renderNode(node, container, 0, index);
+      renderNodeAnimated(node, container, 0, index, 0, 0);
+    });
+
+    // EXIT: Remove nodes that weren't processed
+    const unprocessedNodes = container.querySelectorAll('.treemap-node:not([data-processed])');
+    unprocessedNodes.forEach(el => {
+      el.classList.add('exiting', 'animate');
+      setTimeout(() => el.remove(), durationMs);
     });
 
     setShowHint(true);
     setTimeout(() => setShowHint(false), 3000);
-  }, [data, isEmpty, lastQuarter, onNodeClick, onInitiativeClick]);
+  }, [data, isEmpty, lastQuarter, onNodeClick, onInitiativeClick, selectedUnitsCount]);
 
+  // Render on data/size changes with animation type detection
   useEffect(() => {
     if (!isEmpty) {
+      let animationType: AnimationType = 'filter';
+      
+      if (isFirstRenderRef.current) {
+        isFirstRenderRef.current = false;
+        animationType = 'resize';
+      } else if (prevDataNameRef.current !== data.name) {
+        animationType = canNavigateBack ? 'drilldown' : 'navigate-up';
+      }
+      
+      prevDataNameRef.current = data.name;
+
       const timeoutId = setTimeout(() => {
-        renderTreemap();
+        renderTreemap(animationType);
       }, 0);
       return () => clearTimeout(timeoutId);
     }
-  }, [renderTreemap, isEmpty]);
+  }, [renderTreemap, isEmpty, data.name, canNavigateBack]);
 
+  // Handle resize with fast animation
   useEffect(() => {
+    let resizeTimeout: NodeJS.Timeout;
+    
     const handleResize = () => {
-      if (!isEmpty) {
-        renderTreemap();
-      }
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (!isEmpty) {
+          renderTreemap('resize');
+        }
+      }, 100);
     };
+    
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimeout);
+    };
   }, [renderTreemap, isEmpty]);
 
   return (

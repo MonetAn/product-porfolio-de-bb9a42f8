@@ -1,274 +1,255 @@
 
 
-# Полноценный Zoom-in/Zoom-out без исчезновения блоков
+# Исправление Zoom-in анимации: блоки должны уезжать, а не пропадать
 
 ## Проблема
 
-При drill-down блоки исчезают (fade out) вместо того, чтобы просто уезжать за границы экрана. Причины:
+При drill-down остальные блоки остаются статичными и просто пропадают. Причина:
 
-1. **Для не-depth-0 узлов** применяется класс `exiting` (opacity: 0)
-2. **CSS анимирует opacity** даже когда мы не устанавливаем его явно
-3. **Нет обратной анимации** при возврате наверх — блоки не "въезжают" обратно
+**Неправильный порядок операций:**
+1. Сначала вызывается `renderNodeAnimated` → создаются НОВЫЕ узлы для нового дерева
+2. Потом ищем `unprocessedNodes` → старые узлы
+3. Но `zoomTargetEl` ищется среди `unprocessedNodes` — если кликнутый Unit уже обработан (как часть нового дерева), он НЕ будет найден!
+
+**Результат:** `zoomTargetEl = null` → срабатывает fallback → блоки просто исчезают.
 
 ## Решение
 
-### Концепция: Физичная камера
+Изменить порядок: **СНАЧАЛА анимировать старые узлы, ПОТОМ рендерить новые**.
 
 ```text
-ZOOM-IN (drill-down):
-┌─────────────────────────────────────┐
-│  ┌─A─┐  ┌─B─┐  ┌─C─┐               │
-│  └───┘  └───┘  └───┘               │  Клик на B
-│  ┌─D─┐  ┌─E─┐  ┌─F─┐               │
-│  └───┘  └───┘  └───┘               │
-└─────────────────────────────────────┘
-                 ↓ 500ms
-    ←A уехал     B растягивается      C уехал→
-    ←D уехал                          F уехал→
-                                     ↑E уехал
-                 ↓
-┌─────────────────────────────────────┐
-│                 B                    │  B на весь экран
-│          (teams внутри)              │
-└─────────────────────────────────────┘
-
-ZOOM-OUT (navigate up):
-┌─────────────────────────────────────┐
-│                 B                    │  Клик "Наверх"
-│          (teams внутри)              │
-└─────────────────────────────────────┘
-                 ↓ 600ms
-    A въезжает→  B сжимается  ←C въезжает
-    D въезжает→               ←F въезжает
-                              E въезжает↓
-                 ↓
-┌─────────────────────────────────────┐
-│  ┌─A─┐  ┌─B─┐  ┌─C─┐               │
-│  └───┘  └───┘  └───┘               │
-│  ┌─D─┐  ┌─E─┐  ┌─F─┐               │
-│  └───┘  └───┘  └───┘               │
-└─────────────────────────────────────┘
+Сейчас:                          Нужно:
+1. Render new tree               1. Save old nodes positions  
+2. Find unprocessed (old)        2. Calculate exit animations
+3. Animate old → FAIL!           3. Start exit animations
+                                 4. Render new tree (delayed)
+                                 5. New tree appears over animated old
 ```
 
 ## Изменения по файлам
 
-### 1. `src/styles/treemap.css`
+### 1. `src/components/BudgetTreemap.tsx`
 
-**Удалить opacity из транзишенов для zoom и exiting:**
+**Ключевое изменение: Сохранить старые узлы ДО рендера новых**
+
+```typescript
+const renderTreemap = useCallback((animationType: AnimationType = 'filter', zoomTargetName?: string | null) => {
+  const container = d3ContainerRef.current;
+  if (!container || isEmpty) return;
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  const durationMs = ANIMATION_DURATIONS[animationType];
+  container.style.setProperty('--transition-current', `${durationMs}ms`);
+
+  // ... hierarchy setup ...
+
+  // ===== DRILLDOWN: Animate BEFORE rendering new tree =====
+  if (animationType === 'drilldown' && zoomTargetName) {
+    // PHASE 1: Find and animate ALL current depth-0 nodes BEFORE any rendering
+    const existingNodes = container.querySelectorAll('.treemap-node.depth-0');
+    const containerRect = container.getBoundingClientRect();
+    
+    // Find the clicked node among EXISTING nodes
+    const zoomTargetEl = Array.from(existingNodes).find(
+      el => el.getAttribute('data-key')?.includes(zoomTargetName)
+    ) as HTMLElement | null;
+    
+    if (zoomTargetEl) {
+      const zoomTargetRect = zoomTargetEl.getBoundingClientRect();
+      const clickedCenterX = zoomTargetRect.left + zoomTargetRect.width / 2 - containerRect.left;
+      const clickedCenterY = zoomTargetRect.top + zoomTargetRect.height / 2 - containerRect.top;
+      
+      // PHASE 2: Animate zoom target to fullscreen
+      zoomTargetEl.classList.add('animate', 'zoom-target');
+      zoomTargetEl.style.left = '0px';
+      zoomTargetEl.style.top = '0px';
+      zoomTargetEl.style.width = width + 'px';
+      zoomTargetEl.style.height = height + 'px';
+      zoomTargetEl.style.zIndex = '100';
+      
+      // PHASE 3: Push OTHER nodes away (shrink + slide)
+      existingNodes.forEach((el: Element) => {
+        const htmlEl = el as HTMLElement;
+        if (htmlEl === zoomTargetEl) return;
+        
+        const elRect = htmlEl.getBoundingClientRect();
+        const elCenterX = elRect.left + elRect.width / 2 - containerRect.left;
+        const elCenterY = elRect.top + elRect.height / 2 - containerRect.top;
+        
+        // Direction from clicked node center
+        const dx = elCenterX - clickedCenterX;
+        const dy = elCenterY - clickedCenterY;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        const pushFactor = Math.max(width, height) * 1.5;
+        
+        // Calculate exit position
+        const currentLeft = parseFloat(htmlEl.style.left) || 0;
+        const currentTop = parseFloat(htmlEl.style.top) || 0;
+        const newLeft = currentLeft + (dx / distance) * pushFactor;
+        const newTop = currentTop + (dy / distance) * pushFactor;
+        
+        // Shrink to 0 while moving away
+        htmlEl.classList.add('animate', 'zoom-out');
+        htmlEl.style.left = newLeft + 'px';
+        htmlEl.style.top = newTop + 'px';
+        htmlEl.style.width = '0px';      // ← Сжимаются!
+        htmlEl.style.height = '0px';     // ← Сжимаются!
+        htmlEl.style.overflow = 'hidden'; // Скрыть содержимое при сжатии
+      });
+      
+      // PHASE 4: After animation, remove old nodes and render new tree
+      setTimeout(() => {
+        // Remove all old nodes
+        existingNodes.forEach(el => el.remove());
+        
+        // Now render the new tree (teams inside the unit)
+        // ... call standard render logic ...
+        renderNewTree();
+      }, durationMs);
+      
+      return; // Don't render immediately
+    }
+  }
+  
+  // ... existing standard render logic ...
+}, [...]);
+```
+
+**Структура кода с отложенным рендером:**
+
+```typescript
+// Helper function to render new tree (extracted from main logic)
+const renderNewTree = () => {
+  // Clear processed flags
+  container.querySelectorAll('[data-processed]').forEach(el => {
+    el.removeAttribute('data-processed');
+  });
+
+  // Render all top-level nodes
+  root.children?.forEach((node, index) => {
+    renderNodeAnimated(node, container, 0, index, 0, 0);
+  });
+  
+  // Handle any remaining unprocessed nodes (standard filter behavior)
+  // ...
+};
+
+// In renderTreemap:
+if (animationType === 'drilldown' && zoomTargetName) {
+  // ... animate existing nodes ...
+  setTimeout(() => {
+    existingNodes.forEach(el => el.remove());
+    renderNewTree(); // ← Delayed render
+  }, durationMs);
+  return;
+}
+
+// Standard path (filter, resize, etc.)
+renderNewTree();
+```
+
+### 2. `src/components/StakeholdersTreemap.tsx`
+
+Те же изменения:
+- Сохранять старые узлы ДО рендера
+- Анимировать их (zoom-target растёт, остальные сжимаются + уезжают)
+- Рендерить новое дерево ПОСЛЕ анимации
+
+### 3. `src/styles/treemap.css`
+
+Добавить стиль для сжатия содержимого:
 
 ```css
-/* Animated state - uses current duration */
-/* ИЗМЕНЕНИЕ: Убираем opacity из общей анимации */
-.treemap-node.animate {
-  transition: 
-    left var(--transition-current) ease-out,
-    top var(--transition-current) ease-out,
-    width var(--transition-current) ease-out,
-    height var(--transition-current) ease-out;
-  /* opacity убран - не нужен для zoom */
-}
-
-/* Enter animation - для НОВЫХ элементов fade-in */
-.treemap-node.entering {
-  opacity: 0;
-  transition: opacity var(--transition-current) ease-out;
-}
-
-/* Exit animation - НЕ fade, только для pointer-events */
-/* ИЗМЕНЕНИЕ: убираем opacity: 0 */
-.treemap-node.exiting {
-  pointer-events: none;
-  /* opacity остаётся 1 - блок уезжает видимым */
-}
-
-/* Zoom-out - nodes that slide away (remain visible!) */
+/* Nodes shrinking during zoom-out should hide content overflow */
 .treemap-node.zoom-out {
   z-index: 50;
   opacity: 1 !important;
   pointer-events: none;
-}
-
-/* Zoom-in target - expands to fullscreen */
-.treemap-node.zoom-target {
-  z-index: 100;
+  overflow: hidden;
 }
 ```
 
-### 2. `src/components/BudgetTreemap.tsx`
-
-**2.1. Исправить обработку не-depth-0 узлов (строки 484-488):**
-
-Сейчас:
-```typescript
-if (!htmlEl.classList.contains('depth-0')) {
-  htmlEl.classList.add('exiting', 'animate');  // fade!
-  setTimeout(() => htmlEl.remove(), durationMs);
-  return;
-}
-```
-
-Нужно — дочерние элементы должны уезжать ВМЕСТЕ с родителем:
-```typescript
-// Дочерние узлы (depth > 0) — НЕ анимируем отдельно
-// Они уедут вместе с родительским depth-0 блоком
-if (!htmlEl.classList.contains('depth-0')) {
-  // Не добавляем никаких классов — блок остаётся внутри родителя
-  // и уедет вместе с ним
-  setTimeout(() => htmlEl.remove(), durationMs);
-  return;
-}
-```
-
-**2.2. Добавить обратную zoom-out анимацию при navigate-up:**
-
-Сейчас при возврате наверх используется обычный `filter` тип анимации. Нужно добавить специальную логику для `navigate-up`:
-
-```typescript
-// В renderTreemap, после расчёта layout
-if (animationType === 'navigate-up') {
-  // PHASE 1: Показать все новые узлы в "разлетевшемся" состоянии
-  // (как будто камера только начинает отъезжать)
-  
-  const containerRect = container.getBoundingClientRect();
-  const centerX = containerRect.width / 2;
-  const centerY = containerRect.height / 2;
-  
-  // Создаём узлы в позициях "за экраном"
-  root.children.forEach((node, index) => {
-    const nodeKey = getNodeKey(node, 0);
-    let div = container.querySelector(`[data-key="${nodeKey}"]`) as HTMLElement | null;
-    
-    if (!div) {
-      // Новый узел — создаём за экраном
-      div = createNodeElement(node, 0, index);
-      
-      // Рассчитываем направление "откуда въезжать"
-      const finalLeft = node.x0;
-      const finalTop = node.y0;
-      const nodeCenterX = finalLeft + (node.x1 - node.x0) / 2;
-      const nodeCenterY = finalTop + (node.y1 - node.y0) / 2;
-      
-      // Вектор от центра к узлу
-      const dx = nodeCenterX - centerX;
-      const dy = nodeCenterY - centerY;
-      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-      const pushFactor = Math.max(containerRect.width, containerRect.height);
-      
-      // Стартовая позиция — за экраном
-      const startLeft = finalLeft + (dx / distance) * pushFactor;
-      const startTop = finalTop + (dy / distance) * pushFactor;
-      
-      div.style.left = startLeft + 'px';
-      div.style.top = startTop + 'px';
-      div.style.width = (node.x1 - node.x0) + 'px';
-      div.style.height = (node.y1 - node.y0) + 'px';
-      
-      container.appendChild(div);
-      
-      // PHASE 2: Анимируем к финальной позиции
-      requestAnimationFrame(() => {
-        div.classList.add('animate');
-        div.style.left = finalLeft + 'px';
-        div.style.top = finalTop + 'px';
-      });
-    }
-  });
-  
-  // Текущий развёрнутый узел — сжимается к своей новой позиции
-  // (уже обрабатывается стандартной UPDATE логикой)
-}
-```
-
-**2.3. Рефактор: Вынести создание элемента в отдельную функцию:**
-
-Для переиспользования между enter и navigate-up:
-
-```typescript
-const createNodeElement = (
-  node: d3.HierarchyRectangularNode<TreeNode>,
-  depth: number,
-  colorIndex: number
-): HTMLElement => {
-  const div = document.createElement('div');
-  div.setAttribute('data-key', getNodeKey(node, depth));
-  div.className = 'treemap-node depth-' + depth;
-  
-  // Цвет
-  const unitName = getUnitName(node);
-  const baseColor = getUnitColor(unitName);
-  div.style.backgroundColor = depth === 0 ? baseColor : adjustBrightness(baseColor, -15 * depth);
-  
-  // События (клики, тултипы)
-  // ... (переносим код из renderNodeAnimated)
-  
-  return div;
-};
-```
-
-### 3. `src/components/StakeholdersTreemap.tsx`
-
-Аналогичные изменения:
-- Убрать `exiting` класс с дочерних узлов
-- Добавить navigate-up анимацию "въезда"
-
-### 4. `src/pages/Index.tsx`
-
-**Передавать информацию о типе навигации:**
-
-Нужно различать "откуда пришли" для правильной анимации:
-
-```typescript
-// Добавить ref для отслеживания предыдущего состояния
-const prevSelectedUnitsRef = useRef<string[]>([]);
-
-// При вызове onNavigateBack
-const handleNavigateBack = () => {
-  // Сохраняем текущий выбранный Unit для анимации "из центра"
-  const currentUnit = selectedUnits[0];
-  setLastClickedNode(currentUnit); // или отдельный state
-  
-  // Сбрасываем фильтры...
-};
-```
-
-## Технические детали
-
-### Почему дочерние узлы должны уезжать с родителем
-
-Дочерние узлы (Teams, Initiatives) позиционированы **относительно родителя**. Когда родительский depth-0 блок уезжает за экран, дочерние элементы внутри него автоматически уедут вместе с ним. 
-
-Не нужно анимировать их отдельно — это только создаёт визуальный хаос и fade-эффект.
-
-### Overflow: hidden — наш друг
-
-Контейнер с `overflow: hidden` обрезает всё, что выходит за границы. Это и создаёт эффект "камеры" — блоки уезжают и скрываются за краем, а не исчезают в никуда.
-
-### Таймлайн анимации
+## Визуальный результат
 
 ```text
 t=0ms:   Клик на Unit B
-         B: начинает расти к (0,0,W,H)
-         A,C,D,E,F: начинают уезжать от центра B
-         
-t=250ms: B: на полпути
-         A,C,D,E,F: уже частично скрыты overflow:hidden
-         
-t=500ms: B: заполняет весь экран
-         A,C,D,E,F: полностью за границами, удаляются из DOM
+         ┌─A─┐ ┌─B─┐ ┌─C─┐
+         └───┘ └───┘ └───┘
+         ┌─D─┐ ┌─E─┐ ┌─F─┐
+         └───┘ └───┘ └───┘
+
+t=100ms: B начинает расти
+         A,C,D,E,F начинают сжиматься и уезжать
+         ┌A┐    ┌─────B─────┐    ┌C┐
+          ↑                       ↑
+       уезжает                уезжает
+
+t=250ms: B на полпути к fullscreen
+         A,C,D,E,F почти за экраном (сжаты до минимума)
+
+t=500ms: B заполняет экран
+         A,C,D,E,F удалены из DOM
          Рендерятся Teams внутри B
+         
+         ┌─────────────────────────┐
+         │           B             │
+         │  ┌Team1┐ ┌Team2┐        │
+         │  └─────┘ └─────┘        │
+         └─────────────────────────┘
+```
+
+## Обратная анимация (Navigate Up)
+
+Аналогичная логика в обратном направлении:
+
+1. Текущий fullscreen Unit B начинает сжиматься к своей будущей позиции
+2. Новые узлы A,C,D,E,F появляются за экраном (размер 0) и растут + въезжают
+3. После анимации — финальное состояние
+
+```typescript
+if (animationType === 'navigate-up') {
+  // Current fullscreen node shrinks
+  const currentFullscreen = container.querySelector('.treemap-node.depth-0');
+  if (currentFullscreen) {
+    // Find its new position in the new layout
+    const newNode = root.children?.find(n => n.data.name === currentFullscreen.getAttribute('data-name'));
+    if (newNode) {
+      currentFullscreen.style.left = newNode.x0 + 'px';
+      currentFullscreen.style.top = newNode.y0 + 'px';
+      currentFullscreen.style.width = (newNode.x1 - newNode.x0) + 'px';
+      currentFullscreen.style.height = (newNode.y1 - newNode.y0) + 'px';
+    }
+  }
+  
+  // New nodes fly in from outside
+  root.children?.forEach(node => {
+    if (node.data.name === currentFullscreen?.getAttribute('data-name')) return;
+    
+    // Create at position 0,0 with size 0, then animate to final
+    const div = createNode(node);
+    div.style.left = centerX + 'px';
+    div.style.top = centerY + 'px';
+    div.style.width = '0px';
+    div.style.height = '0px';
+    
+    requestAnimationFrame(() => {
+      div.classList.add('animate');
+      div.style.left = node.x0 + 'px';
+      div.style.top = node.y0 + 'px';
+      div.style.width = (node.x1 - node.x0) + 'px';
+      div.style.height = (node.y1 - node.y0) + 'px';
+    });
+  });
+}
 ```
 
 ## Порядок реализации
 
-1. **CSS**: Убрать opacity из `.exiting` и `.animate`
-2. **BudgetTreemap**: Не добавлять `exiting` дочерним узлам
-3. **BudgetTreemap**: Добавить navigate-up анимацию въезда
-4. **StakeholdersTreemap**: Те же изменения
-5. **Тестирование**: Проверить оба направления на обоих табах
-
-## Ожидаемый результат
-
-- **Zoom-in**: Кликаю на Unit → он плавно растягивается, остальные уезжают к краям (не исчезают!) → ощущение приближения камеры
-- **Zoom-out**: Кликаю "Наверх" → текущий Unit сжимается, остальные въезжают с краёв → ощущение отдаления камеры
-- **Без fade**: Ни один блок не исчезает плавно — только физическое перемещение
+1. Рефакторинг BudgetTreemap: вынести рендер в отдельную функцию
+2. Добавить логику drilldown с отложенным рендером
+3. Добавить сжатие + уезжание для соседних блоков
+4. Протестировать на Budget
+5. Применить те же изменения к StakeholdersTreemap
+6. Добавить обратную анимацию для navigate-up
 

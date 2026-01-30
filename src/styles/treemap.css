@@ -50,6 +50,7 @@
 /* Zoom-out - nodes that are pushed away during drill-down */
 .treemap-node.zoom-out {
   z-index: 50;
+  opacity: 1 !important; /* Stay visible while sliding out */
 }
 
 /* Treemap Node Styles */

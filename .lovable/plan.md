@@ -1,298 +1,262 @@
 
-# Плавные переходы для Treemap (Morphing Animation)
 
-## Цель
+# Zoom-in эффект для Treemap + исправление бага с Teams
 
-Добавить "вау-эффект" при смене фильтров: элементы плавно перемещаются, меняют размер и исчезают/появляются. Глаз пользователя должен следить за конкретным квадратом.
+## Проблемы
 
-## Тайминги для разных действий
+### Баг 1: Галочка "Команды" не включается при клике на Unit
 
-| Действие | Длительность | Easing | Почему |
-|----------|--------------|--------|--------|
-| Смена фильтра | 800ms | ease-out | "Storytelling" — время рассмотреть куда уехали элементы |
-| Drill-down (клик) | 500ms | ease-out | Быстрый отклик на действие пользователя |
-| Navigate Up | 600ms | ease-out | Чуть медленнее drill-down, но быстрее фильтра |
-| Resize окна | 300ms | ease-out | Техническое действие, не отвлекать |
-
-## Техническое решение
-
-### Проблема сейчас
-
-```javascript
-// Строки 107-110 в BudgetTreemap.tsx
-while (container.firstChild) {
-  container.removeChild(container.firstChild);  // ← Полная очистка DOM
-}
+В `handleNodeClick` (Index.tsx, строка 241) галочка "Teams" уже включается:
+```typescript
+if (!showTeams) setShowTeams(true);
 ```
 
-Все элементы удаляются и создаются заново — нет возможности анимировать.
+Но проблема в том, что **дерево перестраивается до применения нового состояния showTeams**. React батчит обновления, но `rebuildTree` срабатывает с задержкой.
 
-### Решение: D3 Data Join + Transitions
+**Решение**: Добавить проверку в useEffect для `rebuildTree` — если выбран один Unit и showTeams=false, форсировать включение Teams.
 
-Используем паттерн **enter/update/exit** с ключами по имени:
+### Проблема 2: Fade-out вместо Zoom-in
+
+Сейчас при drill-down:
+- Кликнутый Unit растягивается на весь экран ✓
+- Остальные юниты просто исчезают (opacity: 0) ✗
+
+**Ожидаемый эффект**: Остальные юниты должны "сжиматься" к краям или скользить за пределы экрана.
+
+## Решение: Camera Zoom Effect
+
+### Визуальная концепция
 
 ```text
-┌────────────────────────────────────────────────────────────┐
-│  Было:                         Станет:                     │
-│                                                            │
-│  1. Удалить все элементы       1. Сравнить старые/новые    │
-│  2. Создать новые              2. Enter: opacity 0 → 1     │
-│  3. Мгновенное переключение    3. Update: animate pos/size │
-│                                4. Exit: opacity 1 → 0      │
-└────────────────────────────────────────────────────────────┘
+Before click:              During animation (500ms):       After:
+┌───┬───┬───┐             ┌─────────────────────────┐     ┌─────────────────────────┐
+│ A │ B │ C │             │           B             │     │           B             │
+├───┼───┼───┤   ──────>   │                         │     │  (Teams внутри)         │
+│ D │ E │ F │             │                         │     │                         │
+└───┴───┴───┘             └─────────────────────────┘     └─────────────────────────┘
+
+- B растягивается до размера контейнера
+- A, C, D, E, F сжимаются к краям и исчезают
 ```
+
+### Техническая реализация
+
+Для "zoom-in" эффекта нужно знать:
+1. Какой именно узел был кликнут
+2. Его начальные координаты (до перестройки)
+
+Затем:
+1. Кликнутый узел анимируется от своих координат к `(0, 0, width, height)`
+2. Остальные узлы анимируются к координатам "за экраном" (пропорционально удаляясь от кликнутого)
 
 ## Изменения по файлам
 
-### 1. `src/styles/treemap.css`
+### 1. `src/pages/Index.tsx`
 
-**Добавить CSS-переменные и классы для анимаций:**
+**Исправление бага: Синхронизация showTeams при выборе Unit**
+
+В функции `handleNodeClick` добавить немедленный вызов `rebuildTree` или использовать useEffect для синхронизации:
+
+```typescript
+// Добавить useEffect для автоматического включения Teams
+useEffect(() => {
+  // Если выбран один Unit и Teams выключены, включаем автоматически
+  if (selectedUnits.length === 1 && !showTeams) {
+    setShowTeams(true);
+  }
+}, [selectedUnits, showTeams]);
+```
+
+### 2. `src/components/BudgetTreemap.tsx`
+
+**Добавление zoom-in анимации:**
+
+**2.1. Новый prop для передачи информации о кликнутом узле:**
+```typescript
+interface BudgetTreemapProps {
+  // ... existing props
+  clickedNodeName?: string | null; // Имя узла, на который кликнули
+}
+```
+
+**2.2. Хранение позиций узлов перед рендером:**
+```typescript
+const prevNodePositionsRef = useRef<Map<string, DOMRect>>(new Map());
+```
+
+**2.3. Модификация renderTreemap для zoom-in:**
+
+Для drilldown анимации:
+```typescript
+if (animationType === 'drilldown' && clickedNodeName) {
+  // Найти DOM-элемент кликнутого узла
+  const clickedEl = container.querySelector(`[data-name="${clickedNodeName}"]`);
+  
+  if (clickedEl) {
+    // Сохранить начальную позицию
+    const startRect = clickedEl.getBoundingClientRect();
+    
+    // Анимировать к полному размеру контейнера
+    clickedEl.classList.add('zoom-target');
+    
+    // Остальные узлы — анимировать к краям
+    container.querySelectorAll('.treemap-node.depth-0:not([data-name="${clickedNodeName}"])').forEach(el => {
+      el.classList.add('zoom-out');
+      // Рассчитать направление "выталкивания"
+    });
+  }
+}
+```
+
+**Альтернативный подход (проще и надёжнее):**
+
+Использовать CSS transform scale + translate для создания эффекта "наезда камеры":
+
+1. При клике на узел:
+   - Установить CSS-переменные с координатами кликнутого узла
+   - Применить `transform: scale()` к контейнеру, центрируя на кликнутом узле
+2. После анимации:
+   - Сбросить transform
+   - Отрендерить новое состояние
+
+### 3. `src/styles/treemap.css`
+
+**Добавление стилей для zoom-эффекта:**
 
 ```css
-/* Animation durations as CSS variables */
-.treemap-container {
-  --transition-filter: 800ms;
-  --transition-drilldown: 500ms;
-  --transition-navigate-up: 600ms;
-  --transition-resize: 300ms;
-  --transition-current: var(--transition-filter);
+/* Zoom-in target - node that expands to fullscreen */
+.treemap-node.zoom-target {
+  z-index: 100;
+  transition: 
+    left var(--transition-current) ease-out,
+    top var(--transition-current) ease-out,
+    width var(--transition-current) ease-out,
+    height var(--transition-current) ease-out !important;
 }
 
-/* Animated state - uses current duration */
-.treemap-node.animate {
+/* Zoom-out - nodes that slide away */
+.treemap-node.zoom-out {
   transition: 
     left var(--transition-current) ease-out,
     top var(--transition-current) ease-out,
     width var(--transition-current) ease-out,
     height var(--transition-current) ease-out,
-    opacity var(--transition-current) ease-out;
+    opacity var(--transition-current) ease-out !important;
 }
 
-/* Enter animation - fade in */
-.treemap-node.entering {
+/* Direction-based exit animations */
+.treemap-node.zoom-out.exit-left {
+  transform: translateX(-100%);
   opacity: 0;
 }
 
-/* Exit animation - fade out */
-.treemap-node.exiting {
+.treemap-node.zoom-out.exit-right {
+  transform: translateX(100%);
   opacity: 0;
-  pointer-events: none;
+}
+
+.treemap-node.zoom-out.exit-top {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.treemap-node.zoom-out.exit-bottom {
+  transform: translateY(100%);
+  opacity: 0;
 }
 ```
 
-### 2. `src/components/BudgetTreemap.tsx`
-
-**Основные изменения:**
-
-**2.1. Добавить тип анимации:**
-```typescript
-type AnimationType = 'filter' | 'drilldown' | 'navigate-up' | 'resize';
-```
-
-**2.2. Ref для хранения предыдущих позиций:**
-```typescript
-const prevPositionsRef = useRef<Map<string, DOMRect>>(new Map());
-```
-
-**2.3. Новая функция `renderTreemapAnimated()`:**
-
-Вместо полной очистки DOM:
+### 4. Детальная логика zoom-in в `renderTreemap()`
 
 ```typescript
-const renderTreemapAnimated = (animationType: AnimationType = 'filter') => {
-  const container = d3ContainerRef.current;
-  if (!container || isEmpty) return;
+const renderTreemap = useCallback((animationType, clickedNodeName?) => {
+  // ... existing setup ...
 
-  // Set animation duration via CSS variable
-  const durations = {
-    'filter': '800ms',
-    'drilldown': '500ms', 
-    'navigate-up': '600ms',
-    'resize': '300ms'
-  };
-  container.style.setProperty('--transition-current', durations[animationType]);
-
-  // ... treemap layout calculation (same as before) ...
-
-  // Build node map: name -> new position data
-  const newNodesMap = new Map<string, NodeData>();
-  root.descendants().forEach(node => {
-    if (node.depth > 0) {
-      newNodesMap.set(node.data.name, { node, ... });
-    }
-  });
-
-  // Get existing DOM nodes
-  const existingNodes = container.querySelectorAll('.treemap-node[data-name]');
-  const existingNames = new Set<string>();
-  
-  existingNodes.forEach(el => {
-    const name = el.getAttribute('data-name');
-    existingNames.add(name);
+  if (animationType === 'drilldown' && clickedNodeName) {
+    // PHASE 1: Animate existing nodes OUT
+    const clickedEl = container.querySelector(`[data-name="${clickedNodeName}"]`) as HTMLElement;
     
-    if (newNodesMap.has(name)) {
-      // UPDATE: animate to new position
-      const newData = newNodesMap.get(name);
-      el.classList.add('animate');
-      el.style.left = newData.x + 'px';
-      el.style.top = newData.y + 'px';
-      el.style.width = newData.width + 'px';
-      el.style.height = newData.height + 'px';
-    } else {
-      // EXIT: fade out and remove
-      el.classList.add('exiting');
-      setTimeout(() => el.remove(), durations[animationType]);
-    }
-  });
-
-  // ENTER: create new nodes with fade-in
-  newNodesMap.forEach((data, name) => {
-    if (!existingNames.has(name)) {
-      const div = createNode(data);
-      div.classList.add('entering', 'animate');
-      container.appendChild(div);
-      // Trigger reflow, then remove entering class
-      requestAnimationFrame(() => {
-        div.classList.remove('entering');
+    if (clickedEl) {
+      const containerRect = container.getBoundingClientRect();
+      const clickedRect = clickedEl.getBoundingClientRect();
+      
+      // Центр кликнутого элемента
+      const clickedCenterX = clickedRect.left + clickedRect.width / 2 - containerRect.left;
+      const clickedCenterY = clickedRect.top + clickedRect.height / 2 - containerRect.top;
+      
+      // Анимировать все depth-0 узлы
+      container.querySelectorAll('.treemap-node.depth-0').forEach((el: HTMLElement) => {
+        if (el.getAttribute('data-name') === clickedNodeName) {
+          // Кликнутый узел — анимировать к полному размеру
+          el.classList.add('animate', 'zoom-target');
+          el.style.left = '0px';
+          el.style.top = '0px';
+          el.style.width = containerRect.width + 'px';
+          el.style.height = containerRect.height + 'px';
+        } else {
+          // Остальные — "выталкивать" от центра кликнутого
+          const elRect = el.getBoundingClientRect();
+          const elCenterX = elRect.left + elRect.width / 2 - containerRect.left;
+          const elCenterY = elRect.top + elRect.height / 2 - containerRect.top;
+          
+          // Направление выталкивания
+          const dx = elCenterX - clickedCenterX;
+          const dy = elCenterY - clickedCenterY;
+          
+          // Нормализуем и усиливаем
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+          const pushFactor = containerRect.width; // Выталкиваем за границы
+          
+          el.classList.add('animate', 'zoom-out');
+          el.style.left = (parseFloat(el.style.left) + (dx / distance) * pushFactor) + 'px';
+          el.style.top = (parseFloat(el.style.top) + (dy / distance) * pushFactor) + 'px';
+          el.style.opacity = '0';
+        }
       });
+      
+      // После анимации — очистить и отрендерить новое состояние
+      setTimeout(() => {
+        // Удалить старые узлы
+        container.querySelectorAll('.treemap-node').forEach(el => el.remove());
+        // Рендер нового состояния без анимации
+        // ... render new tree ...
+      }, durationMs);
+      
+      return; // Не рендерить сразу
     }
-  });
-};
-```
-
-**2.4. Добавить `data-name` атрибут для идентификации:**
-
-```typescript
-const renderNode = (...) => {
-  const div = document.createElement('div');
-  div.setAttribute('data-name', node.data.name);  // ← Ключ для matching
-  // ...
-};
-```
-
-**2.5. Определение типа анимации:**
-
-```typescript
-// В useEffect - отслеживаем что изменилось
-const prevDataRef = useRef(data);
-const prevShowTeamsRef = useRef(showTeams);
-
-useEffect(() => {
-  if (!isEmpty) {
-    let animationType: AnimationType = 'filter';
-    
-    // Drill-down: data root changed
-    if (prevDataRef.current?.name !== data?.name) {
-      animationType = 'drilldown';
-    }
-    
-    prevDataRef.current = data;
-    prevShowTeamsRef.current = showTeams;
-    
-    renderTreemapAnimated(animationType);
   }
-}, [data, showTeams, showInitiatives, ...]);
-```
-
-**2.6. Сохранить старую функцию для отката:**
-
-```typescript
-// Fallback - immediate render without animations
-const renderTreemapImmediate = () => { /* original code */ };
-
-// Main render function - with animations
-const renderTreemap = renderTreemapAnimated;
-```
-
-### 3. `src/components/StakeholdersTreemap.tsx`
-
-Аналогичные изменения:
-- Добавить `data-name` атрибуты
-- Заменить полную очистку на data join pattern
-- Использовать те же CSS-переменные для анимаций
-
-### 4. Обработка вложенных элементов
-
-Для иерархии (Unit → Team → Initiative) рекурсивно обновляем позиции:
-
-```typescript
-function updateNestedNodes(
-  parentEl: HTMLElement, 
-  parentNode: HierarchyNode,
-  depth: number
-) {
-  const childNodes = parentNode.children || [];
-  const existingChildren = parentEl.querySelectorAll(
-    `:scope > .treemap-node.depth-${depth}`
-  );
   
-  // Same enter/update/exit logic for children
-  // ...
-  
-  // Recurse for grandchildren
-  childNodes.forEach(child => {
-    const childEl = parentEl.querySelector(`[data-name="${child.data.name}"]`);
-    if (childEl && child.children) {
-      updateNestedNodes(childEl, child, depth + 1);
-    }
-  });
-}
+  // ... existing render logic for non-drilldown ...
+}, [...]);
 ```
 
-## Визуальный результат
+### 5. StakeholdersTreemap.tsx
 
-```text
-Фильтр изменён: "Отключить Support"
+Аналогичные изменения для Stakeholder drill-down.
 
-Before:                      After (800ms transition):
-┌─────┬─────┬───┐           ┌───────────┬─────────┐
-│ A   │ B   │ C │    →→→    │     A     │    B    │
-│     │(sup)│   │   800ms   │           │         │
-├─────┼─────┤   │           ├───────────┤         │
-│ D   │ E   │   │           │     D     │         │
-└─────┴─────┴───┘           └───────────┴─────────┘
+## Порядок реализации
 
-- B (support) плавно растворяется (opacity 0)
-- A, D увеличиваются и занимают освободившееся место
-- C исчезает (был support)
-- Глаз следит за перемещением A и D
-```
+**Шаг 1**: Исправить баг с showTeams — добавить useEffect синхронизацию
 
-## Откат
+**Шаг 2**: Добавить prop `clickedNodeName` в BudgetTreemap
 
-Для безопасности сохраняем возможность мгновенного переключения:
+**Шаг 3**: Реализовать zoom-in анимацию:
+   - Сохранять позиции перед кликом
+   - При drilldown: анимировать кликнутый узел к fullscreen
+   - Остальные узлы: выталкивать от центра кликнутого
 
-```typescript
-// В компоненте - флаг для отключения анимаций
-const useAnimations = true; // Можно сделать prop или config
+**Шаг 4**: Добавить CSS стили для zoom-эффектов
 
-const renderTreemap = useAnimations 
-  ? renderTreemapAnimated 
-  : renderTreemapImmediate;
-```
-
-## Итерации реализации
-
-**Итерация 1: BudgetTreemap**
-- CSS-переменные для таймингов
-- Data join pattern с enter/update/exit
-- Тестирование на Budget табе
-
-**Итерация 2: StakeholdersTreemap**  
-- Применение того же паттерна
-- Тестирование на Stakeholders табе
-
-## Потенциальные сложности
-
-1. **Вложенность**: Дочерние элементы позиционируются относительно родителя — нужно корректно пересчитывать координаты
-2. **Уникальность имён**: Если два элемента называются одинаково, нужен составной ключ (unit-team-name)
-3. **Производительность**: При большом количестве элементов (100+) анимации могут тормозить — возможно отключение для resize
+**Шаг 5**: Применить те же изменения к StakeholdersTreemap
 
 ## Ожидаемый результат
 
-- Смена фильтров → плавный morphing за 800ms
-- Drill-down → быстрый zoom за 500ms  
-- Navigate up → комфортный возврат за 600ms
-- "Проект X" визуально перемещается на новое место
-- Исчезающие элементы плавно растворяются
-- Появляющиеся элементы плавно проявляются
+1. **Баг исправлен**: При клике на Unit галочка "Команды" включается, и внутри сразу видны команды
+
+2. **Zoom-in эффект**:
+   - Кликнутый Unit плавно "наезжает" на весь экран
+   - Соседние юниты "разлетаются" к краям экрана
+   - Создаётся ощущение физического приближения к объекту
+
+3. **Время анимации**: 500ms для drilldown (как было заложено ранее)
+

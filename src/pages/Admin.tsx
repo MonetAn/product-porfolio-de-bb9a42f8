@@ -169,10 +169,11 @@ const Admin = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       <AdminHeader
+        currentView="initiatives"
         initiativeCount={filteredData.length}
-        totalCount={rawData.length}
+        totalInitiativeCount={rawData.length}
         hasData={hasData}
         hasFilters={selectedUnits.length > 0 || selectedTeams.length > 0}
         syncStatus={syncStatus}
@@ -183,10 +184,10 @@ const Admin = () => {
         onRetry={retry}
       />
 
-      <main className="pt-14">
+      <main className="flex-1 flex flex-col overflow-hidden">
         {!hasData ? (
           /* Empty state */
-          <div className="flex flex-col items-center justify-center min-h-[calc(100vh-56px)] p-8">
+          <div className="flex-1 flex flex-col items-center justify-center p-8">
             <div className="border-2 border-dashed rounded-xl p-12 text-center max-w-md border-border">
               <Upload size={48} className="mx-auto text-muted-foreground mb-4" />
               <h2 className="text-xl font-semibold mb-2">Нет инициатив</h2>
@@ -208,7 +209,7 @@ const Admin = () => {
           </div>
         ) : (
           /* Data view */
-          <div className="flex flex-col h-[calc(100vh-56px)]">
+          <div className="flex-1 flex flex-col overflow-hidden">
             <ScopeSelector
               units={units}
               teams={teams}

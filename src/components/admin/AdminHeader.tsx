@@ -1,5 +1,6 @@
-import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, FileSpreadsheet, Check, Loader2, AlertCircle, RefreshCw, Users, ClipboardList } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -7,35 +8,55 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { SyncStatus } from '@/hooks/useInitiativeMutations';
 import UnifiedSettingsMenu from './UnifiedSettingsMenu';
 
+type ViewMode = 'initiatives' | 'people';
+
 interface AdminHeaderProps {
-  initiativeCount: number;
-  totalCount: number;
-  hasData: boolean;
-  hasFilters: boolean;
-  syncStatus: SyncStatus;
-  pendingChanges: number;
-  onImportClick: () => void;
-  onDownloadAll: () => void;
-  onDownloadFiltered: () => void;
-  onRetry: () => void;
+  currentView: ViewMode;
+  initiativeCount?: number;
+  totalInitiativeCount?: number;
+  peopleCount?: number;
+  hasData?: boolean;
+  hasFilters?: boolean;
+  syncStatus?: SyncStatus;
+  pendingChanges?: number;
+  onImportClick?: () => void;
+  onDownloadAll?: () => void;
+  onDownloadFiltered?: () => void;
+  onRetry?: () => void;
+  onImportPeople?: () => void;
 }
 
 const AdminHeader = ({
-  initiativeCount,
-  totalCount,
-  hasData,
-  hasFilters,
-  syncStatus,
-  pendingChanges,
+  currentView,
+  initiativeCount = 0,
+  totalInitiativeCount = 0,
+  peopleCount = 0,
+  hasData = false,
+  hasFilters = false,
+  syncStatus = 'synced',
+  pendingChanges = 0,
   onImportClick,
   onDownloadAll,
   onDownloadFiltered,
-  onRetry
+  onRetry,
+  onImportPeople
 }: AdminHeaderProps) => {
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  // Build URLs preserving current filters
+  const initiativesUrl = useMemo(() => {
+    const queryString = searchParams.toString();
+    return queryString ? `/admin?${queryString}` : '/admin';
+  }, [searchParams]);
+  
+  const peopleUrl = useMemo(() => {
+    const queryString = searchParams.toString();
+    return queryString ? `/admin/people?${queryString}` : '/admin/people';
+  }, [searchParams]);
 
   // Sync status indicator
   const renderSyncStatus = () => {
@@ -101,53 +122,92 @@ const AdminHeader = ({
   };
 
   return (
-    <header className="h-14 bg-card border-b border-border flex items-center px-6 fixed top-0 left-0 right-0 z-50">
+    <header className="h-14 bg-card border-b border-border flex items-center px-6 shrink-0">
       {/* Back to Dashboard */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-2"
-        onClick={() => navigate('/')}
-      >
-        <ArrowLeft size={16} />
-        <span className="hidden sm:inline">Дашборд</span>
-      </Button>
+      <Link to="/">
+        <Button variant="ghost" size="sm" className="gap-2">
+          <ArrowLeft size={16} />
+          <span className="hidden sm:inline">Дашборд</span>
+        </Button>
+      </Link>
 
       {/* Logo & Title */}
       <div className="flex items-center gap-2 font-semibold text-foreground ml-4">
         <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-sm font-bold">
           A
         </div>
-        <span>Админка</span>
+        <span>Управление</span>
       </div>
 
-      {/* Status indicator - dynamic count */}
+      {/* Navigation Toggle */}
+      <div className="ml-6">
+        <ToggleGroup 
+          type="single" 
+          value={currentView} 
+          className="bg-secondary rounded-lg p-1"
+        >
+          <Link to={initiativesUrl}>
+            <ToggleGroupItem 
+              value="initiatives" 
+              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              <ClipboardList className="h-4 w-4" />
+              <span className="hidden sm:inline">Инициативы</span>
+            </ToggleGroupItem>
+          </Link>
+          <Link to={peopleUrl}>
+            <ToggleGroupItem 
+              value="people" 
+              className="gap-1.5 px-3 h-8 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+            >
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">Люди</span>
+            </ToggleGroupItem>
+          </Link>
+        </ToggleGroup>
+      </div>
+
+      {/* Stats */}
       {hasData && (
-        <div className="ml-6 flex items-center gap-3 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet size={16} />
-            <span>
-              {initiativeCount === totalCount 
-                ? `${initiativeCount} инициатив` 
-                : `${initiativeCount} из ${totalCount} инициатив`
-              }
-            </span>
-          </div>
+        <div className="ml-4 flex items-center gap-3 text-sm text-muted-foreground">
+          {currentView === 'initiatives' && (
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet size={16} />
+              <span>
+                {initiativeCount === totalInitiativeCount 
+                  ? `${initiativeCount} инициатив` 
+                  : `${initiativeCount} из ${totalInitiativeCount}`
+                }
+              </span>
+            </div>
+          )}
+          {currentView === 'people' && (
+            <div className="flex items-center gap-2">
+              <Users size={16} />
+              <span>{peopleCount} чел.</span>
+            </div>
+          )}
           {renderSyncStatus()}
         </div>
       )}
 
       {/* Actions */}
       <div className="ml-auto flex items-center gap-2">
-        <UnifiedSettingsMenu
-          onImportInitiatives={onImportClick}
-          onExportAllInitiatives={onDownloadAll}
-          onExportFilteredInitiatives={onDownloadFiltered}
-          initiativesTotal={totalCount}
-          initiativesFiltered={initiativeCount}
-          hasInitiativeFilters={hasFilters}
-          hasData={hasData}
-        />
+        {currentView === 'initiatives' ? (
+          <UnifiedSettingsMenu
+            onImportInitiatives={onImportClick}
+            onExportAllInitiatives={onDownloadAll}
+            onExportFilteredInitiatives={onDownloadFiltered}
+            initiativesTotal={totalInitiativeCount}
+            initiativesFiltered={initiativeCount}
+            hasInitiativeFilters={hasFilters}
+            hasData={hasData}
+          />
+        ) : (
+          <UnifiedSettingsMenu
+            onImportPeople={onImportPeople}
+          />
+        )}
       </div>
     </header>
   );

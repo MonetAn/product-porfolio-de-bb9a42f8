@@ -1,22 +1,18 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Users, Loader2, ClipboardList } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Loader2, ClipboardList } from 'lucide-react';
 import { usePeople } from '@/hooks/usePeople';
 import { usePersonAssignments, useAssignmentMutations } from '@/hooks/usePeopleAssignments';
 import { useInitiatives, useQuarters } from '@/hooks/useInitiatives';
 import { useFilterParams } from '@/hooks/useFilterParams';
 import { 
   useTeamSnapshots, 
-  getEffectiveTeamMembers, 
-  getEffectiveTeamMembersAllQuarters,
-  useSnapshotStatuses 
+  getEffectiveTeamMembers
 } from '@/hooks/useTeamSnapshots';
+import AdminHeader from '@/components/admin/AdminHeader';
 import ScopeSelector from '@/components/admin/ScopeSelector';
 import PeopleAssignmentsTable from '@/components/admin/people/PeopleAssignmentsTable';
 import CSVPeopleImportDialog from '@/components/admin/people/CSVPeopleImportDialog';
 import QuarterSelector from '@/components/admin/people/QuarterSelector';
-import UnifiedSettingsMenu from '@/components/admin/UnifiedSettingsMenu';
 import { getUniqueUnits, getTeamsForUnits, filterData } from '@/lib/adminDataManager';
 import { VirtualAssignment } from '@/lib/peopleDataManager';
 
@@ -174,7 +170,6 @@ export default function AdminPeople() {
   }, [createAssignment, updateAssignment]);
 
   // Count stats
-  const assignmentCount = filteredAssignments.length;
   const peopleCount = filteredPeople.length;
   const initiativeCount = filteredInitiatives.length;
 
@@ -190,38 +185,12 @@ export default function AdminPeople() {
 
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="h-14 bg-card border-b border-border flex items-center px-6 shrink-0">
-        <Link to={buildFilteredUrl('/admin')}>
-          <Button variant="ghost" size="sm" className="gap-2">
-            <ArrowLeft size={16} />
-            <span className="hidden sm:inline">Админка</span>
-          </Button>
-        </Link>
-
-        <div className="flex items-center gap-2 font-semibold text-foreground ml-4">
-          <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-sm font-bold">
-            <Users size={14} />
-          </div>
-          <span>Люди</span>
-        </div>
-
-        {/* Stats - removed "привязок" as no longer meaningful */}
-        {!needsSelection && (
-          <div className="ml-6 flex items-center gap-3 text-sm text-muted-foreground">
-            <span>{peopleCount} чел.</span>
-            <span>•</span>
-            <span>{initiativeCount} инициатив</span>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="ml-auto flex items-center gap-2">
-          <UnifiedSettingsMenu
-            onImportPeople={() => setImportDialogOpen(true)}
-          />
-        </div>
-      </header>
+      <AdminHeader
+        currentView="people"
+        peopleCount={peopleCount}
+        hasData={!needsSelection}
+        onImportPeople={() => setImportDialogOpen(true)}
+      />
 
       {/* Scope Selector */}
       <div className="shrink-0">

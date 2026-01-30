@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Wrench, Lock, AlertCircle, Info } from 'lucide-react';
+import { ChevronDown, ChevronUp, Wrench, Lock, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import {
@@ -49,9 +48,6 @@ const QuarterCell = ({
   inheritedFromQuarter,
   onSupportChange
 }: QuarterCellProps) => {
-  const [isEditingEffort, setIsEditingEffort] = useState(false);
-  const [effortInputValue, setEffortInputValue] = useState('');
-
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
     if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
@@ -65,18 +61,48 @@ const QuarterCell = ({
   const missingFields = getMissingFields(data);
   const isIncomplete = missingFields.length > 0;
 
-  const handleEffortSave = () => {
-    const value = parseInt(effortInputValue) || 0;
-    const clampedValue = Math.max(0, Math.min(100, value));
-    onChange('effortCoefficient', clampedValue);
-    setIsEditingEffort(false);
-  };
-
   const handleCellClick = (e: React.MouseEvent) => {
     // Don't toggle if clicking on interactive elements
     const target = e.target as HTMLElement;
     if (target.closest('input, button, [role="switch"]')) return;
     onToggleExpand();
+  };
+
+  // Determine which status icon to show (priority: support > off-track)
+  const getStatusIndicator = () => {
+    if (data.support) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center text-muted-foreground">
+              <Wrench size={12} />
+              {isInheritedSupport && <Lock size={10} className="ml-0.5" />}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p className="text-xs">
+              {isInheritedSupport 
+                ? `Режим поддержки (от ${inheritedFromQuarter})`
+                : 'Режим поддержки'
+              }
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+    if (!data.onTrack) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <AlertTriangle size={12} className="text-destructive" />
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <p className="text-xs">Не в плане (Off-track)</p>
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+    return null;
   };
 
   return (
@@ -91,63 +117,14 @@ const QuarterCell = ({
               onClick={handleCellClick}
             >
               
-              {/* Compact View - Always Visible */}
+              {/* Compact View - Simplified: only cost + status */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   {/* Cost */}
                   <span className="text-sm font-medium">{formatCurrency(totalCost)} ₽</span>
                   
-                  {/* Effort % - Inline editable */}
-                  {isEditingEffort ? (
-                    <Input
-                      type="number"
-                      value={effortInputValue}
-                      onChange={(e) => setEffortInputValue(e.target.value)}
-                      onBlur={handleEffortSave}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleEffortSave();
-                        if (e.key === 'Escape') setIsEditingEffort(false);
-                      }}
-                      className="w-14 h-6 text-xs px-1.5"
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                      min={0}
-                      max={100}
-                      step={5}
-                    />
-                  ) : (
-                    <Badge 
-                      variant={effortValue > 0 ? "default" : "outline"} 
-                      className="text-[10px] px-1.5 py-0 cursor-pointer hover:bg-primary/80"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEffortInputValue(String(effortValue));
-                        setIsEditingEffort(true);
-                      }}
-                    >
-                      {effortValue}%
-                    </Badge>
-                  )}
-            
-                  {/* Support indicator - wrench icon with tooltip */}
-                  {data.support && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center text-muted-foreground">
-                          <Wrench size={12} />
-                          {isInheritedSupport && <Lock size={10} className="ml-0.5" />}
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">
-                          {isInheritedSupport 
-                            ? `Режим поддержки (унаследовано от ${inheritedFromQuarter})`
-                            : 'Режим поддержки'
-                          }
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
+                  {/* Single status indicator */}
+                  {getStatusIndicator()}
                 </div>
           
                 <Button 
@@ -166,6 +143,11 @@ const QuarterCell = ({
               {/* Expanded View Preview - shown when toggle is on */}
               {expandedView && !isExpanded && (
                 <div className="text-xs text-muted-foreground space-y-1">
+                  {effortValue > 0 && (
+                    <div>
+                      <span className="font-medium">Effort:</span> {effortValue}%
+                    </div>
+                  )}
                   {data.metricPlan && (
                     <div className="line-clamp-1">
                       <span className="font-medium">План:</span> {data.metricPlan}
@@ -176,15 +158,12 @@ const QuarterCell = ({
                       <span className="font-medium">Факт:</span> {data.metricFact}
                     </div>
                   )}
-                  {data.comment && (
-                    <div className="line-clamp-1 italic">{data.comment}</div>
-                  )}
                 </div>
               )}
 
               {/* Full Expanded Content */}
               <CollapsibleContent className="space-y-3 pt-2 border-t border-border/50">
-                {/* Effort Coefficient */}
+                {/* Effort Coefficient - moved from compact view */}
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Коэфф. трудозатрат</span>
                   <div className="flex items-center gap-2">
@@ -201,13 +180,13 @@ const QuarterCell = ({
                     <span className="text-xs text-muted-foreground">%</span>
                   </div>
                   {teamEffort && (
-                    <div className={`text-[10px] ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
+                    <div className={`text-[10px] ${teamEffort.isValid ? 'text-muted-foreground' : 'text-destructive'}`}>
                       Всего: {teamEffort.total}%{!teamEffort.isValid && ' ⚠'}
                     </div>
                   )}
                 </div>
 
-                {/* Support Mode Toggle - NEW */}
+                {/* Support Mode Toggle */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
@@ -226,14 +205,13 @@ const QuarterCell = ({
                       disabled={isInheritedSupport}
                     />
                   </div>
-                  {/* Support hint */}
                   {isInheritedSupport ? (
                     <div className="flex items-start gap-1 text-[10px] text-muted-foreground">
                       <Info size={10} className="mt-0.5 flex-shrink-0" />
                       <span>Унаследовано от {inheritedFromQuarter}</span>
                     </div>
                   ) : data.support ? (
-                    <div className="flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-500">
+                    <div className="flex items-start gap-1 text-[10px] text-destructive">
                       <AlertCircle size={10} className="mt-0.5 flex-shrink-0" />
                       <span>Все последующие кварталы будут в режиме поддержки</span>
                     </div>

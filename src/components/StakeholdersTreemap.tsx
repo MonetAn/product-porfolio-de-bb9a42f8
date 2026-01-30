@@ -447,7 +447,6 @@ const StakeholdersTreemap = ({
           htmlEl.classList.add('animate', 'zoom-out');
           htmlEl.style.left = newLeft + 'px';
           htmlEl.style.top = newTop + 'px';
-          htmlEl.style.opacity = '0';
         });
         
         // Remove all after animation

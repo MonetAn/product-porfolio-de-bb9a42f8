@@ -1,10 +1,6 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, Check, Users, ClipboardList } from 'lucide-react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useState, useRef, useEffect } from 'react';
+import { ChevronDown, Check } from 'lucide-react';
 import { AdminDataRow } from '@/lib/adminDataManager';
-
-type ViewMode = 'initiatives' | 'people';
 
 interface ScopeSelectorProps {
   units: string[];
@@ -31,10 +27,6 @@ const ScopeSelector = ({
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
   const unitRef = useRef<HTMLDivElement>(null);
   const teamRef = useRef<HTMLDivElement>(null);
-  const location = useLocation();
-  
-  // Determine current view based on path
-  const currentView: ViewMode = location.pathname.includes('/people') ? 'people' : 'initiatives';
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -133,21 +125,6 @@ const ScopeSelector = ({
       }
     }
   };
-
-  const [searchParams] = useSearchParams();
-  
-  // Build URLs for navigation - always use current search params directly
-  const initiativesUrl = useMemo(() => {
-    const params = new URLSearchParams(searchParams);
-    const queryString = params.toString();
-    return queryString ? `/admin?${queryString}` : '/admin';
-  }, [searchParams]);
-  
-  const peopleUrl = useMemo(() => {
-    const params = new URLSearchParams(searchParams);
-    const queryString = params.toString();
-    return queryString ? `/admin/people?${queryString}` : '/admin/people';
-  }, [searchParams]);
 
   return (
     <div className="flex items-center gap-3 p-4 bg-card border-b border-border">
@@ -262,38 +239,6 @@ const ScopeSelector = ({
           {selectedTeams.length > 0 && `, ${selectedTeams.length} ${selectedTeams.length === 1 ? 'команда' : 'команд'}`}
         </div>
       )}
-
-      {/* View mode toggle - always visible */}
-      <div className="ml-auto flex items-center gap-3">
-        {/* Separator */}
-        <div className="h-6 w-px bg-border" />
-        
-        {/* Toggle with improved styles */}
-        <ToggleGroup 
-          type="single" 
-          value={currentView} 
-          className="bg-secondary rounded-lg p-1 shadow-sm"
-        >
-          <Link to={initiativesUrl}>
-            <ToggleGroupItem 
-              value="initiatives" 
-              className="gap-1.5 px-4 h-9 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-            >
-              <ClipboardList className="h-4 w-4" />
-              <span>Инициативы</span>
-            </ToggleGroupItem>
-          </Link>
-          <Link to={peopleUrl}>
-            <ToggleGroupItem 
-              value="people" 
-              className="gap-1.5 px-4 h-9 text-sm font-medium rounded-md transition-all data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
-            >
-              <Users className="h-4 w-4" />
-              <span>Люди</span>
-            </ToggleGroupItem>
-          </Link>
-        </ToggleGroup>
-      </div>
     </div>
   );
 };

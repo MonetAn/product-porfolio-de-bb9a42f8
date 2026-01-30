@@ -113,7 +113,24 @@ const ScopeSelector = ({
     if (selectedTeams.includes(t)) {
       onTeamsChange(selectedTeams.filter(x => x !== t));
     } else {
-      onTeamsChange([...selectedTeams, t]);
+      // Adding a team
+      const newTeams = [...selectedTeams, t];
+      
+      // Find the unit this team belongs to
+      const teamUnit = allData.find(r => r.team === t)?.unit;
+      
+      // If the unit is not selected — add it automatically
+      if (teamUnit && !selectedUnits.includes(teamUnit)) {
+        const newUnits = [...selectedUnits, teamUnit];
+        if (onFiltersChange) {
+          onFiltersChange(newUnits, newTeams);
+        } else {
+          onUnitsChange(newUnits);
+          onTeamsChange(newTeams);
+        }
+      } else {
+        onTeamsChange(newTeams);
+      }
     }
   };
 

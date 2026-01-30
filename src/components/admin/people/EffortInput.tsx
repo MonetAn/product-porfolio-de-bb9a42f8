@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 
 interface EffortInputProps {
   value: number;
+  expectedValue?: number; // From initiative's effortCoefficient
   isAuto: boolean;
   isVirtual?: boolean;
   onChange: (value: number) => void;
@@ -13,6 +14,7 @@ interface EffortInputProps {
 
 export default function EffortInput({ 
   value, 
+  expectedValue,
   isAuto, 
   isVirtual = false, 
   onChange, 
@@ -22,6 +24,11 @@ export default function EffortInput({
   // Show empty string for zero values when editing starts
   const [localValue, setLocalValue] = useState(value === 0 ? '' : value.toString());
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Determine what to display
+  const displayValue = value > 0 ? value : (expectedValue || 0);
+  const isUsingExpected = value === 0 && expectedValue && expectedValue > 0;
+  const hasManualOverride = value > 0 && expectedValue && expectedValue > 0 && value !== expectedValue;
   
   useEffect(() => {
     // Only update local value when not editing
@@ -75,12 +82,27 @@ export default function EffortInput({
         min={0}
         max={100}
         step={5}
+        placeholder={expectedValue ? expectedValue.toString() : undefined}
       />
     );
   }
 
-  // Virtual assignments (not in DB yet) show dashed border
-  const isVirtualEmpty = isVirtual && value === 0;
+  // No value and no expected — show empty placeholder
+  const isEmpty = displayValue === 0;
+
+  // Build tooltip
+  let tooltip = '';
+  if (isEmpty) {
+    tooltip = 'Нажмите чтобы ввести значение';
+  } else if (isUsingExpected) {
+    tooltip = 'Значение из инициативы';
+  } else if (hasManualOverride) {
+    tooltip = `Изменено вручную (исходное: ${expectedValue}%)`;
+  } else if (isAuto) {
+    tooltip = 'Авто (из инициативы)';
+  } else {
+    tooltip = 'Изменено вручную';
+  }
 
   return (
     <button
@@ -88,21 +110,36 @@ export default function EffortInput({
       className={cn(
         "flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors",
         "hover:bg-muted cursor-pointer min-w-[50px] justify-center",
-        isVirtualEmpty && "border border-dashed border-muted-foreground/30 text-muted-foreground/50",
-        !isVirtualEmpty && isAuto && "text-muted-foreground",
-        !isVirtualEmpty && !isAuto && "text-foreground bg-primary/10 border border-primary/20",
+        // Empty state — dashed border
+        isEmpty && "border border-dashed border-muted-foreground/30 text-muted-foreground/50",
+        // Using expected value (gray, muted)
+        isUsingExpected && "text-muted-foreground bg-muted/50",
+        // Manual override — primary style
+        hasManualOverride && "text-foreground bg-primary/10 border border-primary/20",
+        // Regular manual entry (no expected to compare)
+        !isEmpty && !isUsingExpected && !hasManualOverride && !isAuto && "text-foreground bg-primary/10 border border-primary/20",
+        // Auto value
+        !isEmpty && !isUsingExpected && !hasManualOverride && isAuto && "text-muted-foreground",
         className
       )}
-      title={
-        isVirtualEmpty 
-          ? 'Нажмите чтобы ввести значение' 
-          : isAuto 
-            ? 'Авто (из инициативы)' 
-            : 'Изменено вручную'
-      }
+      title={tooltip}
     >
-      <span>{value === 0 ? '—' : `${value}%`}</span>
-      {!isVirtualEmpty && !isAuto && <Pencil className="h-3 w-3" />}
+      {isEmpty ? (
+        <span>—</span>
+      ) : (
+        <>
+          <span>{displayValue}%</span>
+          {hasManualOverride && (
+            <>
+              <Pencil className="h-3 w-3" />
+              <span className="text-muted-foreground/60 text-[10px]">({expectedValue}%)</span>
+            </>
+          )}
+          {!isEmpty && !isUsingExpected && !hasManualOverride && !isAuto && (
+            <Pencil className="h-3 w-3" />
+          )}
+        </>
+      )}
     </button>
   );
 }

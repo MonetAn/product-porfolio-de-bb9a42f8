@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Users, ClipboardList } from 'lucide-react';
 import { Person, PersonAssignment, VirtualAssignment } from '@/lib/peopleDataManager';
-import { AdminDataRow } from '@/lib/adminDataManager';
+import { AdminDataRow, AdminQuarterData } from '@/lib/adminDataManager';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import PersonGroupRow from './PersonGroupRow';
 import InitiativeGroupRow from './InitiativeGroupRow';
@@ -55,12 +55,22 @@ export default function PeopleAssignmentsTable({
       const key = `${person.id}:${initiative.id}`;
       const existing = assignmentMap.get(key);
       
+      // Collect expected effort from initiative's quarterly data
+      const expectedEffort: Record<string, number> = {};
+      displayQuarters.forEach(q => {
+        const qData = initiative.quarterlyData[q] as AdminQuarterData | undefined;
+        if (qData?.effortCoefficient && qData.effortCoefficient > 0) {
+          expectedEffort[q] = qData.effortCoefficient;
+        }
+      });
+      
       if (existing) {
         return {
           id: existing.id,
           person_id: existing.person_id,
           initiative_id: existing.initiative_id,
           quarterly_effort: existing.quarterly_effort,
+          expected_effort: expectedEffort,
           is_auto: existing.is_auto,
           isVirtual: false
         };
@@ -71,6 +81,7 @@ export default function PeopleAssignmentsTable({
         person_id: person.id,
         initiative_id: initiative.id,
         quarterly_effort: {},
+        expected_effort: expectedEffort,
         is_auto: true,
         isVirtual: true
       };
@@ -103,6 +114,15 @@ export default function PeopleAssignmentsTable({
         p => p.unit === initiative.unit && p.team === initiative.team
       );
       
+      // Collect expected effort from initiative's quarterly data
+      const expectedEffort: Record<string, number> = {};
+      displayQuarters.forEach(q => {
+        const qData = initiative.quarterlyData[q] as AdminQuarterData | undefined;
+        if (qData?.effortCoefficient && qData.effortCoefficient > 0) {
+          expectedEffort[q] = qData.effortCoefficient;
+        }
+      });
+      
       const virtualAssignments = teamPeople.map(person => {
         const key = `${person.id}:${initiative.id}`;
         const existing = assignmentMap.get(key);
@@ -113,6 +133,7 @@ export default function PeopleAssignmentsTable({
             person_id: existing.person_id,
             initiative_id: existing.initiative_id,
             quarterly_effort: existing.quarterly_effort,
+            expected_effort: expectedEffort,
             is_auto: existing.is_auto,
             isVirtual: false
           };
@@ -123,6 +144,7 @@ export default function PeopleAssignmentsTable({
           person_id: person.id,
           initiative_id: initiative.id,
           quarterly_effort: {},
+          expected_effort: expectedEffort,
           is_auto: true,
           isVirtual: true
         };
@@ -134,7 +156,7 @@ export default function PeopleAssignmentsTable({
         people: teamPeople
       };
     }).filter(g => g.assignments.length > 0);
-  }, [initiatives, people, assignmentMap]);
+  }, [initiatives, people, assignmentMap, displayQuarters]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

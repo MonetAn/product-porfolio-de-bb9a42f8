@@ -16,6 +16,7 @@
   position: absolute;
   overflow: hidden;
   cursor: pointer;
+  will-change: transform; /* GPU optimization for smooth animations */
 }
 
 .treemap-node:hover {

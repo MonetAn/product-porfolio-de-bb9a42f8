@@ -6,7 +6,7 @@ import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import TreemapNode from './TreemapNode';
 import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
-import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS, ColorGetter } from './types';
+import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS, ColorGetter, ZoomTargetInfo } from './types';
 import { TreeNode } from '@/lib/dataManager';
 import '@/styles/treemap.css';
 
@@ -57,8 +57,7 @@ const TreemapContainer = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [animationType, setAnimationType] = useState<AnimationType>('initial');
-  const [zoomTargetKey, setZoomTargetKey] = useState<string | null>(null);
-  const [exitCenter, setExitCenter] = useState<{ x: number; y: number } | null>(null);
+  const [zoomTargetInfo, setZoomTargetInfo] = useState<ZoomTargetInfo | null>(null);
   const [showHint, setShowHint] = useState(true);
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
@@ -129,20 +128,24 @@ const TreemapContainer = ({
     prevDataNameRef.current = data.name;
     setAnimationType(newAnimationType);
     
-    // For drilldown, set up exit animation
+    // For drilldown, set up exit animation with full zoom target info
     if (newAnimationType === 'drilldown' && clickedNodeName) {
       const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
       if (clickedNode) {
-        setZoomTargetKey(clickedNode.key);
-        setExitCenter({
-          x: clickedNode.x0 + clickedNode.width / 2,
-          y: clickedNode.y0 + clickedNode.height / 2,
+        setZoomTargetInfo({
+          key: clickedNode.key,
+          name: clickedNode.name,
+          x0: clickedNode.x0,
+          y0: clickedNode.y0,
+          x1: clickedNode.x1,
+          y1: clickedNode.y1,
+          width: clickedNode.width,
+          height: clickedNode.height,
         });
         setNodesForExit(prevLayoutNodesRef.current);
       }
     } else {
-      setZoomTargetKey(null);
-      setExitCenter(null);
+      setZoomTargetInfo(null);
       setNodesForExit([]);
     }
     
@@ -151,8 +154,7 @@ const TreemapContainer = ({
       const duration = ANIMATION_DURATIONS.drilldown;
       setTimeout(() => {
         setNodesForExit([]);
-        setZoomTargetKey(null);
-        setExitCenter(null);
+        setZoomTargetInfo(null);
       }, duration);
     }
     
@@ -296,20 +298,19 @@ const TreemapContainer = ({
       {!isEmpty && dimensions.width > 0 && (
         <LayoutGroup>
           <AnimatePresence mode="sync">
-            {/* Exiting nodes (during drilldown) */}
+            {/* Exiting nodes (during drilldown) - use edge-based push */}
             {nodesForExit.length > 0 && animationType === 'drilldown' && nodesForExit.map(node => (
               <TreemapNode
                 key={node.key}
                 node={node}
                 animationType={animationType}
-                zoomTargetKey={zoomTargetKey}
+                zoomTarget={zoomTargetInfo}
                 containerWidth={dimensions.width}
                 containerHeight={dimensions.height}
                 onClick={handleNodeClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
-                exitCenter={exitCenter}
                 renderDepth={renderDepth}
               />
             ))}
@@ -320,7 +321,7 @@ const TreemapContainer = ({
                 key={node.key}
                 node={node}
                 animationType={nodesForExit.length > 0 ? 'filter' : animationType}
-                zoomTargetKey={null}
+                zoomTarget={null}
                 containerWidth={dimensions.width}
                 containerHeight={dimensions.height}
                 onClick={handleNodeClick}

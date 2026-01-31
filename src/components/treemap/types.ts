@@ -71,3 +71,15 @@ export interface ExitDirection {
 
 // Color getter function type
 export type ColorGetter = (name: string) => string;
+
+// Zoom target info for edge-based push calculation
+export interface ZoomTargetInfo {
+  key: string;
+  name: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  width: number;
+  height: number;
+}

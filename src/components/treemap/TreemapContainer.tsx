@@ -141,6 +141,7 @@ const TreemapContainer = ({
           y1: clickedNode.y1,
           width: clickedNode.width,
           height: clickedNode.height,
+          animationType: 'drilldown',  // CRITICAL: Include animation type!
         });
         setNodesForExit(prevLayoutNodesRef.current);
       }
@@ -149,14 +150,8 @@ const TreemapContainer = ({
       setNodesForExit([]);
     }
     
-    // Clear exit state after animation
-    if (newAnimationType === 'drilldown') {
-      const duration = ANIMATION_DURATIONS.drilldown;
-      setTimeout(() => {
-        setNodesForExit([]);
-        setZoomTargetInfo(null);
-      }, duration);
-    }
+    // NOTE: Do NOT clear zoomTargetInfo here with setTimeout!
+    // AnimatePresence onExitComplete will handle cleanup after animations finish
     
     // Show hint briefly
     setShowHint(true);
@@ -298,7 +293,16 @@ const TreemapContainer = ({
       {!isEmpty && dimensions.width > 0 && (
         <LayoutGroup>
           {/* CRITICAL: custom prop passes zoomTargetInfo to all exiting nodes' variant functions */}
-          <AnimatePresence mode="sync" custom={zoomTargetInfo}>
+          <AnimatePresence 
+            mode="sync" 
+            custom={zoomTargetInfo}
+            onExitComplete={() => {
+              // CRITICAL: Only clear state AFTER all exit animations complete
+              console.log('AnimatePresence: onExitComplete triggered');
+              setNodesForExit([]);
+              setZoomTargetInfo(null);
+            }}
+          >
             {/* Exiting nodes (during drilldown) - use edge-based push */}
             {nodesForExit.length > 0 && animationType === 'drilldown' && nodesForExit.map(node => (
               <TreemapNode

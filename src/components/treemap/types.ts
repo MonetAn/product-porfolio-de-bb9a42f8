@@ -48,11 +48,12 @@ export interface TreemapLayoutNode {
 export type AnimationType = 'filter' | 'drilldown' | 'navigate-up' | 'resize' | 'initial';
 
 // Animation durations in ms
+// TEMPORARY: 3000ms for slow-motion debug mode
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
   'filter': 800,
-  'drilldown': 500,
-  'navigate-up': 600,
+  'drilldown': 3000,   // DEBUG: was 500
+  'navigate-up': 3000, // DEBUG: was 600
   'resize': 300
 };
 
@@ -82,4 +83,6 @@ export interface ZoomTargetInfo {
   y1: number;
   width: number;
   height: number;
+  // CRITICAL: Pass animationType through custom prop to avoid closure issues
+  animationType: AnimationType;
 }

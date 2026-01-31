@@ -26,10 +26,11 @@ interface TreemapNodeProps {
 }
 
 // Unified transition for synchronized animations (Camera Zoom effect)
+// TEMPORARY: 3.0s for slow-motion debug mode
 const ZOOM_TRANSITION = {
   type: 'tween' as const,
   ease: [0.4, 0, 0.2, 1] as [number, number, number, number], // ease-in-out cubic-bezier
-  duration: 0.6,
+  duration: 3.0,  // DEBUG: was 0.6
 };
 
 // Edge-based push calculation - nodes are "pushed" by expanding zoom target
@@ -211,30 +212,36 @@ function createNodeVariants(
     },
     
     exit: (customData: ZoomTargetInfo | null) => {
+      // CRITICAL: Read animationType from customData, NOT from closure!
+      const exitAnimationType = customData?.animationType;
+      
       // DEBUG: Log to verify data flow
       console.log('EXIT variant triggered', { 
         nodeName: node.name, 
         hasCustomData: !!customData,
-        animationType,
+        customAnimationType: exitAnimationType,  // From custom!
+        closureAnimationType: animationType,     // From closure (may be stale)
         customDataKey: customData?.key,
       });
       
       const isZoomTarget = customData?.key === node.key;
       
       // Zoom target: expands to fullscreen (stays on top)
+      // DEBUG: Using 0.5 opacity for X-ray vision
       if (isZoomTarget) {
         return {
           x: 0,
           y: 0,
           width: containerWidth,
           height: containerHeight,
-          opacity: 1,
-          zIndex: 50, // CRITICAL: above flying neighbors
+          opacity: 0.5,  // DEBUG: X-ray vision to see siblings underneath
+          zIndex: 50,    // CRITICAL: above flying neighbors
         };
       }
       
-      // Non-target during drilldown: fly off screen
-      if (customData && animationType === 'drilldown') {
+      // Non-target during drilldown: fly off screen using edge-based push
+      // CRITICAL: Use exitAnimationType from customData!
+      if (customData && exitAnimationType === 'drilldown') {
         const pushAnimation = getEdgeBasedExitAnimation(
           node, customData, containerWidth, containerHeight
         );

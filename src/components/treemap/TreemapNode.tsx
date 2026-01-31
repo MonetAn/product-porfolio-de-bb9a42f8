@@ -23,6 +23,8 @@ interface TreemapNodeProps {
   showChildren?: boolean;
   // Render depth control
   renderDepth?: number;
+  // ISOLATION TEST: Flag for exiting nodes (disables layoutId)
+  isExitingNode?: boolean;
 }
 
 // Unified transition for synchronized animations (Camera Zoom effect)
@@ -333,12 +335,26 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
   containerCenter,
   showChildren = true,
   renderDepth = 3,
+  isExitingNode = false,
 }, ref) => {
   const duration = ZOOM_TRANSITION.duration;
   const isZoomTarget = zoomTarget?.key === node.key;
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
   const isLeaf = !hasChildren;
+  
+  // ISOLATION TEST: Disable layoutId for exiting non-target nodes
+  // This tests if Layout Projection is overriding our exit variants
+  const shouldDisableLayout = isExitingNode && !isZoomTarget;
+  
+  if (shouldDisableLayout) {
+    console.log('ISOLATION TEST: layoutId DISABLED for', node.name, {
+      isExitingNode,
+      isZoomTarget,
+      zoomTargetKey: zoomTarget?.key,
+      nodeKey: node.key,
+    });
+  }
   
   // Determine size class
   const isTiny = node.width < 60 || node.height < 40;
@@ -372,7 +388,9 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
   return (
     <motion.div
       ref={ref}
-      layoutId={node.key}
+      // ISOLATION TEST: Disable layoutId for exiting non-target nodes
+      // If Layout Projection is the culprit, nodes should fly off-screen now
+      layoutId={shouldDisableLayout ? undefined : node.key}
       custom={zoomTarget}           // CRITICAL: Pass data to variant functions
       variants={variants}           // Object with functions
       initial="initial"             // String keys
@@ -386,6 +404,8 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
         overflow: 'hidden',
         cursor: 'pointer',
         willChange: 'transform',
+        // ISOLATION TEST: Red border for visual identification
+        border: shouldDisableLayout ? '5px solid red' : undefined,
       }}
       onClick={(e) => {
         e.stopPropagation();

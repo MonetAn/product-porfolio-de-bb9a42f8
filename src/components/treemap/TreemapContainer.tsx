@@ -313,6 +313,7 @@ const TreemapContainer = ({
                 }}
                 animationType="drilldown"          // FORCE: hardcoded, not from state!
                 zoomTarget={zoomTargetInfo}        // Pass full info
+                isExitingNode={true}               // ISOLATION TEST: Flag to disable layoutId
                 containerWidth={dimensions.width}
                 containerHeight={dimensions.height}
                 onClick={handleNodeClick}

@@ -155,6 +155,7 @@ function createNodeVariants(
 ): Variants {
   return {
     initial: (customData: ZoomTargetInfo | null) => {
+      // No animation for initial/resize
       if (animationType === 'initial' || animationType === 'resize') {
         return { 
           x: node.x0, 
@@ -174,7 +175,20 @@ function createNodeVariants(
         };
       }
       
-      // Default: fade in
+      // CRITICAL FIX: For drilldown, new nodes should NOT fade in!
+      // They should appear at their final position with opacity: 1
+      if (animationType === 'drilldown') {
+        return {
+          x: node.x0,
+          y: node.y0,
+          width: node.width,
+          height: node.height,
+          opacity: 1,  // NO FADE!
+          zIndex: node.depth,
+        };
+      }
+      
+      // Default (filter): fade in
       return {
         x: node.x0,
         y: node.y0,

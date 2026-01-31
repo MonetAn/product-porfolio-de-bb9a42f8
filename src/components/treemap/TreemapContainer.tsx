@@ -195,11 +195,10 @@ const TreemapContainer = ({
     });
   }, []);
   
+  // STABLE: No dependency on tooltipData - prevents re-renders on every mouse move
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (tooltipData) {
-      setTooltipData(prev => prev ? { ...prev, position: { x: e.clientX, y: e.clientY } } : null);
-    }
-  }, [tooltipData]);
+    setTooltipData(prev => prev ? { ...prev, position: { x: e.clientX, y: e.clientY } } : null);
+  }, []);
   
   const handleMouseLeave = useCallback(() => {
     setTooltipData(null);
@@ -324,13 +323,13 @@ const TreemapContainer = ({
               />
             ))}
             
-            {/* Current/new nodes - also receive zoomTargetInfo for animate state */}
+            {/* Current/new nodes - use 'drilldown' animation type during drilldown to avoid fade */}
             {(showNewNodes || animationType !== 'drilldown') && layoutNodes.map(node => (
               <TreemapNode
                 key={node.key}
                 node={node}
-                animationType={nodesForExit.length > 0 ? 'filter' : animationType}
-                zoomTarget={zoomTargetInfo}        // Pass info here too!
+                animationType={animationType}  // FIXED: Don't override to 'filter'!
+                zoomTarget={zoomTargetInfo}
                 containerWidth={dimensions.width}
                 containerHeight={dimensions.height}
                 onClick={handleNodeClick}

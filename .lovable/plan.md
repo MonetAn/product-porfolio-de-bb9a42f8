@@ -1,164 +1,142 @@
 
+## Что происходит и почему “много итераций, а все еще есть fade-out и рамки не двигаются”
 
-# Fix: Принудительная передача данных для Exit-нод
+Сейчас у нас две разные проблемы, которые накладываются друг на друга и создают ощущение “анимации то есть, то нет”:
 
-## Подтверждённая проблема (из логов)
+### A) “Есть фейдаут и не двигаются рамки”
+1) **Фейдаут не обязательно из exit-ветки**  
+   Даже если exit-wire уже частично починили (выходящие ноды forced `animationType="drilldown"`), **новые/текущие ноды во время drilldown рендерятся с `animationType='filter'`**:
 
-```
-EXIT variant triggered {
-  nodeName: 'Client Platform',
-  hasCustomData: false,           // ← ДАННЫЕ НЕ ДОХОДЯТ
-  closureAnimationType: 'filter', // ← STALE CLOSURE
-  customDataKey: undefined
-}
-```
+   В `TreemapContainer.tsx`:
+   ```ts
+   animationType={nodesForExit.length > 0 ? 'filter' : animationType}
+   ```
+   Это означает: в момент, когда `nodesForExit` выставлен, **все “новые” ноды получают режим `filter`**, а в `TreemapNode.tsx` для `filter`:
+   - `initial` по умолчанию делает `opacity: 0` (fade-in)
+   - `exit` fallback делает `opacity: 0` (fade-out)
 
-**Причина:** React 18 batches state updates. Когда `AnimatePresence` начинает exit-анимацию, он использует **снапшот props** на момент unmount. К этому моменту:
-1. `animationType` в state ещё может быть `'filter'`
-2. `zoomTargetInfo` может быть `null` из-за race condition
+   Поэтому даже при правильном edge-based push у siblings может быть ощущение, что “что-то исчезает/появляется”, особенно когда слой “new nodes” появляется во время drilldown.
 
-## Решение: 3 исправления
+2) **“Рамки не двигаются” = визуально не видно физического push**  
+   Когда один слой узлов получает `filter`-режим (opacity + быстрые подмены) и одновременно есть слой exit-нод, глаз видит “перерисовку/подмену” вместо “физического вытеснения”.
 
-### Исправление 1: Убрать условие `animationType === 'drilldown'` из render
-
-**Файл: `TreemapContainer.tsx`, строка 307**
-
-Сейчас:
-```typescript
-{nodesForExit.length > 0 && animationType === 'drilldown' && nodesForExit.map(node => (
-```
-
-**Проблема:** Если `animationType` ещё не обновился в state, условие `false` и ноды НЕ рендерятся вообще.
-
-**Исправление:** Проверять только `nodesForExit.length > 0`:
-```typescript
-{nodesForExit.length > 0 && nodesForExit.map(node => (
-```
-
-### Исправление 2: Hardcode `animationType="drilldown"` для exit-нод
-
-**Файл: `TreemapContainer.tsx`, строка 314**
-
-Сейчас:
-```typescript
-animationType={animationType}  // ← Может быть stale!
-```
-
-**Исправление:** Принудительно передать `'drilldown'`:
-```typescript
-animationType="drilldown"  // FORCE: не зависим от state
-```
-
-### Исправление 3: Гарантировать порядок state updates
-
-**Файл: `TreemapContainer.tsx`, строки 135-146**
-
-Сейчас:
-```typescript
-setZoomTargetInfo({...});
-setNodesForExit(prevLayoutNodesRef.current);
-```
-
-React 18 батчит эти обновления, но для надёжности нужно убедиться, что `zoomTargetInfo` устанавливается **одновременно или раньше**.
-
-**Проверка:** Порядок уже правильный (setZoomTargetInfo → setNodesForExit). Но добавим явное логирование для диагностики.
+Итого: чтобы увидеть “камера + физический push”, нужно, чтобы в drilldown-кадре:
+- выходящие узлы точно были в режиме `drilldown` и получили `custom` (мы уже форсим часть этого),
+- **новый слой не должен входить через fade** (или должен входить после завершения exit, или входить без opacity-анимаций).
 
 ---
 
-## Изменения в коде
+### B) “При любом движении мышкой как будто перестроение с 0”
+Это почти наверняка из-за tooltip’а:
 
-### TreemapContainer.tsx
-
-```typescript
-// Строка 307 - убрать проверку animationType
-{nodesForExit.length > 0 && nodesForExit.map(node => (
-  <TreemapNode
-    key={`exit-${node.key}`}
-    node={{
-      ...node,
-      key: `exit-${node.key}`,
-    }}
-    animationType="drilldown"        // FORCE: hardcoded!
-    zoomTarget={zoomTargetInfo}      // Pass explicitly
-    containerWidth={dimensions.width}
-    containerHeight={dimensions.height}
-    onClick={handleNodeClick}
-    onMouseEnter={handleMouseEnter}
-    onMouseMove={handleMouseMove}
-    onMouseLeave={handleMouseLeave}
-    renderDepth={renderDepth}
-  />
-))}
+В `TreemapContainer.tsx`:
+```ts
+const handleMouseMove = useCallback((e) => {
+  if (tooltipData) {
+    setTooltipData(prev => prev ? { ...prev, position: { x: e.clientX, y: e.clientY } } : null);
+  }
+}, [tooltipData]);
 ```
 
-### TreemapNode.tsx — проверка custom prop
-
-**Строка 362** уже правильная:
-```typescript
-custom={zoomTarget}           // ✓ Передаётся корректно
-```
-
-Но нужно убедиться, что variant функция **правильно читает** из `customData`:
-
-```typescript
-exit: (customData: ZoomTargetInfo | null) => {
-  const exitAnimationType = customData?.animationType;  // ✓ Уже исправлено
-  
-  console.log('EXIT variant triggered', { 
-    nodeName: node.name, 
-    hasCustomData: !!customData,
-    customAnimationType: exitAnimationType,
-    customDataKey: customData?.key,
-  });
-  
-  // ...rest of logic
-}
-```
+Проблема тут двойная:
+1) **`handleMouseMove` пересоздается на каждый move**, потому что зависит от `tooltipData`.  
+   Значит, проп `onMouseMove` у всех `TreemapNode` меняется постоянно → даже с `memo()` это может триггерить лишние обновления и “сброс ощущений” у Framer Motion.
+2) `setTooltipData` дергается на каждый пиксель движения (часто 100+ раз/сек), что даёт постоянные ре-рендеры контейнера. Даже если сами layoutNodes не пересчитываются, Framer Motion и layoutId могут вести себя так, будто “сцена пересобирается”.
 
 ---
 
-## Визуализация исправленного flow
+## Что именно нужно сделать (исправления)
 
-```text
-КЛИК на Unit B
-     │
-     ▼
-useEffect срабатывает
-     │
-     ├─ setZoomTargetInfo({ key: 'unit-B', animationType: 'drilldown', ... })
-     │
-     └─ setNodesForExit(prevLayoutNodesRef.current)
-           │
-           ▼
-React re-render
-     │
-     ├─ nodesForExit.length > 0 → TRUE
-     │
-     └─ nodesForExit.map(node => <TreemapNode animationType="drilldown" ... />)
-                                              │
-                                              ▼
-                                    motion.div custom={zoomTarget}
-                                              │
-                                              ▼
-                               variants.exit(customData) → hasCustomData: TRUE
-```
+### 1) Убрать “перестроение на hover”: стабилизировать mouse handlers и обновление tooltip
+Цель: движение мыши должно обновлять только tooltip, не заставляя пересобирать/ре-рендерить узлы.
+
+План правки:
+- Сделать `handleMouseMove` **стабильным** (без зависимости от `tooltipData`) и использовать **functional update**:
+  - убрать `[tooltipData]` из deps
+  - внутри использовать `setTooltipData(prev => prev ? {...prev, position: ...} : null)`
+- Дополнительно (желательно) ограничить частоту обновления позиции:
+  - через `requestAnimationFrame` throttle (хранить последние координаты в `useRef`, обновлять state максимум 1 раз за кадр)
+  - либо вообще: хранить позицию в ref и двигать tooltip напрямую (imperative) без state на каждый move
+
+Ожидаемый эффект: при hover “сцена” больше не будет ощущаться как reset/rebuild.
 
 ---
 
-## Ожидаемый результат
+### 2) Убрать fade-out/fade-in, который маскирует “camera push” в drilldown
+Цель: во время drilldown “новые” ноды не должны появляться/исчезать через opacity, если мы хотим физический эффект камеры.
 
-После исправления консоль покажет:
-```
-EXIT variant triggered {
-  nodeName: 'Client Platform',
-  hasCustomData: true,              // ← ИСПРАВЛЕНО
-  customAnimationType: 'drilldown', // ← ИСПРАВЛЕНО
-  customDataKey: 'unit-B'
-}
-```
+Два варианта (выбираем по минимальным изменениям, начнем с A):
 
-И визуально:
-- Zoom target расширяется на весь экран (полупрозрачный для debug)
-- Соседние ноды улетают за края экрана
-- Никаких `opacity: 0` fadeouts
+**Вариант A (минимальный и надежный):**
+- Во время drilldown:
+  - exit-слой: `animationType="drilldown"` (уже сделано)
+  - new/current-слой: **не отдавать им `filter`**, а отдавать **`drilldown`** (или специальный режим без opacity)
+- В `TreemapNode.tsx` в `createNodeVariants.initial` добавить ветку:
+  - если `animationType === 'drilldown'`, то initial должен быть **opacity: 1**, без fade-in (и с корректными x/y/width/height).
+- В `createNodeVariants.exit` для `filter` можно тоже убрать fade (если пользователь реально хочет “без фейда” на фильтрах), но это отдельная настройка — начнем с drilldown.
 
+**Вариант B (сильнее похож на “камера”):**
+- В drilldown вообще **не рендерить new nodes до onExitComplete**, то есть не показывать новые узлы раньше времени.
+  - Сейчас у вас `showNewNodes` включается через `duration * 0.8`, что может давать “подмену слоя” до завершения push.
+  - Можно переключить логику: new nodes появляются строго после `onExitComplete` (или сразу после, но без fade).
+Этот вариант часто визуально наиболее “кинематографичный”, но чуть сильнее меняет тайминг UX.
+
+---
+
+### 3) Диагностика “рамки не двигаются” после правок
+После пунктов (1) и (2) будет понятно, осталось ли что-то фундаментальное:
+- Если edge-based push работает, но “рамки” все равно кажутся статичными, проверим:
+  - не мешает ли `overflow: hidden` у `.treemap-container` (он нужен, но он скрывает вылетевшие блоки — в slow motion это может выглядеть как исчезновение у границы).
+  - нет ли у каких-то уровней `position/transform` конфликтов из-за вложенного `AnimatePresence` внутри `TreemapNode` (у детей координаты пересчитываются относительно родителя; во время zoom’а родитель меняет размер/позицию, дети могут визуально “прыгать”).  
+    Если это подтвердится, будем решать: либо отключать рендер children на время zoom, либо откладывать их появление.
+
+---
+
+## Конкретные изменения по файлам (что будем править)
+
+### Файл: `src/components/treemap/TreemapContainer.tsx`
+1) Tooltip:
+- переписать `handleMouseMove` так, чтобы он был stable (без deps на tooltipData)
+- (опционально) добавить rAF-throttle
+
+2) Drilldown layer logic:
+- заменить `animationType={nodesForExit.length > 0 ? 'filter' : animationType}` на логику, где во время drilldown новые ноды не получают `filter` (как минимум — `drilldown`).
+
+3) (опционально) пересмотреть `showNewNodes`:
+- либо показывать строго после `onExitComplete`, либо показывать без fade
+
+---
+
+### Файл: `src/components/treemap/TreemapNode.tsx`
+1) В `createNodeVariants.initial`:
+- добавить поведение для `animationType === 'drilldown'`, чтобы **не было opacity 0** у новых/входящих узлов во время drilldown.
+
+2) (опционально) Если захотим убрать fade на фильтрах:
+- в `initial` и `exit` для `filter` поставить opacity 1 (движение через layoutId/изменение x/y/width/height), не через opacity.
+
+---
+
+### Файл: `src/components/treemap/TreemapTooltip.tsx` (опционально)
+Если пойдём путем imperative positioning:
+- можно сделать так, чтобы tooltip принимал position как ref/imperative method и не триггерил ре-рендер дерева на mousemove.
+
+---
+
+## Порядок выполнения (быстрый, чтобы быстро увидеть улучшение)
+1) Сначала фикс tooltip mousemove (это сразу уберет “перестроение на hover”).
+2) Затем убрать `filter`-режим у new nodes в drilldown (и добавить initial без opacity 0 для drilldown).
+3) После этого протестировать:
+   - Zoom-in (Unit) в slow motion
+   - Zoom-out (Back)
+   - Hover (проверить что ничего не “пересобирается”)
+4) Когда визуально подтвердится, вернуть длительности анимаций из debug режима (3.0s → 0.6s; 3000ms → нормальные значения).
+
+---
+
+## Что нужно от тебя (1 уточнение, чтобы выбрать лучший вариант для пункта 2)
+В drilldown ты хочешь, чтобы **новые узлы**:
+- A) появлялись чуть раньше конца анимации (как сейчас), но без fade  
+или
+- B) появлялись строго после того, как exit-узлы улетели (более “киношная” камера, но задержка контента)
+
+Если не ответишь — я сделаю вариант A как самый “минимально вмешивающийся” и быстрый для проверки физического push эффекта.

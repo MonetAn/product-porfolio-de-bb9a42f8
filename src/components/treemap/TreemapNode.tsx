@@ -1,6 +1,7 @@
 // Framer Motion treemap node component with Camera Zoom edge-based push
+// Uses Variants + Custom Prop pattern for proper exit animation data flow
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { memo, useMemo, forwardRef } from 'react';
 import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS, ZoomTargetInfo } from './types';
 import { formatBudget } from '@/lib/dataManager';
@@ -109,12 +110,6 @@ function getEdgeBasedEnterAnimation(
   let startX = node.x0;
   let startY = node.y0;
   
-  // Check which edge the node should fly in from
-  const distFromLeft = node.x0;
-  const distFromRight = containerWidth - node.x1;
-  const distFromTop = node.y0;
-  const distFromBottom = containerHeight - node.y1;
-  
   // Horizontal position determines horizontal entry
   if (nodeCenterX < containerCenterX) {
     startX = -(node.width + 100);
@@ -145,6 +140,120 @@ function getEdgeBasedEnterAnimation(
     width: node.width,
     height: node.height,
     opacity: 1,
+  };
+}
+
+// Create variants object with functions that receive custom data
+// This is CRITICAL for exit animations to receive zoomTarget info
+function createNodeVariants(
+  node: TreemapLayoutNode,
+  containerWidth: number,
+  containerHeight: number,
+  animationType: AnimationType,
+  isEntering: boolean
+): Variants {
+  return {
+    initial: (customData: ZoomTargetInfo | null) => {
+      if (animationType === 'initial' || animationType === 'resize') {
+        return { 
+          x: node.x0, 
+          y: node.y0, 
+          width: node.width, 
+          height: node.height,
+          opacity: 1,
+          zIndex: node.depth,
+        };
+      }
+      
+      // For navigate-up: nodes fly in from edges
+      if (isEntering && animationType === 'navigate-up') {
+        return {
+          ...getEdgeBasedEnterAnimation(node, containerWidth, containerHeight),
+          zIndex: node.depth,
+        };
+      }
+      
+      // Default: fade in
+      return {
+        x: node.x0,
+        y: node.y0,
+        width: node.width,
+        height: node.height,
+        opacity: 0,
+        zIndex: node.depth,
+      };
+    },
+    
+    animate: (customData: ZoomTargetInfo | null) => {
+      const isZoomTarget = customData?.key === node.key;
+      
+      // Zoom target expands to fullscreen with high zIndex
+      if (isZoomTarget && animationType === 'drilldown') {
+        return {
+          x: 0,
+          y: 0,
+          width: containerWidth,
+          height: containerHeight,
+          opacity: 1,
+          zIndex: 50, // CRITICAL: above neighbors
+        };
+      }
+      
+      // Normal state
+      return {
+        x: node.x0,
+        y: node.y0,
+        width: node.width,
+        height: node.height,
+        opacity: 1,
+        zIndex: node.depth,
+      };
+    },
+    
+    exit: (customData: ZoomTargetInfo | null) => {
+      // DEBUG: Log to verify data flow
+      console.log('EXIT variant triggered', { 
+        nodeName: node.name, 
+        hasCustomData: !!customData,
+        animationType,
+        customDataKey: customData?.key,
+      });
+      
+      const isZoomTarget = customData?.key === node.key;
+      
+      // Zoom target: expands to fullscreen (stays on top)
+      if (isZoomTarget) {
+        return {
+          x: 0,
+          y: 0,
+          width: containerWidth,
+          height: containerHeight,
+          opacity: 1,
+          zIndex: 50, // CRITICAL: above flying neighbors
+        };
+      }
+      
+      // Non-target during drilldown: fly off screen
+      if (customData && animationType === 'drilldown') {
+        const pushAnimation = getEdgeBasedExitAnimation(
+          node, customData, containerWidth, containerHeight
+        );
+        return {
+          ...pushAnimation,
+          zIndex: 0, // CRITICAL: under zoom target
+        };
+      }
+      
+      // Fallback: simple fade
+      return { 
+        opacity: 0,
+        x: node.x0,
+        y: node.y0,
+        width: node.width,
+        height: node.height,
+        zIndex: 0,
+      };
+    },
   };
 }
 
@@ -214,72 +323,12 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
   
-  // Initial animation state
-  const initialAnimation = useMemo(() => {
-    if (animationType === 'initial' || animationType === 'resize') {
-      return { 
-        x: node.x0, 
-        y: node.y0, 
-        width: node.width, 
-        height: node.height,
-        opacity: 1 
-      };
-    }
-    
-    // For navigate-up: nodes fly in from edges
-    if (isEntering && animationType === 'navigate-up') {
-      return getEdgeBasedEnterAnimation(node, containerWidth, containerHeight);
-    }
-    
-    // Default: fade in
-    return {
-      x: node.x0,
-      y: node.y0,
-      width: node.width,
-      height: node.height,
-      opacity: 0,
-    };
-  }, [animationType, isEntering, node, containerWidth, containerHeight]);
-  
-  // Target animation state
-  const animateState = useMemo(() => {
-    // Zoom target expands to fullscreen
-    if (isZoomTarget && animationType === 'drilldown') {
-      return {
-        x: 0,
-        y: 0,
-        width: containerWidth,
-        height: containerHeight,
-        opacity: 1,
-      };
-    }
-    
-    // Normal state
-    return {
-      x: node.x0,
-      y: node.y0,
-      width: node.width,
-      height: node.height,
-      opacity: 1,
-    };
-  }, [node, isZoomTarget, animationType, containerWidth, containerHeight]);
-  
-  // Exit animation state - edge-based push
-  const exitAnimation = useMemo(() => {
-    // During drilldown, non-target nodes are pushed off screen
-    if (animationType === 'drilldown' && zoomTarget && !isZoomTarget) {
-      return getEdgeBasedExitAnimation(node, zoomTarget, containerWidth, containerHeight);
-    }
-    
-    // Default: simple fade
-    return { 
-      opacity: 0,
-      x: node.x0,
-      y: node.y0,
-      width: node.width,
-      height: node.height,
-    };
-  }, [animationType, zoomTarget, isZoomTarget, node, containerWidth, containerHeight]);
+  // Create variants with functions that receive custom data
+  // CRITICAL: This allows exit animations to receive zoomTarget info
+  const variants = useMemo(() => 
+    createNodeVariants(node, containerWidth, containerHeight, animationType, isEntering),
+    [node, containerWidth, containerHeight, animationType, isEntering]
+  );
   
   // Transition configuration - unified for all nodes
   const transition = useMemo(() => ({
@@ -303,9 +352,11 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
     <motion.div
       ref={ref}
       layoutId={node.key}
-      initial={initialAnimation}
-      animate={animateState}
-      exit={exitAnimation}
+      custom={zoomTarget}           // CRITICAL: Pass data to variant functions
+      variants={variants}           // Object with functions
+      initial="initial"             // String keys
+      animate="animate"
+      exit="exit"
       transition={transition}
       className={classNames}
       style={{
@@ -313,7 +364,6 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
         backgroundColor: node.color,
         overflow: 'hidden',
         cursor: 'pointer',
-        zIndex: isZoomTarget ? 100 : node.depth,
         willChange: 'transform',
       }}
       onClick={(e) => {
@@ -347,7 +397,7 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
             bottom: 0 
           }}
         >
-          <AnimatePresence mode="sync">
+          <AnimatePresence mode="sync" custom={zoomTarget}>
             {node.children!.map(child => (
               <TreemapNode
                 key={child.key}

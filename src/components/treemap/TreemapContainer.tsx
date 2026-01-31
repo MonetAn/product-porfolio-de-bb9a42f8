@@ -297,14 +297,18 @@ const TreemapContainer = ({
       {/* Treemap nodes */}
       {!isEmpty && dimensions.width > 0 && (
         <LayoutGroup>
-          <AnimatePresence mode="sync">
+          {/* CRITICAL: custom prop passes zoomTargetInfo to all exiting nodes' variant functions */}
+          <AnimatePresence mode="sync" custom={zoomTargetInfo}>
             {/* Exiting nodes (during drilldown) - use edge-based push */}
             {nodesForExit.length > 0 && animationType === 'drilldown' && nodesForExit.map(node => (
               <TreemapNode
-                key={node.key}
-                node={node}
+                key={`exit-${node.key}`}           // Unique key for exiting nodes!
+                node={{
+                  ...node,
+                  key: `exit-${node.key}`,         // Unique layoutId too!
+                }}
                 animationType={animationType}
-                zoomTarget={zoomTargetInfo}
+                zoomTarget={zoomTargetInfo}        // Pass full info
                 containerWidth={dimensions.width}
                 containerHeight={dimensions.height}
                 onClick={handleNodeClick}
@@ -315,13 +319,13 @@ const TreemapContainer = ({
               />
             ))}
             
-            {/* Current/new nodes */}
+            {/* Current/new nodes - also receive zoomTargetInfo for animate state */}
             {(showNewNodes || animationType !== 'drilldown') && layoutNodes.map(node => (
               <TreemapNode
                 key={node.key}
                 node={node}
                 animationType={nodesForExit.length > 0 ? 'filter' : animationType}
-                zoomTarget={null}
+                zoomTarget={zoomTargetInfo}        // Pass info here too!
                 containerWidth={dimensions.width}
                 containerHeight={dimensions.height}
                 onClick={handleNodeClick}

@@ -304,14 +304,15 @@ const TreemapContainer = ({
             }}
           >
             {/* Exiting nodes (during drilldown) - use edge-based push */}
-            {nodesForExit.length > 0 && animationType === 'drilldown' && nodesForExit.map(node => (
+            {/* CRITICAL: No animationType check - React state may be stale during exit */}
+            {nodesForExit.length > 0 && nodesForExit.map(node => (
               <TreemapNode
                 key={`exit-${node.key}`}           // Unique key for exiting nodes!
                 node={{
                   ...node,
                   key: `exit-${node.key}`,         // Unique layoutId too!
                 }}
-                animationType={animationType}
+                animationType="drilldown"          // FORCE: hardcoded, not from state!
                 zoomTarget={zoomTargetInfo}        // Pass full info
                 containerWidth={dimensions.width}
                 containerHeight={dimensions.height}

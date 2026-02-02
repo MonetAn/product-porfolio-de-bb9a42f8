@@ -31,7 +31,7 @@ interface TreemapNodeProps {
   onClick?: (node: TreemapLayoutNode) => void;
   onMouseEnter?: (e: React.MouseEvent, node: TreemapLayoutNode) => void;
   onMouseMove?: (e: React.MouseEvent) => void;
-  onMouseLeave?: () => void;
+  onMouseLeave?: (node?: TreemapLayoutNode) => void;
   showChildren?: boolean;
   renderDepth?: number;
 }
@@ -178,6 +178,10 @@ const TreemapNode = memo(({
         onMouseEnter?.(e, node);
       }}
       onMouseMove={onMouseMove}
+      onMouseLeave={(e) => {
+        e.stopPropagation();
+        onMouseLeave?.(node);
+      }}
     >
       {/* Node content (label + value) */}
       <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
@@ -196,6 +200,7 @@ const TreemapNode = memo(({
                 onClick={onClick}
                 onMouseEnter={onMouseEnter}
                 onMouseMove={onMouseMove}
+                onMouseLeave={onMouseLeave}
                 showChildren={showChildren}
                 renderDepth={renderDepth}
               />

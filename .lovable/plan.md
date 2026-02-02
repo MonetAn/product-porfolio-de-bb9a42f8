@@ -1,129 +1,56 @@
 
 # Итерация 2: Исправление Drilldown анимации
 
-## Диагноз проблемы
+## Статус: ✅ ВЫПОЛНЕНО
 
-**Текущий порядок выполнения (неправильный):**
-```text
-1. data.name меняется → useEffect срабатывает
-2. Ищем clickedNode в prevLayoutNodesRef.current → НЕ НАХОДИМ (пустой или устаревший)
-3. zoomTargetInfo = null
-4. D3 не получает zoomTarget → делает fade-out вместо push
-5. layoutNodes обновляется → prevLayoutNodesRef сохраняется (слишком поздно!)
-```
+## Что было сделано
 
-**Требуемый порядок (правильный):**
-```text
-1. clickedNodeName приходит ДО изменения data.name
-2. Сохраняем snapshot prevLayoutNodesRef + zoomTargetInfo
-3. data.name меняется → useEffect срабатывает
-4. zoomTargetInfo уже готов → D3 получает zoomTarget → делает push-анимацию
-```
+### TreemapContainer.tsx
+1. **Добавлены новые refs:**
+   - `exitingNodesRef` — хранит snapshot узлов до смены данных
+   - `pendingZoomTargetRef` — хранит информацию о кликнутом узле
 
-## Решение
+2. **Изменен порядок эффектов:**
+   - Первый `useEffect` срабатывает на `clickedNodeName` — захватывает snapshot ДО смены данных
+   - Второй `useEffect` срабатывает на `data.name` — использует уже подготовленный zoomTarget
 
-### Изменения в TreemapContainer.tsx
+3. **Передача exitingNodes в D3:**
+   - Добавлен prop `exitingNodes={exitingNodesRef.current}`
 
-1. **Добавить `exitingNodesRef`** — отдельный ref для хранения нод, которые должны уйти
-2. **Изменить порядок эффектов** — сохранять exiting nodes ДО смены данных
-3. **Передать `exitingNodes` в D3 layer** — как отдельный prop
+### TreemapD3Layer.tsx
+1. **Новый prop `exitingNodes`:**
+   ```typescript
+   exitingNodes?: TreemapLayoutNode[];
+   ```
 
-```typescript
-// Новые refs
-const exitingNodesRef = useRef<TreemapLayoutNode[]>([]);
-const pendingZoomTargetRef = useRef<ZoomTargetInfo | null>(null);
+2. **Логика drilldown через exitingNodes:**
+   - При `animationType === 'drilldown'` создаём временные группы из `exitingNodes`
+   - Кликнутый узел (zoom target) расширяется на весь экран
+   - Соседи "улетают" за границы экрана по edge-based push логике
 
-// КРИТИЧНО: Сохранять exiting nodes при клике, ДО смены данных
-useEffect(() => {
-  if (clickedNodeName && prevLayoutNodesRef.current.length > 0) {
-    // Сохраняем snapshot СЕЙЧАС, пока данные актуальны
-    exitingNodesRef.current = [...prevLayoutNodesRef.current];
-    
-    const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
-    if (clickedNode) {
-      pendingZoomTargetRef.current = {
-        key: clickedNode.key,
-        name: clickedNode.name,
-        x0: clickedNode.x0,
-        y0: clickedNode.y0,
-        x1: clickedNode.x1,
-        y1: clickedNode.y1,
-        width: clickedNode.width,
-        height: clickedNode.height,
-        animationType: 'drilldown',
-      };
-    }
-  }
-}, [clickedNodeName]); // Срабатывает РАНЬШЕ, чем смена data.name
-
-// В эффекте определения анимации:
-useEffect(() => {
-  if (newAnimationType === 'drilldown') {
-    // Используем заранее подготовленный zoomTarget
-    setZoomTargetInfo(pendingZoomTargetRef.current);
-    pendingZoomTargetRef.current = null;
-  }
-}, [data.name, ...]);
-```
-
-### Изменения в TreemapD3Layer.tsx
-
-1. **Добавить prop `exitingNodes`** — ноды для exit-анимации
-2. **При drilldown использовать `exitingNodes`** вместо `groups.exit()`
-
-```typescript
-interface TreemapD3LayerProps {
-  // ... existing
-  exitingNodes?: TreemapLayoutNode[]; // НОВЫЙ PROP
-}
-
-// В useEffect:
-if (animationType === 'drilldown' && zoomTarget && exitingNodes.length > 0) {
-  // Создаём временные группы для exiting nodes
-  const exitGroups = svg.selectAll<SVGGElement, TreemapLayoutNode>('g.exiting-node')
-    .data(exitingNodes, d => d.key);
-  
-  // Анимируем exit с push
-  exitGroups.enter()
-    .append('g')
-    .attr('class', 'exiting-node')
-    // ... рендерим rect и foreignObject ...
-    .each(function(d) {
-      const isZoomTarget = d.key === zoomTarget.key;
-      // ... анимация push или zoom ...
-    });
-}
-```
-
-## Диагностика
-
-Добавлю временные console.log для отладки:
-```typescript
-console.log('[DRILLDOWN] clickedNodeName changed:', clickedNodeName);
-console.log('[DRILLDOWN] prevLayoutNodesRef:', prevLayoutNodesRef.current.length);
-console.log('[DRILLDOWN] pendingZoomTarget:', pendingZoomTargetRef.current);
-```
-
-## Изменяемые файлы
-
-| Файл | Изменения |
-|------|-----------|
-| TreemapContainer.tsx | + exitingNodesRef, + pendingZoomTargetRef, изменить порядок эффектов |
-| TreemapD3Layer.tsx | + prop exitingNodes, логика exit через exitingNodes |
-| types.ts | Нет изменений |
-
-## Оценка
-
-| Аспект | Значение |
-|--------|----------|
-| Сложность | Средняя |
-| Время | 1 итерация |
-| Вероятность успеха | 85% |
-| Риски | Timing между эффектами может потребовать отладки |
+3. **Добавлены debug-логи:**
+   - `[DRILLDOWN] clickedNodeName changed`
+   - `[D3] Drilldown with exitingNodes`
 
 ## Ожидаемый результат
 
-После этой итерации:
-- При клике на юнит, соседи будут улетать за рамки экрана
-- Кликнутый юнит будет расширяться на весь экран
-- После завершения анимации появятся вложенные ноды (команды)
+При клике на юнит:
+1. Соседние юниты улетают за границы экрана (push-анимация)
+2. Кликнутый юнит расширяется на весь экран
+3. После завершения анимации появляются вложенные команды
+
+## Следующие шаги (Итерация 3)
+
+1. Удалить debug console.log
+2. Удалить deprecated `TreemapNode.tsx`
+3. Тонкая настройка easing и timing
+4. Обновить память проекта
+
+## Диагностика
+
+Откройте консоль браузера и посмотрите логи при клике на юнит:
+- `[DRILLDOWN] clickedNodeName changed: <имя юнита>`
+- `[DRILLDOWN] prevLayoutNodesRef has nodes: <число>`
+- `[D3] Drilldown with exitingNodes: <число> zoomTarget: <имя>`
+
+Если логи не появляются — проблема в передаче `clickedNodeName` из родительского компонента.

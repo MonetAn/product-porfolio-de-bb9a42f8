@@ -63,6 +63,10 @@ const TreemapContainer = ({
   const prevLayoutNodesRef = useRef<TreemapLayoutNode[]>([]);
   const isFirstRenderRef = useRef(true);
   
+  // NEW: Refs for drilldown animation fix
+  const exitingNodesRef = useRef<TreemapLayoutNode[]>([]);
+  const pendingZoomTargetRef = useRef<ZoomTargetInfo | null>(null);
+  
   // Tooltip state
   const [tooltipData, setTooltipData] = useState<{
     node: TreemapLayoutNode;
@@ -103,6 +107,35 @@ const TreemapContainer = ({
     return () => resizeObserver.disconnect();
   }, []);
   
+  // CRITICAL: Capture exiting nodes BEFORE data changes (when clickedNodeName changes)
+  useEffect(() => {
+    if (clickedNodeName && prevLayoutNodesRef.current.length > 0) {
+      console.log('[DRILLDOWN] clickedNodeName changed:', clickedNodeName);
+      console.log('[DRILLDOWN] prevLayoutNodesRef has nodes:', prevLayoutNodesRef.current.length);
+      
+      // Capture snapshot NOW while data is still valid
+      exitingNodesRef.current = [...prevLayoutNodesRef.current];
+      
+      const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
+      if (clickedNode) {
+        console.log('[DRILLDOWN] Found clicked node, preparing zoomTarget:', clickedNode.name);
+        pendingZoomTargetRef.current = {
+          key: clickedNode.key,
+          name: clickedNode.name,
+          x0: clickedNode.x0,
+          y0: clickedNode.y0,
+          x1: clickedNode.x1,
+          y1: clickedNode.y1,
+          width: clickedNode.width,
+          height: clickedNode.height,
+          animationType: 'drilldown',
+        };
+      } else {
+        console.log('[DRILLDOWN] WARNING: Clicked node not found in prevLayoutNodes');
+      }
+    }
+  }, [clickedNodeName]);
+  
   // Detect animation type based on data changes
   useEffect(() => {
     if (isEmpty) return;
@@ -120,30 +153,20 @@ const TreemapContainer = ({
     prevDataNameRef.current = data.name;
     setAnimationType(newAnimationType);
     
-    // For drilldown, set up zoom target info
-    if (newAnimationType === 'drilldown' && clickedNodeName) {
-      const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
-      if (clickedNode) {
-        setZoomTargetInfo({
-          key: clickedNode.key,
-          name: clickedNode.name,
-          x0: clickedNode.x0,
-          y0: clickedNode.y0,
-          x1: clickedNode.x1,
-          y1: clickedNode.y1,
-          width: clickedNode.width,
-          height: clickedNode.height,
-          animationType: 'drilldown',
-        });
-      }
+    // For drilldown, use pre-captured zoom target
+    if (newAnimationType === 'drilldown') {
+      console.log('[DRILLDOWN] Animation triggered, using pending zoomTarget:', pendingZoomTargetRef.current?.name);
+      setZoomTargetInfo(pendingZoomTargetRef.current);
+      // Don't clear yet - D3 layer needs it
     } else {
       setZoomTargetInfo(null);
+      exitingNodesRef.current = [];
     }
     
     // Show hint briefly
     setShowHint(true);
     setTimeout(() => setShowHint(false), 3000);
-  }, [data.name, canNavigateBack, clickedNodeName, isEmpty, dimensions.width]);
+  }, [data.name, canNavigateBack, isEmpty, dimensions.width]);
   
   // Store current layout for next transition
   useEffect(() => {
@@ -257,6 +280,7 @@ const TreemapContainer = ({
           height={dimensions.height}
           animationType={animationType}
           zoomTarget={zoomTargetInfo}
+          exitingNodes={exitingNodesRef.current}
           renderDepth={renderDepth}
           onNodeClick={handleNodeClick}
           onNodeMouseEnter={handleMouseEnter}

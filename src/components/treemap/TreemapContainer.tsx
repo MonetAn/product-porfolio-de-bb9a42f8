@@ -104,8 +104,8 @@ const TreemapContainer = ({
     return () => resizeObserver.disconnect();
   }, []);
   
-  // Detect animation type based on data changes
-  useEffect(() => {
+  // Detect animation type based on data changes - useLayoutEffect to set before paint
+  useLayoutEffect(() => {
     if (isEmpty) return;
     
     let newAnimationType: AnimationType = 'filter';
@@ -129,7 +129,8 @@ const TreemapContainer = ({
     
     // Show hint briefly
     setShowHint(true);
-    setTimeout(() => setShowHint(false), 3000);
+    const timer = setTimeout(() => setShowHint(false), 3000);
+    return () => clearTimeout(timer);
   }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width]);
   
   // Render depth calculation

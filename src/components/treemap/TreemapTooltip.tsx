@@ -1,6 +1,7 @@
-// Treemap tooltip component
+// Treemap tooltip component - rendered via portal to document.body for correct positioning
 
 import { useLayoutEffect, useRef, useState, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { TreemapLayoutNode } from './types';
 import { formatBudget, escapeHtml } from '@/lib/dataManager';
 
@@ -14,6 +15,10 @@ interface TreemapTooltipProps {
   totalValue: number;
 }
 
+// Constants for positioning
+const CURSOR_OFFSET = 12;  // Distance from cursor
+const SCREEN_PADDING = 16; // Min distance from screen edges
+
 const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue }: TreemapTooltipProps) => {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
@@ -26,47 +31,37 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
     }
     
     const tooltip = tooltipRef.current;
-    const padding = 16;
     const rect = tooltip.getBoundingClientRect();
     
-    let x = data.position.x + padding;
-    let y = data.position.y + padding;
+    let x = data.position.x + CURSOR_OFFSET;
+    let y = data.position.y + CURSOR_OFFSET;
     
     // Flip if overflowing right
-    if (x + rect.width > window.innerWidth - padding) {
-      x = data.position.x - rect.width - padding;
+    if (x + rect.width > window.innerWidth - SCREEN_PADDING) {
+      x = data.position.x - rect.width - CURSOR_OFFSET;
     }
-    if (x < padding) {
-      x = padding;
+    if (x < SCREEN_PADDING) {
+      x = SCREEN_PADDING;
     }
     
     // Flip if overflowing bottom
-    if (y + rect.height > window.innerHeight - padding) {
-      y = data.position.y - rect.height - padding;
+    if (y + rect.height > window.innerHeight - SCREEN_PADDING) {
+      y = data.position.y - rect.height - CURSOR_OFFSET;
     }
-    if (y < padding) {
-      y = padding;
+    if (y < SCREEN_PADDING) {
+      y = SCREEN_PADDING;
     }
     
     setPosition({ x, y });
   }, [data]);
   
-  if (!data) {
-    return <div ref={tooltipRef} className="treemap-tooltip" />;
-  }
-  
-  const { node } = data;
-  const isInitiative = node.isInitiative;
-  
-  // Find unit value for percentage calculation
-  let unitValue = node.value;
-  if (node.parentName) {
-    // This is a simplified approach - in real usage you'd traverse up the tree
-    unitValue = node.value;
-  }
-  
-  // Render tooltip content
+  // Build tooltip content
   const renderContent = () => {
+    if (!data) return '';
+    
+    const { node } = data;
+    const isInitiative = node.isInitiative;
+    
     let html = `<div class="tooltip-header">
       <div class="tooltip-title">${escapeHtml(node.name)}</div>`;
     
@@ -78,9 +73,8 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
     html += `<div class="tooltip-row"><span class="tooltip-label">Бюджет</span><span class="tooltip-value">${formatBudget(node.value)}</span></div>`;
     
     // Percent of unit (skip for top-level units)
-    if (node.depth > 0 && unitValue !== node.value) {
-      const percentOfUnit = unitValue > 0 ? ((node.value / unitValue) * 100).toFixed(1) : '100.0';
-      html += `<div class="tooltip-row"><span class="tooltip-label">% от Юнита</span><span class="tooltip-value">${percentOfUnit}%</span></div>`;
+    if (node.depth > 0) {
+      // Note: for proper % of unit, we'd need parent value from context
     }
     
     // Percent of total (skip if only one unit selected)
@@ -132,14 +126,25 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
   };
   
   // Style with visibility hidden until position is calculated
-  const style: React.CSSProperties = position ? {
-    left: position.x,
-    top: position.y,
-  } : {
-    visibility: 'hidden',
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    zIndex: 9999,
+    pointerEvents: 'none',
+    ...(position ? {
+      left: position.x,
+      top: position.y,
+      visibility: 'visible',
+      opacity: 1,
+    } : {
+      left: 0,
+      top: 0,
+      visibility: 'hidden',
+      opacity: 0,
+    }),
   };
   
-  return (
+  // Render tooltip via portal to document.body to avoid transform-related positioning issues
+  const tooltipElement = (
     <div 
       ref={tooltipRef} 
       className={`treemap-tooltip ${data && position ? 'visible' : ''}`}
@@ -147,6 +152,9 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
       dangerouslySetInnerHTML={{ __html: renderContent() }}
     />
   );
+  
+  // Use portal to render in document.body
+  return createPortal(tooltipElement, document.body);
 });
 
 TreemapTooltip.displayName = 'TreemapTooltip';

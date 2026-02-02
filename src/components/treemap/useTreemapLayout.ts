@@ -114,9 +114,9 @@ export function useTreemapLayout({
       .paddingOuter(2)
       .paddingTop(d => {
         if (renderDepth <= 1) return 2;
-        // Unit (depth 1): 18px, Team (depth 2): 14px, others: 2px
-        if (d.depth === 1) return 18;
-        if (d.depth === 2) return 14;
+        // Unit (depth 1): 20px, Team (depth 2): 18px - enough for headers
+        if (d.depth === 1) return 20;
+        if (d.depth === 2) return 18;
         return 2;
       })
       .paddingInner(2)

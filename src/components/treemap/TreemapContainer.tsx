@@ -156,21 +156,14 @@ const TreemapContainer = ({
     }
   }, [onNodeClick, onInitiativeClick]);
   
-  // Tooltip handlers with depth-priority logic
-  // Ignores parent events if a deeper child is already hovered, uses setTimeout for debounce
+  // Tooltip handlers - uses mouseover with stopPropagation for reliable child priority
+  // The deepest element receives the event first and stops propagation
   const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
-    // Ignore parent nodes if we already have a deeper child hovered
-    if (hoveredDepthRef.current >= 0 && node.depth < hoveredDepthRef.current) {
-      return;
-    }
-    
-    // Update refs synchronously - depth takes priority
+    // Update refs synchronously
     hoveredNodeRef.current = node;
     hoveredDepthRef.current = node.depth;
 
-    // Hide any previously shown tooltip immediately.
-    // This prevents the "old" tooltip content from sticking to the cursor while
-    // we debounce & confirm the actual hovered node.
+    // Hide any previously shown tooltip immediately if it's a different node
     setTooltipData(prev => (prev && prev.node.key !== node.key ? null : prev));
     
     // Cancel any pending tooltip update
@@ -178,7 +171,7 @@ const TreemapContainer = ({
       clearTimeout(tooltipTimeoutRef.current);
     }
     
-    // Schedule tooltip update with 5ms debounce - ensures all sync events in the batch complete
+    // Schedule tooltip update with 5ms debounce
     tooltipTimeoutRef.current = window.setTimeout(() => {
       // Verify this node is still the hovered one
       if (hoveredNodeRef.current === node) {

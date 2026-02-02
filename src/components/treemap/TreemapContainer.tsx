@@ -138,10 +138,11 @@ const TreemapContainer = ({
   
   // Render depth calculation
   const renderDepth = useMemo(() => {
-    if (showTeams && showInitiatives) return 3;
-    if (showTeams || showInitiatives) return 2;
-    return 1;
-  }, [showTeams, showInitiatives]);
+    let depth = 1;
+    if (showTeams && showInitiatives) depth = 3;
+    else if (showTeams || showInitiatives) depth = 2;
+    return depth + extraDepth;
+  }, [showTeams, showInitiatives, extraDepth]);
   
   // Node click handler
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {

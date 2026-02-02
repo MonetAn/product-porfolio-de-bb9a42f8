@@ -1,170 +1,103 @@
 
 
-# План: Исправление double-nesting бага координат
+# План: Улучшение UX при переключении вкладок
 
-## Корневая причина
+## Диагноз проблемы
 
-При рекурсивном рендеринге в `TreemapNode.tsx` мы **мутируем координаты** в объекте `node`, передавая их детям:
+При переходе с Timeline на Budget/Stakeholders происходит:
+1. Компонент `TreemapContainer` монтируется заново
+2. В первый момент `dimensions = { width: 0, height: 0 }` (до ResizeObserver)
+3. Затем размеры обновляются, D3 пересчитывает layout
+4. `initial={{ opacity: 0 }}` создаёт fade-in эффект даже при `duration: 0`
+5. Всё это вместе создаёт "мигание" и визуальные артефакты
 
+Круги на скриншоте — вероятно артефакт промежуточного рендера или кэширование предыдущего состояния браузером.
+
+---
+
+## Решение: мгновенный первый рендер без fade
+
+### Изменение 1: `TreemapNode.tsx` — отключить initial анимацию при initial render
+
+Вместо:
 ```typescript
-// Первый уровень: Unit → Team
-node={{
-  ...child,
-  x0: child.x0 - node.x0,  // child.x0 абсолютный, node.x0 абсолютный → ОК
-  y0: child.y0 - node.y0,
-}}
-
-// Второй уровень: Team → Initiative  
-node={{
-  ...child,
-  x0: child.x0 - node.x0,  // child.x0 абсолютный, но node.x0 УЖЕ ОТНОСИТЕЛЬНЫЙ!
-  y0: child.y0 - node.y0,
-}}
+initial={{ opacity: 0 }}
 ```
 
-Результат: инициативы получают некорректные координаты и "улетают" за границы видимости.
-
----
-
-## Решение: передавать parentX/parentY отдельно
-
-Вместо мутации координат в объекте `node`, будем:
-1. Хранить в `node` всегда **абсолютные** координаты (как даёт D3)
-2. Передавать `parentX` и `parentY` как отдельные props
-3. Вычислять относительную позицию только в момент рендера `motion.div`
-
----
-
-## Изменения в файлах
-
-### 1. `TreemapNode.tsx` — новый подход к координатам
-
-Добавить props:
+Сделать conditional:
 ```typescript
-interface TreemapNodeProps {
-  node: TreemapLayoutNode;
-  parentX?: number;  // Абсолютная X родителя (default 0)
-  parentY?: number;  // Абсолютная Y родителя (default 0)
-  // ... остальные props
+initial={animationType === 'initial' ? false : { opacity: 0 }}
+```
+
+При `initial: false` Framer Motion **не анимирует** первое появление — элемент сразу рендерится в `animate` состоянии.
+
+### Изменение 2: `TreemapContainer.tsx` — синхронный первый рендер
+
+Текущая проблема: `dimensions = { width: 0, height: 0 }` → `layoutNodes = []` → ничего не рендерится → потом dimensions обновляются → рендер с fade.
+
+Решение: использовать `useLayoutEffect` вместо `useEffect` для измерения, чтобы размеры были известны **до первой отрисовки**:
+
+```typescript
+// Было: useEffect + setTimeout
+useEffect(() => {
+  const updateDimensions = () => {...};
+  updateDimensions();
+  const resizeObserver = new ResizeObserver(() => {
+    setTimeout(updateDimensions, 100);
+  });
+  ...
+}, []);
+
+// Станет: useLayoutEffect для синхронного измерения
+import { useLayoutEffect } from 'react';
+
+useLayoutEffect(() => {
+  const updateDimensions = () => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDimensions({ width: rect.width, height: rect.height });
+    }
+  };
+  
+  updateDimensions(); // Синхронно до paint!
+  
+  const resizeObserver = new ResizeObserver(() => {
+    requestAnimationFrame(updateDimensions); // Для ресайзов — через RAF
+  });
+  ...
+}, []);
+```
+
+### Изменение 3: Добавить CSS для предотвращения "вспышки"
+
+В `treemap.css` добавить:
+```css
+.treemap-container {
+  /* Предотвратить белую вспышку при смене вкладок */
+  contain: layout style paint;
 }
 ```
 
-В `motion.div` вычислять позицию:
-```typescript
-const TreemapNode = memo(({
-  node,
-  parentX = 0,
-  parentY = 0,
-  // ...
-}) => {
-  // Вычисляем относительную позицию
-  const x = node.x0 - parentX;
-  const y = node.y0 - parentY;
-
-  return (
-    <motion.div
-      animate={{ 
-        opacity: 1,
-        x,           // Относительная позиция
-        y,           // Относительная позиция
-        width: node.width,
-        height: node.height,
-      }}
-      // ...
-    >
-      {/* Дети получают абсолютные координаты родителя */}
-      {node.children?.map(child => (
-        <TreemapNode
-          key={child.key}
-          node={child}  // Без мутации! Координаты остаются абсолютными
-          parentX={node.x0}  // Передаём абсолютную позицию текущего узла
-          parentY={node.y0}
-          // ...
-        />
-      ))}
-    </motion.div>
-  );
-});
-```
-
-### 2. `useTreemapLayout.ts` — динамический paddingTop
-
-Заменить фиксированный padding на функцию от глубины:
-
-```typescript
-const treemap = d3.treemap<TreeNode>()
-  .size([dimensions.width, dimensions.height])
-  .paddingOuter(2)
-  .paddingTop(d => {
-    if (renderDepth <= 1) return 2;
-    // Unit (depth 1): 18px
-    // Team (depth 2): 14px  
-    // Остальные: 2px
-    if (d.depth === 1) return 18;
-    if (d.depth === 2) return 14;
-    return 2;
-  })
-  .paddingInner(2)
-  .round(true);
-```
-
-### 3. `types.ts` — увеличить длительности анимаций
-
-```typescript
-export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
-  'initial': 0,
-  'filter': 650,      // Было 550
-  'drilldown': 800,   // Было 600
-  'navigate-up': 650, // Было 550
-  'resize': 420       // Было 350
-};
-```
+`contain: layout style paint` говорит браузеру, что внутреннее содержимое не влияет на внешний layout, что ускоряет рендеринг и предотвращает reflow.
 
 ---
 
-## Визуализация исправления
+## Файлы для изменения
 
-```text
-БЫЛО (мутация координат):
-┌─────────────────────────────────────┐
-│ Unit (x0=100)                       │
-│  ┌───────────────────────────────┐  │
-│  │ Team (x0=20 ← относительный)  │  │
-│  │  ┌─────────────────────────┐  │  │
-│  │  │ Init (x0=105 ← ОШИБКА!) │  │  │ ← Улетает за границы
-│  │  └─────────────────────────┘  │  │
-│  └───────────────────────────────┘  │
-└─────────────────────────────────────┘
-
-СТАНЕТ (parentX/parentY):
-┌─────────────────────────────────────┐
-│ Unit (x0=100, parentX=0)            │
-│  ┌───────────────────────────────┐  │
-│  │ Team (x0=120, parentX=100)    │  │ ← x = 120-100 = 20 ✓
-│  │  ┌─────────────────────────┐  │  │
-│  │  │ Init (x0=125, pX=120)   │  │  │ ← x = 125-120 = 5 ✓
-│  │  └─────────────────────────┘  │  │
-│  └───────────────────────────────┘  │
-└─────────────────────────────────────┘
-```
-
----
-
-## Итоговые изменения
-
-| Файл | Что меняется |
-|------|--------------|
-| `TreemapNode.tsx` | Добавить `parentX/parentY` props, убрать мутацию координат |
-| `useTreemapLayout.ts` | Динамический `paddingTop` по глубине |
-| `types.ts` | Увеличить длительности анимаций |
+| Файл | Изменение |
+|------|-----------|
+| `TreemapNode.tsx` | `initial={animationType === 'initial' ? false : { opacity: 0 }}` |
+| `TreemapContainer.tsx` | Заменить `useEffect` на `useLayoutEffect` для измерения, убрать `setTimeout` |
+| `treemap.css` | Добавить `contain: layout style paint` |
 
 ---
 
 ## Ожидаемый результат
 
-1. Инициативы отображаются корректно на всех уровнях вложенности
-2. Команды получают меньший отступ сверху (14px вместо 20px)
-3. Анимации становятся плавнее и легче для восприятия
+1. При переключении вкладок тремап **появляется мгновенно** без fade
+2. Нет промежуточных "пустых" состояний с нулевыми размерами
+3. Нет визуальных артефактов или "кругов"
+4. Анимации работают только при фильтрации и drilldown (когда это уместно)
 
 ---
 
@@ -174,5 +107,6 @@ export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
 |---------|----------|
 | Сложность | Низкая |
 | Файлов изменится | 3 |
-| Вероятность успеха | 98% |
+| Риск регрессии | Минимальный |
+| Улучшение UX | Значительное |
 

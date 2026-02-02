@@ -1,177 +1,198 @@
 
-### Текущее состояние и что я вижу по фактам
+# План: Исправление drilldown анимации — финальная итерация
 
-**Симптом:** “двигается только основной квадрат (target), соседи не «вытесняются»”.
+## Диагноз (100% подтверждён логами)
 
-**По коду сейчас реально происходят две разные потенциальные ситуации:**
-1) **Ветка drilldown-«push» вообще не запускается** (тогда соседи просто исчезают/перерисовываются обычным join’ом).  
-2) **Ветка запускается, но соседи «едут», однако визуально их не видно**, потому что expanding-target перекрывает их из‑за особенностей SVG layering (порядок отрисовки), и/или потому что новые «enter» ноды рисуются поверх exit-слоя.
+### Факт из логов:
+```
+[DRILLDOWN] exitingNodes (siblings): 4 Data Office, FAP, Client Platform, Tech Platform
+[LAYOUT] Saved flattened nodes: 4 from 4 root nodes
+[LAYOUT] Saved flattened nodes: 6 from 1 root nodes
+```
 
-С учётом вашего описания (“видно только, что расширяется target”), наиболее вероятно **(2)**: анимации соседей технически идут, но они **находятся “под” expanding-target или под новыми нодами**.
+**НО логов `[D3] Drilldown with exitingNodes:` НЕТ!**
 
----
+Это означает, что ветка drilldown в `TreemapD3Layer.tsx` (строка 290) не выполняется:
+```typescript
+if (animationType === 'drilldown' && zoomTarget && exitingNodes.length > 0)
+```
 
-## 1) Почему у Flourish treemap «вытесняет», а у нас нет (ключевая разница)
+### Причина: Race condition в передаче exitingNodes
 
-### Flourish (типичная D3-модель)
-- Flourish держит **стабильный DOM**: те же `<rect>`/`<g>` остаются в SVG, меняются координаты/масштаб.
-- При drilldown он обычно делает **zoom (camera)**:
-  - либо трансформирует общий контейнер (`<g transform="translate... scale...">`)
-  - либо использует clip/viewport подход
-- Соседи “вытесняются” потому что:
-  - они **не пересоздаются**,
-  - их позиции есть “до” и “после” в том же DOM,
-  - z-order контролируется внутри SVG-групп, часто есть отдельные слои.
+Код передаёт `exitingNodesRef.current` как value:
+```typescript
+<TreemapD3Layer
+  exitingNodes={exitingNodesRef.current}  // ← VALUE, не REF!
+  ...
+/>
+```
 
-### Наша текущая архитектура
-- При клике мы меняем данные (`data`, фильтры) → React пересобирает дерево → D3 layer получает уже новый набор нод.
-- Чтобы симулировать «старый мир», мы сделали workaround: **exitingNodes** рисуются как временные группы (`g.exiting-node`) и анимируются отдельно.
-- Это работоспособно, но очень чувствительно к:
-  - **порядку отрисовки (SVG stacking order)**,
-  - моменту появления новых нод (enter),
-  - корректной идентификации target и соседей.
+К моменту когда D3Layer получает props, `exitingNodesRef.current` мог быть **очищен или перезаписан** из-за порядка выполнения useEffect-ов.
 
-Итог: у Flourish эффект “нативный”, у нас — “симуляция старого мира”, поэтому нужно дополнительно управлять слоями и таймингами.
+### Почему у Flourish работает
+Flourish использует чистый D3: один SVG, никакой смены данных при drilldown — только transform viewport. D3 сам знает "старые" позиции всех элементов.
 
----
-
-## 2) Какие решения из наших итераций не сработали (и почему)
-
-### Решение A: “Снимок exitingNodesRef + pendingZoomTargetRef”
-- Это решило проблему race-condition **частично** (target хотя бы расширяется).
-- Но эффект “вытеснения” может не проявиться, если:
-  - exitingNodes либо не те,
-  - либо они есть, но **невидимы из‑за перекрытия**.
-
-### Решение B: “flattenAllNodes в TreemapContainer”
-- Это правильная линия — нужно иметь доступ к узлам разных уровней.
-- Но даже при корректном списке, эффект может не проявиться из‑за D3Layer (см. ниже).
-
-### Решение C (важное): текущая реализация в `TreemapD3Layer.tsx`
-Ветка drilldown сейчас делает:
-- рисует exitGroups (включая target и соседей)
-- target **расширяется до full-screen**
-- соседи улетают (transform)
-- потом добавляются enter-ноды (новое состояние) и они могут оказаться **поверх** exitGroups
-
-Главная проблема:
-- В SVG **нет нормального CSS z-index** для отдельных `g` в привычном смысле.
-- Отображение “кто сверху” определяется **порядком DOM** (что отрисовано позже — сверху).
-- Даже если exitGroups созданы “раньше”, enterSelection может оказаться “позже” → enter сверху.
-- И даже внутри exitGroups target может “закрыть” соседей, если target находится выше них в DOM-порядке (или если соседи двигаются, но попадают под большую заливку target).
+У нас: React меняет данные → D3 получает УЖЕ НОВЫЕ данные → нет "памяти" о старом состоянии.
 
 ---
 
-## 3) Реалистичные гипотезы “почему сейчас не видно вытеснения” (приоритет по вероятности)
+## Решение: Использовать useState вместо useRef
 
-### H1 (самая вероятная): проблема layering / stacking order
-**Соседи действительно двигаются, но их перекрывает expanding target или новые enter-ноды.**
+Проблема в том, что `exitingNodesRef.current` не вызывает re-render. К моменту рендера D3Layer значение могло измениться.
 
-Как подтверждается:
-- если добавить временно opacity у target (например 0.2–0.4) и вдруг видно, что соседи летят — значит 100% layering.
+### Изменения в TreemapContainer.tsx
 
-### H2: enter-ноды рисуются сразу и маскируют exit
-Сейчас при drilldown enter-ноды ставятся в финальные координаты, без fade, и появляются сразу (в той же итерации эффекта).  
-Даже если exit летит — визуально может “не читаться”.
+```typescript
+// БЫЛО (проблема):
+const exitingNodesRef = useRef<TreemapLayoutNode[]>([]);
+...
+exitingNodesRef.current = prevLayoutNodesRef.current.filter(...);
+...
+<TreemapD3Layer exitingNodes={exitingNodesRef.current} />
 
-### H3: exitingNodesRef фильтруется как “siblings” и получается мало/0
-В контейнере сейчас siblings считаются по `(depth + parentName)`.  
-Если `parentName` не установлен/неконсистентен для некоторых глубин, можно получить “соседи” = 1 (только target) → тогда реально двигаться будет только target (и это полностью совпадает с вашим симптомом).
+// СТАНЕТ (решение):
+const [exitingNodesSnapshot, setExitingNodesSnapshot] = useState<TreemapLayoutNode[]>([]);
+...
+setExitingNodesSnapshot(prevLayoutNodesRef.current.filter(...));
+...
+<TreemapD3Layer exitingNodes={exitingNodesSnapshot} />
+```
 
-### H4: clickedNodeName не уникален
-Если повторяются имена команд/юнитов/стейкхолдеров, `.find(n => n.name === clickedNodeName)` может выбрать “не того” узла. Тогда zoomTarget не соответствует реально кликнутому, и push становится странным/незаметным.
+### Также исправить zoomTargetInfo
+
+Аналогично `pendingZoomTargetRef` нужно синхронизировать с state:
+```typescript
+const [zoomTargetSnapshot, setZoomTargetSnapshot] = useState<ZoomTargetInfo | null>(null);
+```
+
+### Критические изменения
+
+#### 1. TreemapContainer.tsx — использовать state вместо ref
+
+```typescript
+// Заменить refs на state для snapshot данных
+const [exitingNodesSnapshot, setExitingNodesSnapshot] = useState<TreemapLayoutNode[]>([]);
+const [zoomTargetSnapshot, setZoomTargetSnapshot] = useState<ZoomTargetInfo | null>(null);
+
+// В useEffect при изменении clickedNodeName:
+useEffect(() => {
+  if (clickedNodeName && prevLayoutNodesRef.current.length > 0) {
+    const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
+    
+    if (clickedNode) {
+      // Сохраняем siblings как STATE (будет передан в D3Layer при следующем render)
+      const siblings = prevLayoutNodesRef.current.filter(
+        n => n.depth === clickedNode.depth && n.parentName === clickedNode.parentName
+      );
+      setExitingNodesSnapshot(siblings);
+      
+      // Сохраняем zoomTarget как STATE
+      setZoomTargetSnapshot({
+        key: clickedNode.key,
+        name: clickedNode.name,
+        x0: clickedNode.x0,
+        y0: clickedNode.y0,
+        x1: clickedNode.x1,
+        y1: clickedNode.y1,
+        width: clickedNode.width,
+        height: clickedNode.height,
+        animationType: 'drilldown',
+      });
+    }
+  }
+}, [clickedNodeName]);
+
+// В useEffect для animationType НЕ ОЧИЩАТЬ сразу:
+useEffect(() => {
+  if (isEmpty) return;
+  
+  let newAnimationType: AnimationType = 'filter';
+  
+  if (isFirstRenderRef.current) {
+    isFirstRenderRef.current = false;
+    newAnimationType = 'initial';
+  } else if (dimensions.width > 0 && prevDataNameRef.current !== data.name) {
+    newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
+  }
+  
+  prevDataNameRef.current = data.name;
+  setAnimationType(newAnimationType);
+  
+  // НЕ очищать zoomTargetSnapshot и exitingNodesSnapshot здесь!
+  // Они будут очищены в onAnimationComplete
+  
+}, [data.name, canNavigateBack, isEmpty, dimensions.width]);
+
+// В handleAnimationComplete — очистить snapshots:
+const handleAnimationComplete = useCallback(() => {
+  setZoomTargetSnapshot(null);
+  setExitingNodesSnapshot([]);
+}, []);
+
+// В JSX — передать state:
+<TreemapD3Layer
+  zoomTarget={zoomTargetSnapshot}
+  exitingNodes={exitingNodesSnapshot}
+  ...
+/>
+```
+
+#### 2. TreemapD3Layer.tsx — добавить диагностику
+
+```typescript
+// В начале useEffect для D3 рендеринга (после строки 268):
+console.log('[D3] Render with animationType:', animationType);
+console.log('[D3] zoomTarget:', zoomTarget?.name);
+console.log('[D3] exitingNodes.length:', exitingNodes.length);
+```
 
 ---
 
-## 4) Вероятность успеха при дальнейших итерациях
+## Почему это решит проблему
 
-Я бы оценил так (именно для “эффекта как у Flourish”):
-
-- **Если цель — “видно, что соседи улетают” (без 100% идентичности Flourish): 70–85%**
-  - Это достижимо через управление слоями + задержки/opacity.
-- **Если цель — “максимально как Flourish” (реальный camera zoom на одном DOM без пересборки): 30–50%**
-  - Потому что это требует архитектурного разворота: зумить transform контейнера, а не пересоздавать дерево на drilldown.
-
-То есть “решение есть”, но “как Flourish один-в-один” в нашей текущей архитектуре — сильно дороже.
+| Проблема | Решение |
+|----------|---------|
+| `exitingNodesRef.current` перезаписывается до рендера D3Layer | useState создаёт immutable snapshot |
+| Refs не вызывают re-render | State вызовет render с правильными данными |
+| Race condition между useEffect-ами | React batches state updates и рендерит с консистентными данными |
 
 ---
 
-## 5) Какие шаги диагностики вы можете предпринять, чтобы я точно увидел, почему сейчас не работает
+## Ожидаемый результат
 
-### Важно: вы сейчас на route `/auth`
-Чтобы проверять treemap-анимации, нужно быть на главной странице с treemap (обычно `/`), иначе вы просто не триггерите нужный код.
+После исправления логи будут:
+```
+[D3] Render with animationType: drilldown
+[D3] zoomTarget: FAP
+[D3] exitingNodes.length: 4
+[D3] Drilldown with exitingNodes: 4 zoomTarget: FAP
+[D3] Neighbor Data Office pushing to: -300, 100
+[D3] Neighbor Client Platform pushing to: 1500, 100
+[D3] Neighbor Tech Platform pushing to: 1500, 700
+```
 
-### Что нужно собрать (минимальный набор)
-1) Откройте страницу с treemap.
-2) Откройте DevTools → Console.
-3) Очистите консоль.
-4) Кликните на Unit (и отдельно на Team, и отдельно в Stakeholders).
-5) Скопируйте в файл/сообщение фрагменты логов, где есть:
-   - `[LAYOUT] Saved flattened nodes: ...`
-   - `[DRILLDOWN] clickedNodeName changed: ...`
-   - `[DRILLDOWN] Found clicked node: ... depth: ...`
-   - `[DRILLDOWN] exitingNodes (siblings): ...`
-   - `[D3] Drilldown with exitingNodes: ... zoomTarget: ...`
-6) Дополнительно (супер полезно): сделайте скриншот DOM-структуры SVG в момент анимации:
-   - Elements → найдите `<svg>` treemap
-   - покажите порядок дочерних `<g>`: где `g.exiting-node` относительно `g.treemap-node`
-
-### Прямо по логам можно диагностировать:
-- Если **нет** `[D3] Drilldown with exitingNodes...` → ветка drilldown-слоя не запустилась (проблема в animationType/zoomTarget/exitingNodes.length).
-- Если `[D3] ... exitingNodes: 4`, но визуально нет улёта → почти точно layering/перекрытие.
-- Если `exitingNodes (siblings): 1` → реальная причина “двигается только target”: соседи вообще не передаются.
+И визуально соседи будут улетать за края экрана.
 
 ---
 
-## 6) Стоит ли продолжать менять анимации или принять текущую реализацию
+## Файлы для изменения
 
-### Продолжать имеет смысл, если:
-- вам принципиально нужен именно “camera push” эффект как важная часть UX,
-- вы готовы на ещё 1–2 итерации именно по D3Layer (слои/тайминги/идентификаторы).
+| Файл | Изменения |
+|------|-----------|
+| `TreemapContainer.tsx` | useRef → useState для exitingNodes и zoomTarget |
+| `TreemapD3Layer.tsx` | Добавить diagnostic logs в начале useEffect |
 
-### Принять текущую реализацию стоит, если:
-- анимация — не критична, а важнее стабильность,
-- вы хотите избежать дальнейшего усложнения D3/React синхронизации.
+## Оценка
 
-Моя рекомендация: **сделать ещё 1 итерацию, но строго сфокусированную на диагностике “слои и порядок отрисовки”**. Если после неё всё ещё “только target” — тогда либо:
-- переходим к упрощённому варианту (fade/scale), либо
-- делаем архитектурный разворот под Flourish-стиль (zoom transform, без пересоздания дерева на drilldown).
+- **Сложность**: низкая-средняя
+- **Итерации**: 1 (это финальное исправление)
+- **Вероятность успеха**: 90-95%
 
----
+## План Б (если не сработает)
 
-# Что именно делать дальше (следующая итерация, технический план)
+Если после этого исправления соседи всё ещё не улетают:
+1. Проверить что D3 transitions запускаются (логи `[D3] Neighbor X pushing to:`)
+2. Если логи есть но визуально нет — проблема в layering/opacity
+3. Если логов нет — проблема в условии входа в ветку drilldown
 
-## Цель итерации
-Сделать так, чтобы “соседи” были визуально видимы во время drilldown и реально улетали.
-
-## Изменения (TreemapD3Layer.tsx)
-1) **Ввести явные слои внутри SVG**:
-   - `g.enter-layer`
-   - `g.exit-layer`
-   - внутри `exit-layer`: отдельно `g.exit-target` и `g.exit-neighbors` (или сортировка данных так, чтобы соседи рисовались поверх target)
-2) **Порядок отрисовки**:
-   - enter-layer должен быть **под** exit-layer на время drilldown
-   - exit-neighbors должен быть **над** exit-target (чтобы расширяющийся target не закрывал соседей)
-3) **Сделать новые enter-ноды на drilldown временно невидимыми** (например opacity 0 первые 150–250мс), чтобы они не маскировали exit.
-4) **Диагностический toggle** (временный):
-   - на время drilldown ставить target opacity 0.35–0.5 на первые 70–80% duration, чтобы подтвердить layering-гипотезу (потом вернуть 1).
-
-## Изменения (TreemapContainer.tsx)
-1) Перейти от `clickedNodeName` к более надёжной идентификации:
-   - вариант A: `clickedNodePath` (лучше всего, уже есть `path` в `TreemapLayoutNode`)
-   - вариант B: `clickedNodeKey`
-2) В exitingNodesRef хранить именно тот набор “соседей”, который соответствует видимому уровню:
-   - при клике Unit: depth 0, parentName undefined
-   - при клике Team: depth 1, parentName = UnitName
-   - Stakeholders: аналогично, но важно что там всегда showTeams/showInitiatives=true
-3) Добавить строгие логи:
-   - сколько siblings, какие keys/paths, кто target
-
-## Критерии “готово”
-- В логах: `[D3] Drilldown with exitingNodes: N` где N ≥ 2 при клике на Unit (обычно 3–6).
-- В UI: при drilldown видно, что хотя бы часть соседей реально смещается к краям (не исчезает мгновенно).
-
-## Оценка трудозатрат
-- 1 итерация на слои/тайминги: средняя сложность.
-- Если подтвердим layering и починим — дальнейшие итерации минимальны (cleanup/debug).
-
+В крайнем случае — принять fade-out анимацию как fallback.

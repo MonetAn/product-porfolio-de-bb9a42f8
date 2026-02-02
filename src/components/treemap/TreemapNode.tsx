@@ -178,7 +178,6 @@ const TreemapNode = memo(({
         onMouseEnter?.(e, node);
       }}
       onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
     >
       {/* Node content (label + value) */}
       <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
@@ -197,7 +196,6 @@ const TreemapNode = memo(({
                 onClick={onClick}
                 onMouseEnter={onMouseEnter}
                 onMouseMove={onMouseMove}
-                onMouseLeave={onMouseLeave}
                 showChildren={showChildren}
                 renderDepth={renderDepth}
               />

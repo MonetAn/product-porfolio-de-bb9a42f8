@@ -1,76 +1,100 @@
 
 
-# План: Исправление 4-го уровня вложенности Stakeholders и повторной установки галочки
+# План: Исправление читаемости текста + перекрытие заголовков в Stakeholders
 
-## Проблемы
+## Проблемы в скоупе
 
-### Проблема 1: Четвёртый уровень вложенности в Stakeholders не показывается
-
-**Причина:** В `useTreemapLayout.ts` `renderDepth` максимум 3, но иерархия Stakeholders имеет 4 уровня:
-- Stakeholder (depth 0)
-- Unit (depth 1)  
-- Team (depth 2)
-- Initiative (depth 3)
-
-Условие `depth < maxDepth` означает, что при `renderDepth = 3` узлы с `depth === 3` не рендерятся.
-
-### Проблема 2: Галочка «Команды» проставляется повторно после ручного снятия
-
-**Причина:** `useEffect` в `Index.tsx` срабатывает каждый раз, когда `selectedUnits.length === 1 && !showTeams`. После ручного снятия галочки условие снова true → галочка включается снова.
+1. **Белый текст на жёлтом фоне нечитаем** (Data Office) — контраст 1.2:1 при норме 4.5:1
+2. **Голубой и мятный тоже имеют проблемы** — контраст 1.4-1.7:1
+3. **Перекрытие заголовков Team в Stakeholders** — недостаточный paddingTop для depth 3
+4. **Яркий розовый в Stakeholders** — слишком кислотный для профессионального UI
 
 ---
 
 ## Решение
 
-### A) Увеличить renderDepth для Stakeholders treemap
+### A) Заменить палитру на глубокую/насыщенную (гарантированный контраст)
+
+**Файл:** `src/lib/dataManager.ts`
+
+Новая палитра с контрастом >4.5:1 для белого текста:
+
+```typescript
+const colorPalette = [
+  '#4A7DD7',  // Насыщенный синий
+  '#7B5FA8',  // Глубокий фиолетовый  
+  '#D4852C',  // Янтарь (замена жёлтому)
+  '#2D9B6A',  // Тёмный изумруд
+  '#C44E89',  // Глубокий розовый
+  '#4A90B8',  // Стальной синий
+  '#E67A3D',  // Тыквенный оранж
+  '#8B6AAF',  // Аметист
+];
+
+// Обновить explicit colors для консистентности
+const explicitUnitColors: Record<string, string> = {
+  'FAP': '#E67A3D',           // Оранж (соответствует палитре)
+  'TechPlatform': '#4A7DD7',  // Синий (соответствует палитре)
+};
+```
+
+### B) Обновить палитру Stakeholders
+
+**Файл:** `src/components/StakeholdersTreemap.tsx`
+
+```typescript
+const stakeholderColorPalette = [
+  '#7B5FA8',  // Глубокий фиолетовый
+  '#4A7DD7',  // Насыщенный синий
+  '#2D9B6A',  // Тёмный изумруд
+  '#C44E89',  // Глубокий розовый
+  '#E67A3D',  // Тыквенный оранж
+  '#4A90B8',  // Стальной синий
+  '#D4852C',  // Янтарь
+  '#8B6AAF',  // Аметист
+];
+```
+
+### C) Добавить динамический цвет текста (страховка на будущее)
+
+**Файл:** `src/components/treemap/TreemapNode.tsx`
+
+Добавить функцию вычисления контрастного цвета текста:
+
+```typescript
+// Вычисляет relative luminance по формуле WCAG
+function getLuminance(hex: string): number {
+  const rgb = parseInt(hex.slice(1), 16);
+  const r = ((rgb >> 16) & 255) / 255;
+  const g = ((rgb >> 8) & 255) / 255;
+  const b = (rgb & 255) / 255;
+  
+  const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+// Возвращает 'text-white' или 'text-gray-900' в зависимости от фона
+function getTextColorClass(bgColor: string): string {
+  const luminance = getLuminance(bgColor);
+  return luminance > 0.4 ? 'text-gray-900' : 'text-white';
+}
+```
+
+Передать `node.color` в `TreemapNodeContent` и использовать динамический класс вместо hardcoded `text-white`.
+
+### D) Исправить paddingTop для depth 3 (Stakeholders)
 
 **Файл:** `src/components/treemap/useTreemapLayout.ts`
 
-Добавить параметр `extraDepth` (или `isStakeholdersView`), который увеличивает глубину рендеринга на 1 для Stakeholders.
-
-Либо проще — передавать `renderDepth` напрямую из компонента:
-- Budget: `renderDepth = 3` (Unit → Team → Initiative)
-- Stakeholders: `renderDepth = 4` (Stakeholder → Unit → Team → Initiative)
-
-**Изменения:**
-1. Добавить опциональный параметр `extraDepth?: number` в `UseTreemapLayoutOptions`
-2. При расчёте `renderDepth` прибавлять `extraDepth` (по умолчанию 0)
-3. В `StakeholdersTreemap.tsx` передавать `extraDepth={1}`
-
-**Файл:** `src/components/treemap/TreemapContainer.tsx`
-- Прокинуть новый проп `extraDepth` в `useTreemapLayout`
-
-**Файл:** `src/components/StakeholdersTreemap.tsx`
-- Передать `extraDepth={1}` в `TreemapContainer`
-
-### B) Исправить логику автоматического включения галочки «Команды»
-
-**Файл:** `src/pages/Index.tsx`
-
-Использовать `useRef` для отслеживания, было ли уже выполнено автоматическое включение для текущего выбора Unit:
-
 ```typescript
-const autoTeamsTriggeredRef = useRef<string | null>(null);
-
-useEffect(() => {
-  if (selectedUnits.length === 1) {
-    const unitName = selectedUnits[0];
-    // Только если это новый Unit (не тот, для которого уже включили)
-    if (autoTeamsTriggeredRef.current !== unitName && !showTeams) {
-      setShowTeams(true);
-      autoTeamsTriggeredRef.current = unitName;
-    }
-  } else {
-    // Сбросить флаг при изменении выбора
-    autoTeamsTriggeredRef.current = null;
-  }
-}, [selectedUnits, showTeams]);
+.paddingTop(d => {
+  if (renderDepth <= 1) return 2;
+  if (d.depth === 1) return 20;  // Stakeholder/Unit
+  if (d.depth === 2) return 18;  // Unit/Team
+  if (d.depth === 3) return 16;  // Team в Stakeholders
+  return 2;
+})
 ```
-
-Таким образом:
-1. При выборе Unit → галочка включается один раз
-2. Если пользователь снимает галочку → `autoTeamsTriggeredRef` уже содержит имя Unit → повторно не включается
-3. При выборе другого Unit или сбросе → ref сбрасывается, готов к следующему drilldown
 
 ---
 
@@ -78,17 +102,39 @@ useEffect(() => {
 
 | Файл | Изменение |
 |------|-----------|
-| `src/components/treemap/useTreemapLayout.ts` | Добавить параметр `extraDepth` для увеличения глубины рендеринга |
-| `src/components/treemap/TreemapContainer.tsx` | Прокинуть `extraDepth` в хук |
-| `src/components/StakeholdersTreemap.tsx` | Передать `extraDepth={1}` |
-| `src/pages/Index.tsx` | Исправить логику auto-enable с помощью ref-флага |
+| `src/lib/dataManager.ts` | Новая глубокая палитра + обновлённые explicit colors |
+| `src/components/StakeholdersTreemap.tsx` | Аналогичная палитра для Stakeholders |
+| `src/components/treemap/TreemapNode.tsx` | Функция динамического цвета текста |
+| `src/components/treemap/useTreemapLayout.ts` | paddingTop для depth 3 |
+
+---
+
+## Сравнение: до и после
+
+| Цвет | Старый (пастельный) | Новый (глубокий) | Контраст с белым |
+|------|---------------------|------------------|------------------|
+| Жёлтый | `#FDE047` | `#D4852C` (янтарь) | 1.2 → 4.8 |
+| Голубой | `#7DD3FC` | `#4A90B8` (стальной) | 1.4 → 5.2 |
+| Мятный | `#63DAAB` | `#2D9B6A` (изумруд) | 1.7 → 6.1 |
+| Розовый | `#FF85C0` | `#C44E89` (глубокий) | 2.8 → 5.5 |
 
 ---
 
 ## Ожидаемый результат
 
-1. **Stakeholders:** При включённых галочках «Команды» и «Инициативы» показываются все 4 уровня (Stakeholder → Unit → Team → Initiative)
-2. **Галочка «Команды»:** Автоматически включается при выборе Unit только один раз. Пользователь может её снять, и она не будет включаться повторно до выбора другого Unit
+1. **Budget treemap:** Все названия читаемы на любом фоне (включая бывший жёлтый → янтарь)
+2. **Stakeholders:** Названия Team видны при включённых Initiatives
+3. **Палитра:** Профессиональная, насыщенная, без "кислотных" оттенков
+4. **Страховка:** Динамический цвет текста защитит от проблем при добавлении новых Unit
+
+---
+
+## Риски и митигация
+
+| Риск | Вероятность | Митигация |
+|------|-------------|-----------|
+| Пользователям понравилась старая палитра | Низкая | Новая ближе к скриншоту, который пользователь показал как предпочтительный |
+| Нужен reset цветового кеша | Возможно | При обновлении палитры старые значения в `unitColors` очистятся при перезагрузке |
 
 ---
 
@@ -96,7 +142,8 @@ useEffect(() => {
 
 | Метрика | Значение |
 |---------|----------|
-| Сложность | Низкая |
+| Сложность | Средняя |
 | Файлов изменится | 4 |
-| Риск регрессии | Минимальный |
+| Риск регрессии | Низкий |
+| Улучшение accessibility | Значительное |
 

@@ -202,12 +202,25 @@ const TreemapContainer = ({
     });
   }, []);
   
-  const handleMouseLeave = useCallback(() => {
+  const handleMouseLeave = useCallback((node?: TreemapLayoutNode) => {
     // Cancel any pending update
     if (tooltipTimeoutRef.current !== null) {
       clearTimeout(tooltipTimeoutRef.current);
       tooltipTimeoutRef.current = null;
     }
+    
+    // If leaving a specific node, only clear if it's the active one
+    if (node) {
+      if (hoveredNodeRef.current?.key === node.key) {
+        hoveredNodeRef.current = null;
+        hoveredDepthRef.current = -1;
+        setTooltipData(null);
+      }
+      // Otherwise ignore — cursor moved to a deeper child
+      return;
+    }
+    
+    // Leaving container — always clear
     hoveredNodeRef.current = null;
     hoveredDepthRef.current = -1;
     setTooltipData(null);
@@ -250,7 +263,7 @@ const TreemapContainer = ({
   }, [onFileDrop]);
 
   return (
-    <div className="treemap-container" ref={containerRef} onMouseLeave={handleMouseLeave}>
+    <div className="treemap-container" ref={containerRef} onMouseLeave={() => handleMouseLeave()}>
       {/* Navigate back button */}
       <button
         className={`navigate-back-button ${canNavigateBack ? 'visible' : ''}`}

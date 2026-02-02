@@ -206,7 +206,7 @@ const TreemapContainer = ({
   }, [onFileDrop]);
 
   return (
-    <div className="treemap-container" ref={containerRef}>
+    <div className="treemap-container" ref={containerRef} onMouseLeave={handleMouseLeave}>
       {/* Navigate back button */}
       <button
         className={`navigate-back-button ${canNavigateBack ? 'visible' : ''}`}

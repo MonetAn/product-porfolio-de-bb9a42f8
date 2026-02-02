@@ -1,120 +1,116 @@
 
-# План: Исправление анимации и позиционирования тултипа
-
-## Проблема 1: Мгновенная анимация при переключении галочек
-
-### Диагноз
-При включении/выключении галочек "Команды"/"Инициативы":
-- `data.name` не меняется (остаётся "Root" или название юнита)
-- `useEffect` в TreemapContainer не срабатывает
-- `animationType` застревает на `'initial'` (duration = 0)
-- Новые/удалённые узлы появляются/исчезают **мгновенно**
-
-### Решение
-Добавить отслеживание изменений `showTeams` и `showInitiatives` для определения типа анимации `'filter'`:
-
-```typescript
-// TreemapContainer.tsx - добавить в useEffect
-const prevShowTeamsRef = useRef(showTeams);
-const prevShowInitiativesRef = useRef(showInitiatives);
-
-useEffect(() => {
-  // ...existing logic...
-  
-  // Detect filter change (checkboxes)
-  if (prevShowTeamsRef.current !== showTeams || 
-      prevShowInitiativesRef.current !== showInitiatives) {
-    newAnimationType = 'filter';
-  }
-  
-  prevShowTeamsRef.current = showTeams;
-  prevShowInitiativesRef.current = showInitiatives;
-  
-  // ...
-}, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width]);
-```
+## Цель
+Исправить два UX-багa, которые визуально «не меняются» несмотря на предыдущие правки:
+1) При включении галочек «Команды / Инициативы» новые элементы выглядят так, будто появляются/«растягиваются» из левого верхнего угла, а не «раскрываются внутри» контейнера.
+2) Tooltip при hover остаётся далеко от курсора (большой gap) и из‑за этого может уезжать за экран.
 
 ---
 
-## Проблема 2: Тултип уезжает за экран
+## Диагноз (почему текущие изменения не дали эффекта)
 
-### Диагноз
-- Тултип использует `position: fixed`
-- Начальная позиция (`left`, `top`) устанавливается только в `useEffect` 
-- До срабатывания useEffect тултип рендерится без координат
-- CSS `position: fixed` без left/top = браузер ставит куда попало
+### 1) Почему «появление не из центра»
+Сейчас `TreemapNode` задаёт `initial` только для `opacity/scale`, но **не задаёт начальные `x/y/width/height`**.  
+Для новых узлов это означает, что до применения `animate` они фактически оказываются в “дефолтной” позиции (0,0) с неочевидными размерами, и визуально создаётся эффект появления из top-left.
 
-### Решение
-Устанавливать позицию **сразу при рендере** через inline style, а не ждать useEffect:
+Дополнительно: `animationType` переключается в `useEffect` (после рендера). Если на момент маунта новых элементов `animationType` ещё старый, Framer Motion может не отыграть enter-анимацию так, как ожидаем.
 
-```typescript
-// TreemapTooltip.tsx
-const TreemapTooltip = memo(({ data, ... }) => {
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-  
-  // Calculate position when data changes
-  useLayoutEffect(() => {
-    if (!tooltipRef.current || !data) {
-      setPosition(null);
-      return;
-    }
-    
-    const rect = tooltipRef.current.getBoundingClientRect();
-    const padding = 16;
-    
-    let x = data.position.x + padding;
-    let y = data.position.y + padding;
-    
-    // Flip logic...
-    
-    setPosition({ x, y });
-  }, [data]);
-  
-  // Apply position directly
-  const style: React.CSSProperties = position ? {
-    left: position.x,
-    top: position.y,
-  } : {
-    visibility: 'hidden', // Hide until positioned
-  };
-  
-  return (
-    <div 
-      ref={tooltipRef} 
-      className={`treemap-tooltip ${data && position ? 'visible' : ''}`}
-      style={style}
-      ...
-    />
-  );
-});
-```
+### 2) Почему tooltip «далеко от курсора»
+`.treemap-tooltip` сейчас `position: fixed` и координаты берутся из `e.clientX / e.clientY` (viewport).  
+Но если tooltip находится внутри DOM-дерева, где какой-то предок (иногда это может быть layout-обёртка/анимация/контейнер) создаёт новый containing block (через `transform`, `filter`, `perspective`, иногда даже через специфичные CSS-оптимизации), то **`position: fixed` начинает считаться не от viewport**, а от этого предка. В итоге координаты (viewport) и позиционирование (локальная система координат) расходятся — появляется большой “gap”.
 
-Ключевое: `visibility: 'hidden'` пока позиция не рассчитана — тултип не "мелькает" в неправильном месте.
+На скрине это выглядит именно так: tooltip как будто “отъезжает” относительно курсора на константу/смещение контейнера.
 
 ---
 
-## Файлы для изменения
+## Решение (что меняем)
 
-| Файл | Изменение |
-|------|-----------|
-| `TreemapContainer.tsx` | Отслеживать `showTeams`/`showInitiatives` для анимации `'filter'` |
-| `TreemapTooltip.tsx` | Использовать `useLayoutEffect` + state для позиции, скрывать до расчёта |
+### A) Сделать «раскрытие из центра» реальным: initial должен включать геометрию
+**Файл:** `src/components/treemap/TreemapNode.tsx`
+
+1) Для enter-анимации задаём `initial` не только `opacity/scale`, но и **`x/y/width/height`**, чтобы узел “с первого кадра” находился в своей финальной ячейке и только “раскрывался” scale+fade.
+   - `initial`: `{ opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height }`
+   - `animate`: `{ opacity: 1, scale: 1, x, y, width: node.width, height: node.height }`
+   - `exit`: `{ opacity: 0, scale: 0.92 }` (можно оставить без x/y/size, потому что exit берёт текущее состояние; но при желании можно добавить текущие x/y/size для стабильности)
+
+2) Уточняем `transformOrigin: 'center center'` (уже есть) — это правильно, оставляем.
+
+3) Чуть смягчаем scale (например 0.85 → 0.92), чтобы эффект был «раскрытие» без агрессивного “прыжка”.
+
+4) Переходим на `useLayoutEffect`-детекцию `animationType` (см. пункт B), чтобы к моменту появления новых узлов Framer Motion уже знал, что это `filter`, а не `initial`.
+
+Ожидаемый эффект: новые команды/инициативы “проявляются внутри своих ячеек”, а не “летят/растягиваются” из (0,0).
 
 ---
 
-## Ожидаемый результат
+### B) Сделать анимацию галочек гарантированно не «instant»: детекцию типа анимации — до paint
+**Файл:** `src/components/treemap/TreemapContainer.tsx`
 
-1. При переключении галочек — плавная анимация fade+scale (650ms)
-2. Тултип появляется точно рядом с курсором без "прыжков"
-3. Тултип не уезжает за экран
+Сейчас определение `animationType` делается в `useEffect`, что может приводить к такому сценарию:
+- Render #1 после клика: `animationType` ещё старый (например, `initial`), новые узлы монтируются без нужного enter
+- `useEffect` ставит `filter`
+- Render #2 уже “поздно”: узлы уже появились
+
+Исправление:
+1) Заменить `useEffect` на `useLayoutEffect` для блока “Detect animation type”.
+2) Опционально: добавить защиту от лишнего “hint timeout” при каждом мелком апдейте (не критично, но улучшает стабильность).
+
+Ожидаемый эффект: при переключении галочек enter/exit всегда будет с длительностью `filter` (650ms), а не “резко”.
 
 ---
 
-## Оценка
+### C) Tooltip: устранить рассинхрон систем координат (самый надёжный способ — портал)
+**Файл:** `src/components/treemap/TreemapTooltip.tsx`
 
-| Метрика | Значение |
-|---------|----------|
-| Сложность | Низкая |
-| Файлов изменится | 2 |
-| Риск регрессии | Минимальный |
+Главная идея: tooltip должен жить там, где `position: fixed` гарантированно viewport-based — **в `document.body`**.
+
+1) Использовать `createPortal(...)` чтобы рендерить tooltip в `document.body`.
+   - Это устраняет влияние любых parent-обёрток/transform/contain на фиксированное позиционирование.
+2) Оставить текущую логику smart positioning (flip + clamp).
+3) Упростить механику “hidden until measured”:
+   - Оставляем `position` state.
+   - На первый кадр — `visibility: hidden`, пока не посчитали rect.
+4) (Опционально, но рекомендую) Ввести небольшой `offset` отдельно от `padding` (например `cursorOffset = 12`) и `screenPadding = 16`, чтобы легче контролировать расстояние “от курсора” vs “от краёв экрана”.
+
+Ожидаемый эффект: tooltip будет стабильно рядом с курсором, без “большого гэпа”, и больше не будет уезжать за экран из-за неверной системы координат.
+
+---
+
+## Проверки / критерии готовности (Definition of Done)
+
+### 1) Анимация галочек
+- На Budget вкладке включить/выключить:
+  - только «Команды»
+  - только «Инициативы»
+  - обе вместе
+- В каждом режиме новые блоки:
+  - появляются “внутри своих ячеек”
+  - не «вылетают» из top-left
+  - имеют плавный fade+scale (не instant)
+
+### 2) Tooltip
+- Навести курсор на разные узлы (Unit/Team/Initiative).
+- Tooltip:
+  - появляется на расстоянии ~12–16px от курсора
+  - корректно flip/clamp’ится у краёв экрана
+  - не имеет большого “постоянного смещения” (gap) относительно курсора
+
+---
+
+## Файлы, которые будут изменены
+- `src/components/treemap/TreemapNode.tsx`
+  - задать initial с `x/y/width/height` + мягкий scale
+- `src/components/treemap/TreemapContainer.tsx`
+  - заменить useEffect → useLayoutEffect для определения animationType
+- `src/components/treemap/TreemapTooltip.tsx`
+  - рендер через portal в `document.body` + сохранить smart positioning
+
+---
+
+## Риски и как их минимизируем
+1) Portal может потребовать проверки z-index:
+   - сейчас `.treemap-tooltip { z-index: 1000; }` обычно достаточно, но если есть overlay’и, можно поднять до 9999.
+2) Изменение `initial` с x/y/size:
+   - может слегка изменить “ощущение” drilldown/navigate-up. Мы оставим различие только в `duration` (через animationType), а сами координаты будут консистентны.
+3) Частые mousemove апдейты:
+   - при portal и useLayoutEffect останется как есть; если будет нагрузка, можно throttle через `requestAnimationFrame` (не обязательно сейчас).
+

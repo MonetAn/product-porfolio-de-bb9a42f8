@@ -1,99 +1,102 @@
 
 
-# План: Исправление читаемости текста + перекрытие заголовков в Stakeholders
+# План: Уникальные цвета с последовательным назначением и hue-сдвигом
 
-## Проблемы в скоупе
+## Проблема
 
-1. **Белый текст на жёлтом фоне нечитаем** (Data Office) — контраст 1.2:1 при норме 4.5:1
-2. **Голубой и мятный тоже имеют проблемы** — контраст 1.4-1.7:1
-3. **Перекрытие заголовков Team в Stakeholders** — недостаточный paddingTop для depth 3
-4. **Яркий розовый в Stakeholders** — слишком кислотный для профессионального UI
+Текущий алгоритм `hash % 8` приводит к повторяющимся цветам при >8 сущностях или при коллизиях хешей.
 
 ---
 
 ## Решение
 
-### A) Заменить палитру на глубокую/насыщенную (гарантированный контраст)
-
-**Файл:** `src/lib/dataManager.ts`
-
-Новая палитра с контрастом >4.5:1 для белого текста:
+### A) Добавить утилиты конвертации цветов в `dataManager.ts`
 
 ```typescript
-const colorPalette = [
-  '#4A7DD7',  // Насыщенный синий
-  '#7B5FA8',  // Глубокий фиолетовый  
-  '#D4852C',  // Янтарь (замена жёлтому)
-  '#2D9B6A',  // Тёмный изумруд
-  '#C44E89',  // Глубокий розовый
-  '#4A90B8',  // Стальной синий
-  '#E67A3D',  // Тыквенный оранж
-  '#8B6AAF',  // Аметист
-];
+// HEX → RGB
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : { r: 0, g: 0, b: 0 };
+}
 
-// Обновить explicit colors для консистентности
-const explicitUnitColors: Record<string, string> = {
-  'FAP': '#E67A3D',           // Оранж (соответствует палитре)
-  'TechPlatform': '#4A7DD7',  // Синий (соответствует палитре)
-};
+// RGB → HSL
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number }
+
+// HSL → RGB
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number }
+
+// RGB → HEX
+function rgbToHex(r: number, g: number, b: number): string
+
+// Сдвиг hue на заданный угол
+export function shiftHue(hex: string, degrees: number): string
 ```
 
-### B) Обновить палитру Stakeholders
-
-**Файл:** `src/components/StakeholdersTreemap.tsx`
+### B) Реализовать генератор расширенной палитры
 
 ```typescript
-const stakeholderColorPalette = [
-  '#7B5FA8',  // Глубокий фиолетовый
-  '#4A7DD7',  // Насыщенный синий
-  '#2D9B6A',  // Тёмный изумруд
-  '#C44E89',  // Глубокий розовый
-  '#E67A3D',  // Тыквенный оранж
-  '#4A90B8',  // Стальной синий
-  '#D4852C',  // Янтарь
-  '#8B6AAF',  // Аметист
-];
-```
+// Счётчик для последовательного назначения
+let unitColorIndex = 0;
 
-### C) Добавить динамический цвет текста (страховка на будущее)
-
-**Файл:** `src/components/treemap/TreemapNode.tsx`
-
-Добавить функцию вычисления контрастного цвета текста:
-
-```typescript
-// Вычисляет relative luminance по формуле WCAG
-function getLuminance(hex: string): number {
-  const rgb = parseInt(hex.slice(1), 16);
-  const r = ((rgb >> 16) & 255) / 255;
-  const g = ((rgb >> 8) & 255) / 255;
-  const b = (rgb & 255) / 255;
+// Генерация цвета с расширением палитры
+function generateExtendedColor(index: number, palette: string[]): string {
+  const baseIndex = index % palette.length;
+  const generation = Math.floor(index / palette.length);
   
-  const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
-}
-
-// Возвращает 'text-white' или 'text-gray-900' в зависимости от фона
-function getTextColorClass(bgColor: string): string {
-  const luminance = getLuminance(bgColor);
-  return luminance > 0.4 ? 'text-gray-900' : 'text-white';
+  if (generation === 0) {
+    return palette[baseIndex];
+  }
+  
+  // Для последующих поколений — сдвигаем hue
+  const hueShift = generation * 25 * (generation % 2 === 0 ? 1 : -1);
+  return shiftHue(palette[baseIndex], hueShift);
 }
 ```
 
-Передать `node.color` в `TreemapNodeContent` и использовать динамический класс вместо hardcoded `text-white`.
-
-### D) Исправить paddingTop для depth 3 (Stakeholders)
-
-**Файл:** `src/components/treemap/useTreemapLayout.ts`
+### C) Обновить `getUnitColor`
 
 ```typescript
-.paddingTop(d => {
-  if (renderDepth <= 1) return 2;
-  if (d.depth === 1) return 20;  // Stakeholder/Unit
-  if (d.depth === 2) return 18;  // Unit/Team
-  if (d.depth === 3) return 16;  // Team в Stakeholders
-  return 2;
-})
+export function getUnitColor(unitName: string): string {
+  if (!unitColors[unitName]) {
+    if (explicitUnitColors[unitName]) {
+      unitColors[unitName] = explicitUnitColors[unitName];
+    } else {
+      unitColors[unitName] = generateExtendedColor(unitColorIndex++, colorPalette);
+    }
+  }
+  return unitColors[unitName];
+}
+```
+
+### D) Обновить `StakeholdersTreemap.tsx`
+
+Перенести утилиты hue-сдвига в экспорт из `dataManager.ts` и использовать аналогичную логику:
+
+```typescript
+import { shiftHue } from '@/lib/dataManager';
+
+let stakeholderColorIndex = 0;
+
+function generateExtendedColor(index: number): string {
+  const baseIndex = index % stakeholderColorPalette.length;
+  const generation = Math.floor(index / stakeholderColorPalette.length);
+  
+  if (generation === 0) return stakeholderColorPalette[baseIndex];
+  
+  const hueShift = generation * 25 * (generation % 2 === 0 ? 1 : -1);
+  return shiftHue(stakeholderColorPalette[baseIndex], hueShift);
+}
+
+function getStakeholderColor(name: string): string {
+  if (!stakeholderColors[name]) {
+    stakeholderColors[name] = generateExtendedColor(stakeholderColorIndex++);
+  }
+  return stakeholderColors[name];
+}
 ```
 
 ---
@@ -102,48 +105,24 @@ function getTextColorClass(bgColor: string): string {
 
 | Файл | Изменение |
 |------|-----------|
-| `src/lib/dataManager.ts` | Новая глубокая палитра + обновлённые explicit colors |
-| `src/components/StakeholdersTreemap.tsx` | Аналогичная палитра для Stakeholders |
-| `src/components/treemap/TreemapNode.tsx` | Функция динамического цвета текста |
-| `src/components/treemap/useTreemapLayout.ts` | paddingTop для depth 3 |
+| `src/lib/dataManager.ts` | Добавить утилиты конвертации цветов, `shiftHue`, `generateExtendedColor`, обновить `getUnitColor` |
+| `src/components/StakeholdersTreemap.tsx` | Использовать `shiftHue` из dataManager, реализовать последовательное назначение |
 
 ---
 
-## Сравнение: до и после
+## Гарантии уникальности
 
-| Цвет | Старый (пастельный) | Новый (глубокий) | Контраст с белым |
-|------|---------------------|------------------|------------------|
-| Жёлтый | `#FDE047` | `#D4852C` (янтарь) | 1.2 → 4.8 |
-| Голубой | `#7DD3FC` | `#4A90B8` (стальной) | 1.4 → 5.2 |
-| Мятный | `#63DAAB` | `#2D9B6A` (изумруд) | 1.7 → 6.1 |
-| Розовый | `#FF85C0` | `#C44E89` (глубокий) | 2.8 → 5.5 |
-
----
-
-## Ожидаемый результат
-
-1. **Budget treemap:** Все названия читаемы на любом фоне (включая бывший жёлтый → янтарь)
-2. **Stakeholders:** Названия Team видны при включённых Initiatives
-3. **Палитра:** Профессиональная, насыщенная, без "кислотных" оттенков
-4. **Страховка:** Динамический цвет текста защитит от проблем при добавлении новых Unit
+| Количество сущностей | Результат |
+|---------------------|-----------|
+| 1-8 | Уникальные цвета из базовой палитры |
+| 9-16 | Hue-сдвиг +25° от базовых |
+| 17-24 | Hue-сдвиг -25° от базовых |
+| 25-32 | Hue-сдвиг +50° от базовых |
+| ... | Продолжение паттерна |
 
 ---
 
-## Риски и митигация
+## Безопасность для читаемости
 
-| Риск | Вероятность | Митигация |
-|------|-------------|-----------|
-| Пользователям понравилась старая палитра | Низкая | Новая ближе к скриншоту, который пользователь показал как предпочтительный |
-| Нужен reset цветового кеша | Возможно | При обновлении палитры старые значения в `unitColors` очистятся при перезагрузке |
-
----
-
-## Оценка
-
-| Метрика | Значение |
-|---------|----------|
-| Сложность | Средняя |
-| Файлов изменится | 4 |
-| Риск регрессии | Низкий |
-| Улучшение accessibility | Значительное |
+Luminance остаётся неизменной при hue-сдвиге, а уже реализованная функция `getTextColorClass` автоматически подберёт белый или тёмный текст в зависимости от яркости фона.
 

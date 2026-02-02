@@ -1,204 +1,197 @@
 
-# План: Возврат к Framer Motion с чистыми fade-анимациями
 
-## Что сейчас есть
+# План: Исправление вложенности, размеров и анимаций тремапа
 
-Текущая реализация использует D3 для рендеринга и анимаций с:
-- Сложной логикой `exit-layer` / `enter-layer`
-- `zoomTargetSnapshot` и `exitingNodesSnapshot` для drilldown push-эффекта
-- Race condition между useState и D3 рендерингом
-- ~548 строк кода в `TreemapD3Layer.tsx`
+## Выявленные проблемы
 
-## Что будет после рефакторинга
+### Проблема 1: Инициативы не отображаются на части юнитов/команд
 
-Простая Framer Motion реализация с:
-- `AnimatePresence` для enter/exit анимаций
-- `layoutId` для плавных transitions позиций
-- Только fade-анимации (никакого push-эффекта)
-- ~150 строк кода в новом компоненте
-
----
-
-## Архитектура
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  TreemapContainer                                               │
-│  ├── AnimatePresence                                            │
-│  │   └── TreemapNode (для каждого узла с layoutId)              │
-│  │       ├── motion.div с позицией и размером                   │
-│  │       ├── Контент (название, бюджет)                         │
-│  │       └── Вложенные TreemapNode (если есть children)         │
-│  └── TreemapTooltip                                             │
-└─────────────────────────────────────────────────────────────────┘
+**Причина:** В `TreemapNode.tsx` при рендеринге вложенных детей координаты пересчитываются с жёстким смещением:
+```tsx
+x0: child.x0 - node.x0 - 4,
+y0: child.y0 - node.y0 - 24,  // ← жёсткий header offset
 ```
 
----
+Но D3 layout уже учитывает `paddingTop: 24` в расчётах. Когда эти смещения применяются повторно, маленькие блоки получают отрицательные координаты или выходят за границы родителя, становясь невидимыми.
 
-## Какие анимации останутся
+**Решение:** Убрать двойное смещение — D3 уже рассчитал правильные позиции с учётом padding. Нужно только преобразовать абсолютные координаты в относительные (внутри родительского контейнера).
 
-| Тип | Поведение |
-|-----|-----------|
-| **initial** | Без анимации — блоки появляются сразу |
-| **filter** | fade-out уходящих, fade-in новых, плавное перестроение позиций (layoutId) |
-| **drilldown** | fade-out старых блоков, fade-in новых |
-| **navigate-up** | fade-out + плавное появление родительских блоков |
+### Проблема 2: Заголовки занимают слишком много места
 
----
+**Сравнение скриншотов:**
+- **Было:** Компактные заголовки ~16-18px
+- **Сейчас:** `paddingTop: 24px` в D3 + дополнительный padding в CSS
 
-## Файлы для изменения
+**Решение:** Уменьшить paddingTop до 20px и оптимизировать вёрстку заголовков.
 
-### 1. Удалить `TreemapD3Layer.tsx` (548 строк)
-Этот файл больше не нужен — D3 используется только для расчёта layout в `useTreemapLayout.ts`.
+### Проблема 3: Анимации слишком быстрые
 
-### 2. Переписать `TreemapNode.tsx` (~150 строк)
-Упростить до чистого Framer Motion компонента без push-логики:
-
+**Текущие значения:**
 ```typescript
-const TreemapNode = memo(({
-  node,
-  animationType,
-  onClick,
-  onMouseEnter,
-  onMouseMove,
-  onMouseLeave,
-  showChildren,
-  renderDepth,
-}) => {
-  const hasChildren = node.children && node.children.length > 0;
-  const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
-  
-  return (
-    <motion.div
-      layoutId={node.key}
-      initial={{ opacity: 0 }}
-      animate={{ 
-        opacity: 1,
-        x: node.x0,
-        y: node.y0,
-        width: node.width,
-        height: node.height,
+'filter': 400ms
+'drilldown': 400ms
+'navigate-up': 400ms
+```
+
+**Оптимальные значения для плавных анимаций:**
+- 500-600ms для основных transition
+- Более мягкий easing для комфорта глаз
+
+---
+
+## Изменения по файлам
+
+### 1. `TreemapNode.tsx` — Исправление координат вложенных узлов
+
+**Проблема в коде (строки 147-158):**
+```tsx
+<div className="absolute inset-0" style={{ padding: hasChildren ? '24px 4px 4px 4px' : '4px' }}>
+  {node.children!.map(child => (
+    <TreemapNode
+      node={{
+        ...child,
+        x0: child.x0 - node.x0 - 4,       // ← двойной offset
+        y0: child.y0 - node.y0 - 24,      // ← двойной offset
+        x1: child.x1 - node.x0 - 4,
+        y1: child.y1 - node.y0 - 24,
       }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: animationType === 'initial' ? 0 : 0.4 }}
-      // ... остальные props
-    >
-      <TreemapNodeContent node={node} />
-      
-      {shouldRenderChildren && showChildren && (
-        <AnimatePresence mode="sync">
-          {node.children!.map(child => (
-            <TreemapNode key={child.key} node={child} ... />
-          ))}
-        </AnimatePresence>
-      )}
-    </motion.div>
-  );
-});
+      ...
+    />
+  ))}
+</div>
 ```
 
-### 3. Упростить `TreemapContainer.tsx` (~150 строк удалить)
+**Решение:** D3 treemap уже рассчитал координаты с учётом `paddingTop`. Смещение должно быть только относительно родителя:
+```tsx
+<div className="absolute inset-0">
+  {node.children!.map(child => (
+    <TreemapNode
+      node={{
+        ...child,
+        x0: child.x0 - node.x0,    // Только относительно родителя
+        y0: child.y0 - node.y0,    // D3 уже учёл padding!
+        x1: child.x1 - node.x0,
+        y1: child.y1 - node.y0,
+      }}
+      ...
+    />
+  ))}
+</div>
+```
 
-**Удалить:**
-- `exitingNodesSnapshot`, `zoomTargetSnapshot` состояния
-- `flattenAllNodes` функцию
-- useEffect для `clickedNodeName` (строки 120-156)
-- `handleAnimationComplete` callback
-- Props для `zoomTarget`, `exitingNodes`
+### 2. `useTreemapLayout.ts` — Оптимизация padding
 
-**Упростить:**
-- useEffect для определения `animationType` — простая логика без snapshot
-
-**Заменить:**
-- `<TreemapD3Layer>` на рендеринг `<TreemapNode>` компонентов через `AnimatePresence`
-
-### 4. Обновить `types.ts`
-
-**Удалить:**
-- `ZoomTargetInfo` interface
-- `ExitDirection` interface
-
-### 5. Обновить `index.ts`
-
-**Удалить:**
-- Экспорт `TreemapD3Layer`
-
----
-
-## Структура нового TreemapContainer
-
+**Было (строки 112-117):**
 ```typescript
-const TreemapContainer = ({ data, showTeams, showInitiatives, ... }) => {
-  const [animationType, setAnimationType] = useState<AnimationType>('initial');
-  const prevDataNameRef = useRef<string | null>(null);
-  const isFirstRenderRef = useRef(true);
-  
-  // Compute layout (без изменений)
-  const layoutNodes = useTreemapLayout({ data, dimensions, showTeams, showInitiatives, getColor });
-  
-  // Определение типа анимации (упрощённо)
-  useEffect(() => {
-    if (isEmpty) return;
-    
-    if (isFirstRenderRef.current) {
-      isFirstRenderRef.current = false;
-      setAnimationType('initial');
-    } else if (prevDataNameRef.current !== data.name) {
-      setAnimationType(canNavigateBack ? 'drilldown' : 'navigate-up');
-    } else {
-      setAnimationType('filter');
-    }
-    
-    prevDataNameRef.current = data.name;
-  }, [data.name, canNavigateBack, isEmpty, layoutNodes]);
-  
-  // Рендеринг
+const treemap = d3.treemap<TreeNode>()
+  .size([dimensions.width, dimensions.height])
+  .paddingOuter(2)
+  .paddingTop(renderDepth > 1 ? 24 : 2)  // ← 24px слишком много
+  .paddingInner(2)
+  .round(true);
+```
+
+**Станет:**
+```typescript
+const treemap = d3.treemap<TreeNode>()
+  .size([dimensions.width, dimensions.height])
+  .paddingOuter(2)
+  .paddingTop(renderDepth > 1 ? 20 : 2)  // ← 20px — компактнее
+  .paddingInner(2)
+  .round(true);
+```
+
+### 3. `TreemapNode.tsx` — Компактный заголовок
+
+**Было (строки 29-42):**
+```tsx
+if (hasChildren) {
   return (
-    <div ref={containerRef} className="treemap-container">
-      <AnimatePresence mode="sync">
-        {layoutNodes.map(node => (
-          <TreemapNode
-            key={node.key}
-            node={node}
-            animationType={animationType}
-            onClick={handleNodeClick}
-            onMouseEnter={handleMouseEnter}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-            showChildren={true}
-            renderDepth={renderDepth}
-          />
-        ))}
-      </AnimatePresence>
-      
-      <TreemapTooltip ... />
-      {/* Empty states... */}
+    <div 
+      className={`absolute top-1 left-1 right-1 font-semibold text-white ...`}
+    >
+      {node.name}
     </div>
   );
+}
+```
+
+**Станет (компактнее):**
+```tsx
+if (hasChildren) {
+  return (
+    <div 
+      className={`absolute top-0.5 left-1 right-1 font-semibold text-white ...`}
+      style={{ 
+        lineHeight: '1.2',  // Компактнее
+        ...
+      }}
+    >
+      {node.name}
+    </div>
+  );
+}
+```
+
+### 4. `types.ts` — Оптимизация скорости анимаций
+
+**Было (строки 51-57):**
+```typescript
+export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
+  'initial': 0,
+  'filter': 400,
+  'drilldown': 400,
+  'navigate-up': 400,
+  'resize': 300
 };
 ```
 
+**Станет:**
+```typescript
+export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
+  'initial': 0,
+  'filter': 550,       // Плавнее
+  'drilldown': 600,    // Плавнее для drilldown
+  'navigate-up': 550,  // Чуть быстрее при возврате
+  'resize': 350        // Для ресайза
+};
+```
+
+### 5. `TreemapNode.tsx` — Оптимизация easing
+
+**Было (строки 118-121):**
+```tsx
+transition={{ 
+  duration,
+  ease: [0.4, 0, 0.2, 1],  // Стандартный ease-out
+}}
+```
+
+**Станет:**
+```tsx
+transition={{ 
+  duration,
+  ease: [0.25, 0.1, 0.25, 1],  // Более плавный (ease-in-out)
+}}
+```
+
 ---
 
-## Итоговая разница в коде
+## Итоговые изменения
 
-| Файл | Было | Станет | Разница |
-|------|------|--------|---------|
-| `TreemapD3Layer.tsx` | 548 строк | **Удалён** | -548 |
-| `TreemapNode.tsx` | 482 строки | ~150 строк | -332 |
-| `TreemapContainer.tsx` | 371 строка | ~220 строк | -151 |
-| `types.ts` | 87 строк | ~60 строк | -27 |
-| **Итого** | | | **-1058 строк** |
+| Файл | Изменения |
+|------|-----------|
+| `TreemapNode.tsx` | Убрать двойной offset при пересчёте координат, компактный заголовок, плавный easing |
+| `useTreemapLayout.ts` | Уменьшить `paddingTop` с 24 до 20 |
+| `types.ts` | Увеличить длительности анимаций (400 → 550-600ms) |
 
 ---
 
-## Критерии готовности
+## Ожидаемый результат
 
-1. Никаких прозрачных/пропадающих блоков при любых фильтрах
-2. Плавный fade-out/fade-in при drilldown и navigate-up
-3. Плавные transitions позиций при изменении фильтров (благодаря layoutId)
-4. Корректная работа при быстром переключении фильтров
-5. Никаких console warnings/errors
+1. **Инициативы видны везде** — все вложенные блоки отображаются корректно
+2. **Больше места для контента** — ~20% больше площади для дочерних элементов
+3. **Плавные анимации** — глаз успевает следить за переходами
 
 ---
 
@@ -207,6 +200,6 @@ const TreemapContainer = ({ data, showTeams, showInitiatives, ... }) => {
 | Метрика | Значение |
 |---------|----------|
 | Сложность | Низкая |
-| Удаление кода | ~1000+ строк |
-| Стабильность | Высокая |
+| Файлов изменится | 3 |
 | Вероятность успеха | 95% |
+

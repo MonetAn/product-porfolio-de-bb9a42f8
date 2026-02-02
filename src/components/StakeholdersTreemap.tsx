@@ -1,7 +1,7 @@
 // StakeholdersTreemap - Framer Motion powered treemap visualization
 
 import { TreemapContainer } from './treemap';
-import { TreeNode, hashString } from '@/lib/dataManager';
+import { TreeNode, shiftHue } from '@/lib/dataManager';
 
 // Deep, saturated palette for stakeholders with high contrast for white text
 const stakeholderColorPalette = [
@@ -15,11 +15,25 @@ const stakeholderColorPalette = [
   '#8B6AAF',  // Аметист
 ];
 const stakeholderColors: Record<string, string> = {};
+let stakeholderColorIndex = 0;
+
+// Generate extended color with hue shifting for uniqueness
+function generateStakeholderColor(index: number): string {
+  const baseIndex = index % stakeholderColorPalette.length;
+  const generation = Math.floor(index / stakeholderColorPalette.length);
+
+  if (generation === 0) {
+    return stakeholderColorPalette[baseIndex];
+  }
+
+  // For subsequent generations, shift hue alternating +/- direction
+  const hueShift = generation * 25 * (generation % 2 === 0 ? 1 : -1);
+  return shiftHue(stakeholderColorPalette[baseIndex], hueShift);
+}
 
 function getStakeholderColor(name: string): string {
   if (!stakeholderColors[name]) {
-    const hash = hashString(name);
-    stakeholderColors[name] = stakeholderColorPalette[hash % stakeholderColorPalette.length];
+    stakeholderColors[name] = generateStakeholderColor(stakeholderColorIndex++);
   }
   return stakeholderColors[name];
 }

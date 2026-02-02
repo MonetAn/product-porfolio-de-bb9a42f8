@@ -1,84 +1,89 @@
 
 
-# План: Улучшение UX при переключении вкладок
+# План: Анимация "раскрытия" деталей внутри контейнера
 
-## Диагноз проблемы
+## Концепция UX
 
-При переходе с Timeline на Budget/Stakeholders происходит:
-1. Компонент `TreemapContainer` монтируется заново
-2. В первый момент `dimensions = { width: 0, height: 0 }` (до ResizeObserver)
-3. Затем размеры обновляются, D3 пересчитывает layout
-4. `initial={{ opacity: 0 }}` создаёт fade-in эффект даже при `duration: 0`
-5. Всё это вместе создаёт "мигание" и визуальные артефакты
+**Метафора**: При включении галочек "Команды" / "Инициативы" пользователь раскрывает внутреннюю структуру юнита. Анимация должна передавать, что детали **проявляются изнутри** контейнера, а не "прилетают откуда-то".
 
-Круги на скриншоте — вероятно артефакт промежуточного рендера или кэширование предыдущего состояния браузером.
+**Решение**: Fade + Scale from Center — элементы появляются из своего центра с лёгким масштабированием (0.85 → 1.0), создавая эффект "раскрытия".
 
 ---
 
-## Решение: мгновенный первый рендер без fade
+## Техническая реализация
 
-### Изменение 1: `TreemapNode.tsx` — отключить initial анимацию при initial render
+### Изменение в `TreemapNode.tsx`
 
-Вместо:
-```typescript
-initial={{ opacity: 0 }}
-```
-
-Сделать conditional:
+Текущий код:
 ```typescript
 initial={animationType === 'initial' ? false : { opacity: 0 }}
+animate={{ 
+  opacity: 1,
+  x,
+  y,
+  width: node.width,
+  height: node.height,
+}}
 ```
 
-При `initial: false` Framer Motion **не анимирует** первое появление — элемент сразу рендерится в `animate` состоянии.
+Новый код:
+```typescript
+initial={animationType === 'initial' ? false : { opacity: 0, scale: 0.85 }}
+animate={{ 
+  opacity: 1,
+  scale: 1,
+  x,
+  y,
+  width: node.width,
+  height: node.height,
+}}
+exit={{ opacity: 0, scale: 0.85 }}
+style={{
+  position: 'absolute',
+  backgroundColor: node.color,
+  borderRadius: 4,
+  overflow: 'hidden',
+  cursor: 'pointer',
+  border: '1px solid rgba(255,255,255,0.3)',
+  transformOrigin: 'center center',  // Ключевое: масштабирование от центра
+}}
+```
 
-### Изменение 2: `TreemapContainer.tsx` — синхронный первый рендер
-
-Текущая проблема: `dimensions = { width: 0, height: 0 }` → `layoutNodes = []` → ничего не рендерится → потом dimensions обновляются → рендер с fade.
-
-Решение: использовать `useLayoutEffect` вместо `useEffect` для измерения, чтобы размеры были известны **до первой отрисовки**:
+### Настройка transition для плавности
 
 ```typescript
-// Было: useEffect + setTimeout
-useEffect(() => {
-  const updateDimensions = () => {...};
-  updateDimensions();
-  const resizeObserver = new ResizeObserver(() => {
-    setTimeout(updateDimensions, 100);
-  });
-  ...
-}, []);
-
-// Станет: useLayoutEffect для синхронного измерения
-import { useLayoutEffect } from 'react';
-
-useLayoutEffect(() => {
-  const updateDimensions = () => {
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      setDimensions({ width: rect.width, height: rect.height });
-    }
-  };
-  
-  updateDimensions(); // Синхронно до paint!
-  
-  const resizeObserver = new ResizeObserver(() => {
-    requestAnimationFrame(updateDimensions); // Для ресайзов — через RAF
-  });
-  ...
-}, []);
+transition={{ 
+  duration,
+  ease: [0.25, 0.1, 0.25, 1],
+  scale: { duration: duration * 0.8 },  // Scale чуть быстрее для "упругости"
+}}
 ```
 
-### Изменение 3: Добавить CSS для предотвращения "вспышки"
+---
 
-В `treemap.css` добавить:
-```css
-.treemap-container {
-  /* Предотвратить белую вспышку при смене вкладок */
-  contain: layout style paint;
-}
+## Визуализация эффекта
+
+```text
+БЫЛО (появление из угла 0,0):
+┌─────────────────┐
+│ Unit            │
+│ ┌──→→→→→→→→→┐   │  ← Team "растягивается" из левого верхнего угла
+│ │           │   │
+│ └───────────┘   │
+└─────────────────┘
+
+СТАНЕТ (раскрытие из центра):
+┌─────────────────┐
+│ Unit            │
+│      ╔═══╗      │  ← Team "раскрывается" из своего центра
+│      ║ → ║      │
+│      ╚═══╝      │
+│   ↙         ↘   │
+│ ┌───────────┐   │
+│ │   Team    │   │
+│ └───────────┘   │
+└─────────────────┘
 ```
-
-`contain: layout style paint` говорит браузеру, что внутреннее содержимое не влияет на внешний layout, что ускоряет рендеринг и предотвращает reflow.
 
 ---
 
@@ -86,18 +91,16 @@ useLayoutEffect(() => {
 
 | Файл | Изменение |
 |------|-----------|
-| `TreemapNode.tsx` | `initial={animationType === 'initial' ? false : { opacity: 0 }}` |
-| `TreemapContainer.tsx` | Заменить `useEffect` на `useLayoutEffect` для измерения, убрать `setTimeout` |
-| `treemap.css` | Добавить `contain: layout style paint` |
+| `TreemapNode.tsx` | Добавить `scale` в initial/animate/exit, установить `transformOrigin: 'center center'` |
 
 ---
 
 ## Ожидаемый результат
 
-1. При переключении вкладок тремап **появляется мгновенно** без fade
-2. Нет промежуточных "пустых" состояний с нулевыми размерами
-3. Нет визуальных артефактов или "кругов"
-4. Анимации работают только при фильтрации и drilldown (когда это уместно)
+1. При включении галочек детали **плавно раскрываются** из центра каждого элемента
+2. Юнит/стейкхолдер остаётся визуально стабильным — меняется только содержимое
+3. Когнитивная связь сохраняется: "я раскрываю структуру этого контейнера"
+4. При выключении галочек — обратный эффект "сворачивания" обратно в центр
 
 ---
 
@@ -105,8 +108,8 @@ useLayoutEffect(() => {
 
 | Метрика | Значение |
 |---------|----------|
-| Сложность | Низкая |
-| Файлов изменится | 3 |
+| Сложность | Очень низкая |
+| Файлов изменится | 1 |
 | Риск регрессии | Минимальный |
 | Улучшение UX | Значительное |
 

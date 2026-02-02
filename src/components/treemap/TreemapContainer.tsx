@@ -65,13 +65,14 @@ const TreemapContainer = ({
   const prevShowInitiativesRef = useRef(showInitiatives);
   const isFirstRenderRef = useRef(true);
   
-  // Tooltip state with race condition prevention
+  // Tooltip state with race condition prevention using depth priority
   const [tooltipData, setTooltipData] = useState<{
     node: TreemapLayoutNode;
     position: { x: number; y: number };
   } | null>(null);
   const hoveredNodeRef = useRef<TreemapLayoutNode | null>(null);
-  const tooltipUpdateRef = useRef<number | null>(null);
+  const hoveredDepthRef = useRef<number>(-1);
+  const tooltipTimeoutRef = useRef<number | null>(null);
   
   const isEmpty = !data.children || data.children.length === 0;
   const lastQuarter = selectedQuarters.length > 0 ? selectedQuarters[selectedQuarters.length - 1] : null;
@@ -155,19 +156,25 @@ const TreemapContainer = ({
     }
   }, [onNodeClick, onInitiativeClick]);
   
-  // Tooltip handlers with race condition prevention
-  // Uses requestAnimationFrame to ensure the deepest (last) mouseEnter wins
+  // Tooltip handlers with depth-priority logic
+  // Ignores parent events if a deeper child is already hovered, uses setTimeout for debounce
   const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
-    // Always update ref immediately (sync)
-    hoveredNodeRef.current = node;
-    
-    // Cancel any pending tooltip update from parent nodes
-    if (tooltipUpdateRef.current !== null) {
-      cancelAnimationFrame(tooltipUpdateRef.current);
+    // Ignore parent nodes if we already have a deeper child hovered
+    if (hoveredDepthRef.current >= 0 && node.depth < hoveredDepthRef.current) {
+      return;
     }
     
-    // Schedule tooltip update - the last mouseEnter (deepest child) wins
-    tooltipUpdateRef.current = requestAnimationFrame(() => {
+    // Update refs synchronously - depth takes priority
+    hoveredNodeRef.current = node;
+    hoveredDepthRef.current = node.depth;
+    
+    // Cancel any pending tooltip update
+    if (tooltipTimeoutRef.current !== null) {
+      clearTimeout(tooltipTimeoutRef.current);
+    }
+    
+    // Schedule tooltip update with 5ms debounce - ensures all sync events in the batch complete
+    tooltipTimeoutRef.current = window.setTimeout(() => {
       // Verify this node is still the hovered one
       if (hoveredNodeRef.current === node) {
         setTooltipData({
@@ -175,8 +182,8 @@ const TreemapContainer = ({
           position: { x: e.clientX, y: e.clientY },
         });
       }
-      tooltipUpdateRef.current = null;
-    });
+      tooltipTimeoutRef.current = null;
+    }, 5);
   }, []);
   
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -185,11 +192,12 @@ const TreemapContainer = ({
   
   const handleMouseLeave = useCallback(() => {
     // Cancel any pending update
-    if (tooltipUpdateRef.current !== null) {
-      cancelAnimationFrame(tooltipUpdateRef.current);
-      tooltipUpdateRef.current = null;
+    if (tooltipTimeoutRef.current !== null) {
+      clearTimeout(tooltipTimeoutRef.current);
+      tooltipTimeoutRef.current = null;
     }
     hoveredNodeRef.current = null;
+    hoveredDepthRef.current = -1;
     setTooltipData(null);
   }, []);
   

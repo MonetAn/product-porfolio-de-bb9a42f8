@@ -9,6 +9,8 @@ import { formatBudget } from '@/lib/dataManager';
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
   animationType: AnimationType;
+  parentX?: number;  // Absolute X of parent (default 0)
+  parentY?: number;  // Absolute Y of parent (default 0)
   onClick?: (node: TreemapLayoutNode) => void;
   onMouseEnter?: (e: React.MouseEvent, node: TreemapLayoutNode) => void;
   onMouseMove?: (e: React.MouseEvent) => void;
@@ -77,6 +79,8 @@ TreemapNodeContent.displayName = 'TreemapNodeContent';
 const TreemapNode = memo(({
   node,
   animationType,
+  parentX = 0,
+  parentY = 0,
   onClick,
   onMouseEnter,
   onMouseMove,
@@ -88,6 +92,10 @@ const TreemapNode = memo(({
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
   const isLeaf = !hasChildren;
+  
+  // Calculate relative position from absolute coordinates
+  const x = node.x0 - parentX;
+  const y = node.y0 - parentY;
   
   // Build class names
   const isTiny = node.width < 60 || node.height < 40;
@@ -110,8 +118,8 @@ const TreemapNode = memo(({
       initial={{ opacity: 0 }}
       animate={{ 
         opacity: 1,
-        x: node.x0,
-        y: node.y0,
+        x,
+        y,
         width: node.width,
         height: node.height,
       }}
@@ -150,15 +158,10 @@ const TreemapNode = memo(({
             {node.children!.map(child => (
               <TreemapNode
                 key={child.key}
-                node={{
-                  ...child,
-                  // Adjust positions relative to parent - D3 already calculated with padding
-                  x0: child.x0 - node.x0,
-                  y0: child.y0 - node.y0,
-                  x1: child.x1 - node.x0,
-                  y1: child.y1 - node.y0,
-                }}
+                node={child}
                 animationType={animationType}
+                parentX={node.x0}
+                parentY={node.y0}
                 onClick={onClick}
                 onMouseEnter={onMouseEnter}
                 onMouseMove={onMouseMove}

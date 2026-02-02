@@ -65,11 +65,13 @@ const TreemapContainer = ({
   const prevShowInitiativesRef = useRef(showInitiatives);
   const isFirstRenderRef = useRef(true);
   
-  // Tooltip state
+  // Tooltip state with race condition prevention
   const [tooltipData, setTooltipData] = useState<{
     node: TreemapLayoutNode;
     position: { x: number; y: number };
   } | null>(null);
+  const hoveredNodeRef = useRef<TreemapLayoutNode | null>(null);
+  const tooltipUpdateRef = useRef<number | null>(null);
   
   const isEmpty = !data.children || data.children.length === 0;
   const lastQuarter = selectedQuarters.length > 0 ? selectedQuarters[selectedQuarters.length - 1] : null;
@@ -153,11 +155,27 @@ const TreemapContainer = ({
     }
   }, [onNodeClick, onInitiativeClick]);
   
-  // Tooltip handlers
+  // Tooltip handlers with race condition prevention
+  // Uses requestAnimationFrame to ensure the deepest (last) mouseEnter wins
   const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
-    setTooltipData({
-      node,
-      position: { x: e.clientX, y: e.clientY },
+    // Always update ref immediately (sync)
+    hoveredNodeRef.current = node;
+    
+    // Cancel any pending tooltip update from parent nodes
+    if (tooltipUpdateRef.current !== null) {
+      cancelAnimationFrame(tooltipUpdateRef.current);
+    }
+    
+    // Schedule tooltip update - the last mouseEnter (deepest child) wins
+    tooltipUpdateRef.current = requestAnimationFrame(() => {
+      // Verify this node is still the hovered one
+      if (hoveredNodeRef.current === node) {
+        setTooltipData({
+          node,
+          position: { x: e.clientX, y: e.clientY },
+        });
+      }
+      tooltipUpdateRef.current = null;
     });
   }, []);
   
@@ -166,6 +184,12 @@ const TreemapContainer = ({
   }, []);
   
   const handleMouseLeave = useCallback(() => {
+    // Cancel any pending update
+    if (tooltipUpdateRef.current !== null) {
+      cancelAnimationFrame(tooltipUpdateRef.current);
+      tooltipUpdateRef.current = null;
+    }
+    hoveredNodeRef.current = null;
     setTooltipData(null);
   }, []);
   

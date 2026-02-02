@@ -1,89 +1,96 @@
 
+# План: Исправление анимации и позиционирования тултипа
 
-# План: Анимация "раскрытия" деталей внутри контейнера
+## Проблема 1: Мгновенная анимация при переключении галочек
 
-## Концепция UX
+### Диагноз
+При включении/выключении галочек "Команды"/"Инициативы":
+- `data.name` не меняется (остаётся "Root" или название юнита)
+- `useEffect` в TreemapContainer не срабатывает
+- `animationType` застревает на `'initial'` (duration = 0)
+- Новые/удалённые узлы появляются/исчезают **мгновенно**
 
-**Метафора**: При включении галочек "Команды" / "Инициативы" пользователь раскрывает внутреннюю структуру юнита. Анимация должна передавать, что детали **проявляются изнутри** контейнера, а не "прилетают откуда-то".
-
-**Решение**: Fade + Scale from Center — элементы появляются из своего центра с лёгким масштабированием (0.85 → 1.0), создавая эффект "раскрытия".
-
----
-
-## Техническая реализация
-
-### Изменение в `TreemapNode.tsx`
-
-Текущий код:
-```typescript
-initial={animationType === 'initial' ? false : { opacity: 0 }}
-animate={{ 
-  opacity: 1,
-  x,
-  y,
-  width: node.width,
-  height: node.height,
-}}
-```
-
-Новый код:
-```typescript
-initial={animationType === 'initial' ? false : { opacity: 0, scale: 0.85 }}
-animate={{ 
-  opacity: 1,
-  scale: 1,
-  x,
-  y,
-  width: node.width,
-  height: node.height,
-}}
-exit={{ opacity: 0, scale: 0.85 }}
-style={{
-  position: 'absolute',
-  backgroundColor: node.color,
-  borderRadius: 4,
-  overflow: 'hidden',
-  cursor: 'pointer',
-  border: '1px solid rgba(255,255,255,0.3)',
-  transformOrigin: 'center center',  // Ключевое: масштабирование от центра
-}}
-```
-
-### Настройка transition для плавности
+### Решение
+Добавить отслеживание изменений `showTeams` и `showInitiatives` для определения типа анимации `'filter'`:
 
 ```typescript
-transition={{ 
-  duration,
-  ease: [0.25, 0.1, 0.25, 1],
-  scale: { duration: duration * 0.8 },  // Scale чуть быстрее для "упругости"
-}}
+// TreemapContainer.tsx - добавить в useEffect
+const prevShowTeamsRef = useRef(showTeams);
+const prevShowInitiativesRef = useRef(showInitiatives);
+
+useEffect(() => {
+  // ...existing logic...
+  
+  // Detect filter change (checkboxes)
+  if (prevShowTeamsRef.current !== showTeams || 
+      prevShowInitiativesRef.current !== showInitiatives) {
+    newAnimationType = 'filter';
+  }
+  
+  prevShowTeamsRef.current = showTeams;
+  prevShowInitiativesRef.current = showInitiatives;
+  
+  // ...
+}, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width]);
 ```
 
 ---
 
-## Визуализация эффекта
+## Проблема 2: Тултип уезжает за экран
 
-```text
-БЫЛО (появление из угла 0,0):
-┌─────────────────┐
-│ Unit            │
-│ ┌──→→→→→→→→→┐   │  ← Team "растягивается" из левого верхнего угла
-│ │           │   │
-│ └───────────┘   │
-└─────────────────┘
+### Диагноз
+- Тултип использует `position: fixed`
+- Начальная позиция (`left`, `top`) устанавливается только в `useEffect` 
+- До срабатывания useEffect тултип рендерится без координат
+- CSS `position: fixed` без left/top = браузер ставит куда попало
 
-СТАНЕТ (раскрытие из центра):
-┌─────────────────┐
-│ Unit            │
-│      ╔═══╗      │  ← Team "раскрывается" из своего центра
-│      ║ → ║      │
-│      ╚═══╝      │
-│   ↙         ↘   │
-│ ┌───────────┐   │
-│ │   Team    │   │
-│ └───────────┘   │
-└─────────────────┘
+### Решение
+Устанавливать позицию **сразу при рендере** через inline style, а не ждать useEffect:
+
+```typescript
+// TreemapTooltip.tsx
+const TreemapTooltip = memo(({ data, ... }) => {
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // Calculate position when data changes
+  useLayoutEffect(() => {
+    if (!tooltipRef.current || !data) {
+      setPosition(null);
+      return;
+    }
+    
+    const rect = tooltipRef.current.getBoundingClientRect();
+    const padding = 16;
+    
+    let x = data.position.x + padding;
+    let y = data.position.y + padding;
+    
+    // Flip logic...
+    
+    setPosition({ x, y });
+  }, [data]);
+  
+  // Apply position directly
+  const style: React.CSSProperties = position ? {
+    left: position.x,
+    top: position.y,
+  } : {
+    visibility: 'hidden', // Hide until positioned
+  };
+  
+  return (
+    <div 
+      ref={tooltipRef} 
+      className={`treemap-tooltip ${data && position ? 'visible' : ''}`}
+      style={style}
+      ...
+    />
+  );
+});
 ```
+
+Ключевое: `visibility: 'hidden'` пока позиция не рассчитана — тултип не "мелькает" в неправильном месте.
 
 ---
 
@@ -91,16 +98,16 @@ transition={{
 
 | Файл | Изменение |
 |------|-----------|
-| `TreemapNode.tsx` | Добавить `scale` в initial/animate/exit, установить `transformOrigin: 'center center'` |
+| `TreemapContainer.tsx` | Отслеживать `showTeams`/`showInitiatives` для анимации `'filter'` |
+| `TreemapTooltip.tsx` | Использовать `useLayoutEffect` + state для позиции, скрывать до расчёта |
 
 ---
 
 ## Ожидаемый результат
 
-1. При включении галочек детали **плавно раскрываются** из центра каждого элемента
-2. Юнит/стейкхолдер остаётся визуально стабильным — меняется только содержимое
-3. Когнитивная связь сохраняется: "я раскрываю структуру этого контейнера"
-4. При выключении галочек — обратный эффект "сворачивания" обратно в центр
+1. При переключении галочек — плавная анимация fade+scale (650ms)
+2. Тултип появляется точно рядом с курсором без "прыжков"
+3. Тултип не уезжает за экран
 
 ---
 
@@ -108,8 +115,6 @@ transition={{
 
 | Метрика | Значение |
 |---------|----------|
-| Сложность | Очень низкая |
-| Файлов изменится | 1 |
+| Сложность | Низкая |
+| Файлов изменится | 2 |
 | Риск регрессии | Минимальный |
-| Улучшение UX | Значительное |
-

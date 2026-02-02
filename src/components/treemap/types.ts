@@ -50,9 +50,9 @@ export type AnimationType = 'filter' | 'drilldown' | 'navigate-up' | 'resize' | 
 // Animation durations in ms
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
-  'filter': 800,
-  'drilldown': 600,
-  'navigate-up': 600,
+  'filter': 400,
+  'drilldown': 400,
+  'navigate-up': 400,
   'resize': 300
 };
 
@@ -62,26 +62,5 @@ export interface ContainerDimensions {
   height: number;
 }
 
-// Exit direction for flying out animation
-export interface ExitDirection {
-  x: number;
-  y: number;
-  scale: number;
-}
-
 // Color getter function type
 export type ColorGetter = (name: string) => string;
-
-// Zoom target info for edge-based push calculation
-export interface ZoomTargetInfo {
-  key: string;
-  name: string;
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-  width: number;
-  height: number;
-  // CRITICAL: Pass animationType through custom prop to avoid closure issues
-  animationType: AnimationType;
-}

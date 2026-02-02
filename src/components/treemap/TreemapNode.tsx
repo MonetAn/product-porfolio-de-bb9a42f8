@@ -1,307 +1,36 @@
-// Framer Motion treemap node component with Camera Zoom edge-based push
-// Uses Variants + Custom Prop pattern for proper exit animation data flow
+// Framer Motion treemap node component with clean fade animations
+// Uses layoutId for smooth position transitions
 
-import { motion, AnimatePresence, Variants } from 'framer-motion';
-import { memo, useMemo, forwardRef } from 'react';
-import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS, ZoomTargetInfo } from './types';
+import { motion, AnimatePresence } from 'framer-motion';
+import { memo } from 'react';
+import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS } from './types';
 import { formatBudget } from '@/lib/dataManager';
 
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
   animationType: AnimationType;
-  zoomTarget?: ZoomTargetInfo | null;
-  containerWidth: number;
-  containerHeight: number;
   onClick?: (node: TreemapLayoutNode) => void;
   onMouseEnter?: (e: React.MouseEvent, node: TreemapLayoutNode) => void;
   onMouseMove?: (e: React.MouseEvent) => void;
   onMouseLeave?: () => void;
-  // For enter animations - whether this node is entering from outside
-  isEntering?: boolean;
-  containerCenter?: { x: number; y: number };
-  // Show children with delay after parent animation
   showChildren?: boolean;
-  // Render depth control
   renderDepth?: number;
-  // ISOLATION TEST: Flag for exiting nodes (disables layoutId)
-  isExitingNode?: boolean;
-}
-
-// Unified transition for synchronized animations (Camera Zoom effect)
-const ZOOM_TRANSITION = {
-  type: 'tween' as const,
-  ease: [0.4, 0, 0.2, 1] as [number, number, number, number], // ease-in-out cubic-bezier
-  duration: 0.6,
-};
-
-// Edge-based push calculation - nodes are "pushed" by expanding zoom target
-function getEdgeBasedExitAnimation(
-  node: TreemapLayoutNode,
-  zoomTarget: ZoomTargetInfo,
-  containerWidth: number,
-  containerHeight: number
-) {
-  // How much the zoom target expands in each direction
-  const expandLeft = zoomTarget.x0;
-  const expandRight = containerWidth - zoomTarget.x1;
-  const expandTop = zoomTarget.y0;
-  const expandBottom = containerHeight - zoomTarget.y1;
-  
-  // Determine dominant direction based on node center vs target center
-  const nodeCenterX = node.x0 + node.width / 2;
-  const nodeCenterY = node.y0 + node.height / 2;
-  const targetCenterX = zoomTarget.x0 + zoomTarget.width / 2;
-  const targetCenterY = zoomTarget.y0 + zoomTarget.height / 2;
-  
-  let pushX = 0;
-  let pushY = 0;
-  
-  // Check for overlap to determine push direction
-  const horizontalOverlap = !(node.x1 <= zoomTarget.x0 || node.x0 >= zoomTarget.x1);
-  const verticalOverlap = !(node.y1 <= zoomTarget.y0 || node.y0 >= zoomTarget.y1);
-  
-  if (horizontalOverlap && !verticalOverlap) {
-    // Block is above or below target - only vertical push
-    if (nodeCenterY < targetCenterY) {
-      pushY = -(expandTop + node.height + 50);
-    } else {
-      pushY = expandBottom + node.height + 50;
-    }
-  } else if (verticalOverlap && !horizontalOverlap) {
-    // Block is left or right of target - only horizontal push
-    if (nodeCenterX < targetCenterX) {
-      pushX = -(expandLeft + node.width + 50);
-    } else {
-      pushX = expandRight + node.width + 50;
-    }
-  } else {
-    // Diagonal blocks - push in both directions
-    if (nodeCenterX < targetCenterX) {
-      pushX = -(expandLeft + node.width + 50);
-    } else {
-      pushX = expandRight + node.width + 50;
-    }
-    
-    if (nodeCenterY < targetCenterY) {
-      pushY = -(expandTop + node.height + 50);
-    } else {
-      pushY = expandBottom + node.height + 50;
-    }
-  }
-  
-  return {
-    x: node.x0 + pushX,
-    y: node.y0 + pushY,
-    width: node.width,   // Keep size! No shrinking
-    height: node.height, // Keep size! No shrinking
-    opacity: 1,          // Stay visible until off-screen
-  };
-}
-
-// Edge-based enter animation for navigate-up (nodes fly in from edges)
-function getEdgeBasedEnterAnimation(
-  node: TreemapLayoutNode,
-  containerWidth: number,
-  containerHeight: number
-) {
-  const nodeCenterX = node.x0 + node.width / 2;
-  const nodeCenterY = node.y0 + node.height / 2;
-  const containerCenterX = containerWidth / 2;
-  const containerCenterY = containerHeight / 2;
-  
-  let startX = node.x0;
-  let startY = node.y0;
-  
-  // Horizontal position determines horizontal entry
-  if (nodeCenterX < containerCenterX) {
-    startX = -(node.width + 100);
-  } else {
-    startX = containerWidth + 100;
-  }
-  
-  // Vertical position determines vertical entry
-  if (nodeCenterY < containerCenterY) {
-    startY = -(node.height + 100);
-  } else {
-    startY = containerHeight + 100;
-  }
-  
-  // For nodes close to horizontal center, minimize horizontal offset
-  if (Math.abs(nodeCenterX - containerCenterX) < containerWidth * 0.2) {
-    startX = node.x0;
-  }
-  
-  // For nodes close to vertical center, minimize vertical offset
-  if (Math.abs(nodeCenterY - containerCenterY) < containerHeight * 0.2) {
-    startY = node.y0;
-  }
-  
-  return {
-    x: startX,
-    y: startY,
-    width: node.width,
-    height: node.height,
-    opacity: 1,
-  };
-}
-
-// Create variants object with functions that receive custom data
-// This is CRITICAL for exit animations to receive zoomTarget info
-function createNodeVariants(
-  node: TreemapLayoutNode,
-  containerWidth: number,
-  containerHeight: number,
-  animationType: AnimationType,
-  isEntering: boolean
-): Variants {
-  return {
-    initial: (customData: ZoomTargetInfo | null) => {
-      // No animation for initial/resize
-      if (animationType === 'initial' || animationType === 'resize') {
-        return { 
-          x: node.x0, 
-          y: node.y0, 
-          width: node.width, 
-          height: node.height,
-          opacity: 1,
-          zIndex: node.depth,
-        };
-      }
-      
-      // For navigate-up: nodes fly in from edges
-      if (isEntering && animationType === 'navigate-up') {
-        return {
-          ...getEdgeBasedEnterAnimation(node, containerWidth, containerHeight),
-          zIndex: node.depth,
-        };
-      }
-      
-      // CRITICAL FIX: For drilldown, new nodes should NOT fade in!
-      // They should appear at their final position with opacity: 1
-      if (animationType === 'drilldown') {
-        return {
-          x: node.x0,
-          y: node.y0,
-          width: node.width,
-          height: node.height,
-          opacity: 1,  // NO FADE!
-          zIndex: node.depth,
-        };
-      }
-      
-      // Default (filter): fade in
-      return {
-        x: node.x0,
-        y: node.y0,
-        width: node.width,
-        height: node.height,
-        opacity: 0,
-        zIndex: node.depth,
-      };
-    },
-    
-    animate: (customData: ZoomTargetInfo | null) => {
-      const isZoomTarget = customData?.key === node.key;
-      
-      // Zoom target expands to fullscreen with high zIndex
-      if (isZoomTarget && animationType === 'drilldown') {
-        return {
-          x: 0,
-          y: 0,
-          width: containerWidth,
-          height: containerHeight,
-          opacity: 1,
-          zIndex: 50, // CRITICAL: above neighbors
-        };
-      }
-      
-      // Normal state
-      return {
-        x: node.x0,
-        y: node.y0,
-        width: node.width,
-        height: node.height,
-        opacity: 1,
-        zIndex: node.depth,
-      };
-    },
-    
-    exit: (customData: ZoomTargetInfo | null) => {
-      // CRITICAL: Read animationType from customData, NOT from closure!
-      const exitAnimationType = customData?.animationType;
-      const isZoomTarget = customData?.key === node.key;
-      
-      // DEBUG: Enhanced logging to trace data flow
-      console.log('EXIT variant triggered', { 
-        nodeName: node.name, 
-        nodeKey: node.key,
-        hasCustomData: !!customData,
-        customAnimationType: exitAnimationType,  // From custom!
-        closureAnimationType: animationType,     // From closure (may be stale)
-        customDataKey: customData?.key,
-        isZoomTarget,
-        willUsePush: customData && exitAnimationType === 'drilldown' && !isZoomTarget,
-      });
-      
-      // Zoom target: expands to fullscreen (stays on top)
-      // DEBUG: Using 0.5 opacity for X-ray vision
-      if (isZoomTarget) {
-        console.log('EXIT: Zoom target expanding', { nodeName: node.name });
-        return {
-          x: 0,
-          y: 0,
-          width: containerWidth,
-          height: containerHeight,
-          opacity: 0.5,  // DEBUG: X-ray vision to see siblings underneath
-          zIndex: 50,    // CRITICAL: above flying neighbors
-        };
-      }
-      
-      // Non-target during drilldown: fly off screen using edge-based push
-      // CRITICAL: Use exitAnimationType from customData!
-      if (customData && exitAnimationType === 'drilldown') {
-        const pushAnimation = getEdgeBasedExitAnimation(
-          node, customData, containerWidth, containerHeight
-        );
-        console.log('EXIT: Push animation calculated', { 
-          nodeName: node.name,
-          from: { x: node.x0, y: node.y0 },
-          to: { x: pushAnimation.x, y: pushAnimation.y },
-        });
-        return {
-          ...pushAnimation,
-          zIndex: 0, // CRITICAL: under zoom target
-        };
-      }
-      
-      // Fallback: simple fade
-      console.log('EXIT: Fallback fade', { nodeName: node.name, reason: 'no customData or not drilldown' });
-      return { 
-        opacity: 0,
-        x: node.x0,
-        y: node.y0,
-        width: node.width,
-        height: node.height,
-        zIndex: 0,
-      };
-    },
-  };
 }
 
 // Node content component
 const TreemapNodeContent = memo(({ node, showValue }: { node: TreemapLayoutNode; showValue: boolean }) => {
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
+  const hasChildren = node.children && node.children.length > 0;
   
   if (node.height < 30) return null;
   
-  return (
-    <div className="treemap-node-content">
+  // Header style for parent nodes
+  if (hasChildren) {
+    return (
       <div 
-        className={`treemap-node-label ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
+        className={`absolute top-1 left-1 right-1 font-semibold text-white ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
         style={{ 
-          fontWeight: 600,
-          color: 'white',
           textShadow: '0 1px 2px rgba(0,0,0,0.3)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
@@ -310,18 +39,33 @@ const TreemapNodeContent = memo(({ node, showValue }: { node: TreemapLayoutNode;
       >
         {node.name}
       </div>
-      {showValue && node.height > 40 && !isTiny && (
+    );
+  }
+  
+  // Centered content for leaf nodes
+  return (
+    <div className="absolute inset-0 flex items-center justify-center p-1">
+      <div className="text-center w-full px-1">
         <div 
-          className={`treemap-node-value ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
-          style={{
-            color: 'rgba(255,255,255,0.9)',
+          className={`font-semibold text-white ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
+          style={{ 
             textShadow: '0 1px 2px rgba(0,0,0,0.3)',
-            marginTop: 2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
-          {formatBudget(node.value)}
+          {node.name}
         </div>
-      )}
+        {showValue && node.height > 40 && !isTiny && (
+          <div 
+            className={`text-white/90 mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
+            style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
+          >
+            {formatBudget(node.value)}
+          </div>
+        )}
+      </div>
     </div>
   );
 });
@@ -329,59 +73,25 @@ const TreemapNodeContent = memo(({ node, showValue }: { node: TreemapLayoutNode;
 TreemapNodeContent.displayName = 'TreemapNodeContent';
 
 // Main node component
-const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
+const TreemapNode = memo(({
   node,
   animationType,
-  zoomTarget,
-  containerWidth,
-  containerHeight,
   onClick,
   onMouseEnter,
   onMouseMove,
   onMouseLeave,
-  isEntering = false,
-  containerCenter,
   showChildren = true,
   renderDepth = 3,
-  isExitingNode = false,
-}, ref) => {
-  const duration = ZOOM_TRANSITION.duration;
-  const isZoomTarget = zoomTarget?.key === node.key;
+}: TreemapNodeProps) => {
+  const duration = animationType === 'initial' ? 0 : ANIMATION_DURATIONS[animationType] / 1000;
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
   const isLeaf = !hasChildren;
   
-  // ISOLATION TEST: Disable layoutId for exiting non-target nodes
-  // This tests if Layout Projection is overriding our exit variants
-  const shouldDisableLayout = isExitingNode && !isZoomTarget;
-  
-  if (shouldDisableLayout) {
-    console.log('ISOLATION TEST: layoutId DISABLED for', node.name, {
-      isExitingNode,
-      isZoomTarget,
-      zoomTargetKey: zoomTarget?.key,
-      nodeKey: node.key,
-    });
-  }
-  
-  // Determine size class
+  // Build class names
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
   
-  // Create variants with functions that receive custom data
-  // CRITICAL: This allows exit animations to receive zoomTarget info
-  const variants = useMemo(() => 
-    createNodeVariants(node, containerWidth, containerHeight, animationType, isEntering),
-    [node, containerWidth, containerHeight, animationType, isEntering]
-  );
-  
-  // Transition configuration - unified for all nodes
-  const transition = useMemo(() => ({
-    ...ZOOM_TRANSITION,
-    duration: animationType === 'initial' ? 0 : ZOOM_TRANSITION.duration,
-  }), [animationType]);
-  
-  // Build class names
   const classNames = [
     'treemap-node',
     `depth-${node.depth}`,
@@ -395,25 +105,28 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
 
   return (
     <motion.div
-      ref={ref}
-      // ISOLATION TEST: Disable layoutId for exiting non-target nodes
-      // If Layout Projection is the culprit, nodes should fly off-screen now
-      layoutId={shouldDisableLayout ? undefined : node.key}
-      custom={zoomTarget}           // CRITICAL: Pass data to variant functions
-      variants={variants}           // Object with functions
-      initial="initial"             // String keys
-      animate="animate"
-      exit="exit"
-      transition={transition}
+      layoutId={node.key}
+      initial={{ opacity: 0 }}
+      animate={{ 
+        opacity: 1,
+        x: node.x0,
+        y: node.y0,
+        width: node.width,
+        height: node.height,
+      }}
+      exit={{ opacity: 0 }}
+      transition={{ 
+        duration,
+        ease: [0.4, 0, 0.2, 1],
+      }}
       className={classNames}
       style={{
         position: 'absolute',
         backgroundColor: node.color,
+        borderRadius: 4,
         overflow: 'hidden',
         cursor: 'pointer',
-        willChange: 'transform',
-        // ISOLATION TEST: Red border for visual identification
-        border: shouldDisableLayout ? '5px solid red' : undefined,
+        border: '1px solid rgba(255,255,255,0.3)',
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -431,37 +144,20 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
       
       {/* Nested children */}
       {shouldRenderChildren && showChildren && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ 
-            delay: animationType === 'drilldown' ? duration : 0,
-            duration: 0.3 
-          }}
-          style={{ 
-            position: 'absolute', 
-            top: 0, 
-            left: 0, 
-            right: 0, 
-            bottom: 0 
-          }}
-        >
-          <AnimatePresence mode="sync" custom={zoomTarget}>
+        <div className="absolute inset-0" style={{ padding: hasChildren ? '24px 4px 4px 4px' : '4px' }}>
+          <AnimatePresence mode="sync">
             {node.children!.map(child => (
               <TreemapNode
                 key={child.key}
                 node={{
                   ...child,
-                  // Adjust positions relative to parent
-                  x0: child.x0 - node.x0,
-                  y0: child.y0 - node.y0,
-                  x1: child.x1 - node.x0,
-                  y1: child.y1 - node.y0,
+                  // Adjust positions relative to parent (with header offset for parent nodes)
+                  x0: child.x0 - node.x0 - 4,
+                  y0: child.y0 - node.y0 - 24,
+                  x1: child.x1 - node.x0 - 4,
+                  y1: child.y1 - node.y0 - 24,
                 }}
                 animationType={animationType}
-                zoomTarget={zoomTarget}
-                containerWidth={node.width}
-                containerHeight={node.height}
                 onClick={onClick}
                 onMouseEnter={onMouseEnter}
                 onMouseMove={onMouseMove}
@@ -471,7 +167,7 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
               />
             ))}
           </AnimatePresence>
-        </motion.div>
+        </div>
       )}
     </motion.div>
   );
@@ -479,4 +175,4 @@ const TreemapNode = forwardRef<HTMLDivElement, TreemapNodeProps>(({
 
 TreemapNode.displayName = 'TreemapNode';
 
-export default memo(TreemapNode);
+export default TreemapNode;

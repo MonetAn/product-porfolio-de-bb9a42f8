@@ -12,6 +12,7 @@ interface TreemapD3LayerProps {
   height: number;
   animationType: AnimationType;
   zoomTarget: ZoomTargetInfo | null;
+  exitingNodes?: TreemapLayoutNode[]; // NEW: Pre-captured exiting nodes for drilldown
   renderDepth: number;
   onNodeClick: (node: TreemapLayoutNode) => void;
   onNodeMouseEnter: (e: MouseEvent, node: TreemapLayoutNode) => void;
@@ -202,6 +203,7 @@ const TreemapD3Layer = ({
   height,
   animationType,
   zoomTarget,
+  exitingNodes = [],
   renderDepth,
   onNodeClick,
   onNodeMouseEnter,
@@ -250,12 +252,47 @@ const TreemapD3Layer = ({
     const groups = svg.selectAll<SVGGElement, TreemapLayoutNode>('g.treemap-node')
       .data(flatNodes, d => d.key);
     
-    // ----- EXIT: Removed nodes -----
-    const exitSelection = groups.exit();
-    
-    if (animationType === 'drilldown' && zoomTarget) {
-      // Drilldown: push neighbors off-screen, expand target
-      exitSelection.each(function(d) {
+    // ----- DRILLDOWN: Use pre-captured exiting nodes -----
+    if (animationType === 'drilldown' && zoomTarget && exitingNodes.length > 0) {
+      console.log('[D3] Drilldown with exitingNodes:', exitingNodes.length, 'zoomTarget:', zoomTarget.name);
+      
+      // Remove any existing exiting nodes first
+      svg.selectAll('g.exiting-node').remove();
+      
+      // Create temporary groups for exiting nodes
+      const exitGroups = svg.selectAll<SVGGElement, TreemapLayoutNode>('g.exiting-node')
+        .data(exitingNodes, d => d.key)
+        .enter()
+        .append('g')
+        .attr('class', 'exiting-node')
+        .attr('transform', d => `translate(${d.x0}, ${d.y0})`);
+      
+      // Add rect to exiting nodes
+      exitGroups.append('rect')
+        .attr('width', d => d.width)
+        .attr('height', d => d.height)
+        .attr('fill', d => d.color)
+        .attr('rx', 4)
+        .attr('ry', 4)
+        .style('stroke', 'rgba(255,255,255,0.3)')
+        .style('stroke-width', 1);
+      
+      // Add foreignObject for content
+      exitGroups.append('foreignObject')
+        .attr('width', d => d.width)
+        .attr('height', d => d.height)
+        .append('xhtml:div')
+        .style('width', '100%')
+        .style('height', '100%')
+        .style('position', 'relative')
+        .style('padding', '8px')
+        .style('box-sizing', 'border-box')
+        .style('overflow', 'hidden')
+        .style('pointer-events', 'none')
+        .html(d => generateNodeContent(d));
+      
+      // Animate exiting nodes
+      exitGroups.each(function(d) {
         const group = d3.select(this);
         const isZoomTarget = d.key === zoomTarget.key;
         
@@ -264,8 +301,19 @@ const TreemapD3Layer = ({
           group.transition()
             .duration(duration)
             .ease(d3.easeCubicInOut)
-            .attr('transform', `translate(0, 0)`)
-            .select('rect')
+            .attr('transform', `translate(0, 0)`);
+          
+          group.select('rect')
+            .transition()
+            .duration(duration)
+            .ease(d3.easeCubicInOut)
+            .attr('width', width)
+            .attr('height', height);
+          
+          group.select('foreignObject')
+            .transition()
+            .duration(duration)
+            .ease(d3.easeCubicInOut)
             .attr('width', width)
             .attr('height', height);
           
@@ -285,7 +333,12 @@ const TreemapD3Layer = ({
             .remove();
         }
       });
-    } else if (animationType === 'navigate-up') {
+    }
+    
+    // ----- EXIT: Removed nodes (for non-drilldown cases) -----
+    const exitSelection = groups.exit();
+    
+    if (animationType === 'navigate-up') {
       // Navigate-up: current view shrinks to center
       exitSelection.each(function(d) {
         const group = d3.select(this);
@@ -304,12 +357,15 @@ const TreemapD3Layer = ({
           .style('opacity', 0)
           .remove();
       });
-    } else {
-      // Filter: simple fade out
+    } else if (animationType !== 'drilldown') {
+      // Filter: simple fade out (skip for drilldown as we handle it separately)
       exitSelection.transition()
         .duration(duration)
         .style('opacity', 0)
         .remove();
+    } else {
+      // Drilldown: just remove without animation (exitingNodes handles it)
+      exitSelection.remove();
     }
     
     // ----- ENTER: New nodes -----
@@ -443,7 +499,7 @@ const TreemapD3Layer = ({
       }, duration);
     }
     
-  }, [layoutNodes, width, height, animationType, zoomTarget, renderDepth]);
+  }, [layoutNodes, width, height, animationType, zoomTarget, exitingNodes, renderDepth]);
   
   return (
     <svg

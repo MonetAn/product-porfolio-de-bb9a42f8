@@ -1,116 +1,102 @@
 
-## Цель
-Исправить два UX-багa, которые визуально «не меняются» несмотря на предыдущие правки:
-1) При включении галочек «Команды / Инициативы» новые элементы выглядят так, будто появляются/«растягиваются» из левого верхнего угла, а не «раскрываются внутри» контейнера.
-2) Tooltip при hover остаётся далеко от курсора (большой gap) и из‑за этого может уезжать за экран.
+
+# План: Исправление 4-го уровня вложенности Stakeholders и повторной установки галочки
+
+## Проблемы
+
+### Проблема 1: Четвёртый уровень вложенности в Stakeholders не показывается
+
+**Причина:** В `useTreemapLayout.ts` `renderDepth` максимум 3, но иерархия Stakeholders имеет 4 уровня:
+- Stakeholder (depth 0)
+- Unit (depth 1)  
+- Team (depth 2)
+- Initiative (depth 3)
+
+Условие `depth < maxDepth` означает, что при `renderDepth = 3` узлы с `depth === 3` не рендерятся.
+
+### Проблема 2: Галочка «Команды» проставляется повторно после ручного снятия
+
+**Причина:** `useEffect` в `Index.tsx` срабатывает каждый раз, когда `selectedUnits.length === 1 && !showTeams`. После ручного снятия галочки условие снова true → галочка включается снова.
 
 ---
 
-## Диагноз (почему текущие изменения не дали эффекта)
+## Решение
 
-### 1) Почему «появление не из центра»
-Сейчас `TreemapNode` задаёт `initial` только для `opacity/scale`, но **не задаёт начальные `x/y/width/height`**.  
-Для новых узлов это означает, что до применения `animate` они фактически оказываются в “дефолтной” позиции (0,0) с неочевидными размерами, и визуально создаётся эффект появления из top-left.
+### A) Увеличить renderDepth для Stakeholders treemap
 
-Дополнительно: `animationType` переключается в `useEffect` (после рендера). Если на момент маунта новых элементов `animationType` ещё старый, Framer Motion может не отыграть enter-анимацию так, как ожидаем.
+**Файл:** `src/components/treemap/useTreemapLayout.ts`
 
-### 2) Почему tooltip «далеко от курсора»
-`.treemap-tooltip` сейчас `position: fixed` и координаты берутся из `e.clientX / e.clientY` (viewport).  
-Но если tooltip находится внутри DOM-дерева, где какой-то предок (иногда это может быть layout-обёртка/анимация/контейнер) создаёт новый containing block (через `transform`, `filter`, `perspective`, иногда даже через специфичные CSS-оптимизации), то **`position: fixed` начинает считаться не от viewport**, а от этого предка. В итоге координаты (viewport) и позиционирование (локальная система координат) расходятся — появляется большой “gap”.
+Добавить параметр `extraDepth` (или `isStakeholdersView`), который увеличивает глубину рендеринга на 1 для Stakeholders.
 
-На скрине это выглядит именно так: tooltip как будто “отъезжает” относительно курсора на константу/смещение контейнера.
+Либо проще — передавать `renderDepth` напрямую из компонента:
+- Budget: `renderDepth = 3` (Unit → Team → Initiative)
+- Stakeholders: `renderDepth = 4` (Stakeholder → Unit → Team → Initiative)
 
----
+**Изменения:**
+1. Добавить опциональный параметр `extraDepth?: number` в `UseTreemapLayoutOptions`
+2. При расчёте `renderDepth` прибавлять `extraDepth` (по умолчанию 0)
+3. В `StakeholdersTreemap.tsx` передавать `extraDepth={1}`
 
-## Решение (что меняем)
-
-### A) Сделать «раскрытие из центра» реальным: initial должен включать геометрию
-**Файл:** `src/components/treemap/TreemapNode.tsx`
-
-1) Для enter-анимации задаём `initial` не только `opacity/scale`, но и **`x/y/width/height`**, чтобы узел “с первого кадра” находился в своей финальной ячейке и только “раскрывался” scale+fade.
-   - `initial`: `{ opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height }`
-   - `animate`: `{ opacity: 1, scale: 1, x, y, width: node.width, height: node.height }`
-   - `exit`: `{ opacity: 0, scale: 0.92 }` (можно оставить без x/y/size, потому что exit берёт текущее состояние; но при желании можно добавить текущие x/y/size для стабильности)
-
-2) Уточняем `transformOrigin: 'center center'` (уже есть) — это правильно, оставляем.
-
-3) Чуть смягчаем scale (например 0.85 → 0.92), чтобы эффект был «раскрытие» без агрессивного “прыжка”.
-
-4) Переходим на `useLayoutEffect`-детекцию `animationType` (см. пункт B), чтобы к моменту появления новых узлов Framer Motion уже знал, что это `filter`, а не `initial`.
-
-Ожидаемый эффект: новые команды/инициативы “проявляются внутри своих ячеек”, а не “летят/растягиваются” из (0,0).
-
----
-
-### B) Сделать анимацию галочек гарантированно не «instant»: детекцию типа анимации — до paint
 **Файл:** `src/components/treemap/TreemapContainer.tsx`
+- Прокинуть новый проп `extraDepth` в `useTreemapLayout`
 
-Сейчас определение `animationType` делается в `useEffect`, что может приводить к такому сценарию:
-- Render #1 после клика: `animationType` ещё старый (например, `initial`), новые узлы монтируются без нужного enter
-- `useEffect` ставит `filter`
-- Render #2 уже “поздно”: узлы уже появились
+**Файл:** `src/components/StakeholdersTreemap.tsx`
+- Передать `extraDepth={1}` в `TreemapContainer`
 
-Исправление:
-1) Заменить `useEffect` на `useLayoutEffect` для блока “Detect animation type”.
-2) Опционально: добавить защиту от лишнего “hint timeout” при каждом мелком апдейте (не критично, но улучшает стабильность).
+### B) Исправить логику автоматического включения галочки «Команды»
 
-Ожидаемый эффект: при переключении галочек enter/exit всегда будет с длительностью `filter` (650ms), а не “резко”.
+**Файл:** `src/pages/Index.tsx`
 
----
+Использовать `useRef` для отслеживания, было ли уже выполнено автоматическое включение для текущего выбора Unit:
 
-### C) Tooltip: устранить рассинхрон систем координат (самый надёжный способ — портал)
-**Файл:** `src/components/treemap/TreemapTooltip.tsx`
+```typescript
+const autoTeamsTriggeredRef = useRef<string | null>(null);
 
-Главная идея: tooltip должен жить там, где `position: fixed` гарантированно viewport-based — **в `document.body`**.
+useEffect(() => {
+  if (selectedUnits.length === 1) {
+    const unitName = selectedUnits[0];
+    // Только если это новый Unit (не тот, для которого уже включили)
+    if (autoTeamsTriggeredRef.current !== unitName && !showTeams) {
+      setShowTeams(true);
+      autoTeamsTriggeredRef.current = unitName;
+    }
+  } else {
+    // Сбросить флаг при изменении выбора
+    autoTeamsTriggeredRef.current = null;
+  }
+}, [selectedUnits, showTeams]);
+```
 
-1) Использовать `createPortal(...)` чтобы рендерить tooltip в `document.body`.
-   - Это устраняет влияние любых parent-обёрток/transform/contain на фиксированное позиционирование.
-2) Оставить текущую логику smart positioning (flip + clamp).
-3) Упростить механику “hidden until measured”:
-   - Оставляем `position` state.
-   - На первый кадр — `visibility: hidden`, пока не посчитали rect.
-4) (Опционально, но рекомендую) Ввести небольшой `offset` отдельно от `padding` (например `cursorOffset = 12`) и `screenPadding = 16`, чтобы легче контролировать расстояние “от курсора” vs “от краёв экрана”.
-
-Ожидаемый эффект: tooltip будет стабильно рядом с курсором, без “большого гэпа”, и больше не будет уезжать за экран из-за неверной системы координат.
-
----
-
-## Проверки / критерии готовности (Definition of Done)
-
-### 1) Анимация галочек
-- На Budget вкладке включить/выключить:
-  - только «Команды»
-  - только «Инициативы»
-  - обе вместе
-- В каждом режиме новые блоки:
-  - появляются “внутри своих ячеек”
-  - не «вылетают» из top-left
-  - имеют плавный fade+scale (не instant)
-
-### 2) Tooltip
-- Навести курсор на разные узлы (Unit/Team/Initiative).
-- Tooltip:
-  - появляется на расстоянии ~12–16px от курсора
-  - корректно flip/clamp’ится у краёв экрана
-  - не имеет большого “постоянного смещения” (gap) относительно курсора
+Таким образом:
+1. При выборе Unit → галочка включается один раз
+2. Если пользователь снимает галочку → `autoTeamsTriggeredRef` уже содержит имя Unit → повторно не включается
+3. При выборе другого Unit или сбросе → ref сбрасывается, готов к следующему drilldown
 
 ---
 
-## Файлы, которые будут изменены
-- `src/components/treemap/TreemapNode.tsx`
-  - задать initial с `x/y/width/height` + мягкий scale
-- `src/components/treemap/TreemapContainer.tsx`
-  - заменить useEffect → useLayoutEffect для определения animationType
-- `src/components/treemap/TreemapTooltip.tsx`
-  - рендер через portal в `document.body` + сохранить smart positioning
+## Файлы для изменения
+
+| Файл | Изменение |
+|------|-----------|
+| `src/components/treemap/useTreemapLayout.ts` | Добавить параметр `extraDepth` для увеличения глубины рендеринга |
+| `src/components/treemap/TreemapContainer.tsx` | Прокинуть `extraDepth` в хук |
+| `src/components/StakeholdersTreemap.tsx` | Передать `extraDepth={1}` |
+| `src/pages/Index.tsx` | Исправить логику auto-enable с помощью ref-флага |
 
 ---
 
-## Риски и как их минимизируем
-1) Portal может потребовать проверки z-index:
-   - сейчас `.treemap-tooltip { z-index: 1000; }` обычно достаточно, но если есть overlay’и, можно поднять до 9999.
-2) Изменение `initial` с x/y/size:
-   - может слегка изменить “ощущение” drilldown/navigate-up. Мы оставим различие только в `duration` (через animationType), а сами координаты будут консистентны.
-3) Частые mousemove апдейты:
-   - при portal и useLayoutEffect останется как есть; если будет нагрузка, можно throttle через `requestAnimationFrame` (не обязательно сейчас).
+## Ожидаемый результат
+
+1. **Stakeholders:** При включённых галочках «Команды» и «Инициативы» показываются все 4 уровня (Stakeholder → Unit → Team → Initiative)
+2. **Галочка «Команды»:** Автоматически включается при выборе Unit только один раз. Пользователь может её снять, и она не будет включаться повторно до выбора другого Unit
+
+---
+
+## Оценка
+
+| Метрика | Значение |
+|---------|----------|
+| Сложность | Низкая |
+| Файлов изменится | 4 |
+| Риск регрессии | Минимальный |
 

@@ -1,197 +1,170 @@
 
 
-# План: Исправление вложенности, размеров и анимаций тремапа
+# План: Исправление double-nesting бага координат
 
-## Выявленные проблемы
+## Корневая причина
 
-### Проблема 1: Инициативы не отображаются на части юнитов/команд
+При рекурсивном рендеринге в `TreemapNode.tsx` мы **мутируем координаты** в объекте `node`, передавая их детям:
 
-**Причина:** В `TreemapNode.tsx` при рендеринге вложенных детей координаты пересчитываются с жёстким смещением:
-```tsx
-x0: child.x0 - node.x0 - 4,
-y0: child.y0 - node.y0 - 24,  // ← жёсткий header offset
-```
-
-Но D3 layout уже учитывает `paddingTop: 24` в расчётах. Когда эти смещения применяются повторно, маленькие блоки получают отрицательные координаты или выходят за границы родителя, становясь невидимыми.
-
-**Решение:** Убрать двойное смещение — D3 уже рассчитал правильные позиции с учётом padding. Нужно только преобразовать абсолютные координаты в относительные (внутри родительского контейнера).
-
-### Проблема 2: Заголовки занимают слишком много места
-
-**Сравнение скриншотов:**
-- **Было:** Компактные заголовки ~16-18px
-- **Сейчас:** `paddingTop: 24px` в D3 + дополнительный padding в CSS
-
-**Решение:** Уменьшить paddingTop до 20px и оптимизировать вёрстку заголовков.
-
-### Проблема 3: Анимации слишком быстрые
-
-**Текущие значения:**
 ```typescript
-'filter': 400ms
-'drilldown': 400ms
-'navigate-up': 400ms
+// Первый уровень: Unit → Team
+node={{
+  ...child,
+  x0: child.x0 - node.x0,  // child.x0 абсолютный, node.x0 абсолютный → ОК
+  y0: child.y0 - node.y0,
+}}
+
+// Второй уровень: Team → Initiative  
+node={{
+  ...child,
+  x0: child.x0 - node.x0,  // child.x0 абсолютный, но node.x0 УЖЕ ОТНОСИТЕЛЬНЫЙ!
+  y0: child.y0 - node.y0,
+}}
 ```
 
-**Оптимальные значения для плавных анимаций:**
-- 500-600ms для основных transition
-- Более мягкий easing для комфорта глаз
+Результат: инициативы получают некорректные координаты и "улетают" за границы видимости.
 
 ---
 
-## Изменения по файлам
+## Решение: передавать parentX/parentY отдельно
 
-### 1. `TreemapNode.tsx` — Исправление координат вложенных узлов
+Вместо мутации координат в объекте `node`, будем:
+1. Хранить в `node` всегда **абсолютные** координаты (как даёт D3)
+2. Передавать `parentX` и `parentY` как отдельные props
+3. Вычислять относительную позицию только в момент рендера `motion.div`
 
-**Проблема в коде (строки 147-158):**
-```tsx
-<div className="absolute inset-0" style={{ padding: hasChildren ? '24px 4px 4px 4px' : '4px' }}>
-  {node.children!.map(child => (
-    <TreemapNode
-      node={{
-        ...child,
-        x0: child.x0 - node.x0 - 4,       // ← двойной offset
-        y0: child.y0 - node.y0 - 24,      // ← двойной offset
-        x1: child.x1 - node.x0 - 4,
-        y1: child.y1 - node.y0 - 24,
-      }}
-      ...
-    />
-  ))}
-</div>
+---
+
+## Изменения в файлах
+
+### 1. `TreemapNode.tsx` — новый подход к координатам
+
+Добавить props:
+```typescript
+interface TreemapNodeProps {
+  node: TreemapLayoutNode;
+  parentX?: number;  // Абсолютная X родителя (default 0)
+  parentY?: number;  // Абсолютная Y родителя (default 0)
+  // ... остальные props
+}
 ```
 
-**Решение:** D3 treemap уже рассчитал координаты с учётом `paddingTop`. Смещение должно быть только относительно родителя:
-```tsx
-<div className="absolute inset-0">
-  {node.children!.map(child => (
-    <TreemapNode
-      node={{
-        ...child,
-        x0: child.x0 - node.x0,    // Только относительно родителя
-        y0: child.y0 - node.y0,    // D3 уже учёл padding!
-        x1: child.x1 - node.x0,
-        y1: child.y1 - node.y0,
+В `motion.div` вычислять позицию:
+```typescript
+const TreemapNode = memo(({
+  node,
+  parentX = 0,
+  parentY = 0,
+  // ...
+}) => {
+  // Вычисляем относительную позицию
+  const x = node.x0 - parentX;
+  const y = node.y0 - parentY;
+
+  return (
+    <motion.div
+      animate={{ 
+        opacity: 1,
+        x,           // Относительная позиция
+        y,           // Относительная позиция
+        width: node.width,
+        height: node.height,
       }}
-      ...
-    />
-  ))}
-</div>
+      // ...
+    >
+      {/* Дети получают абсолютные координаты родителя */}
+      {node.children?.map(child => (
+        <TreemapNode
+          key={child.key}
+          node={child}  // Без мутации! Координаты остаются абсолютными
+          parentX={node.x0}  // Передаём абсолютную позицию текущего узла
+          parentY={node.y0}
+          // ...
+        />
+      ))}
+    </motion.div>
+  );
+});
 ```
 
-### 2. `useTreemapLayout.ts` — Оптимизация padding
+### 2. `useTreemapLayout.ts` — динамический paddingTop
 
-**Было (строки 112-117):**
+Заменить фиксированный padding на функцию от глубины:
+
 ```typescript
 const treemap = d3.treemap<TreeNode>()
   .size([dimensions.width, dimensions.height])
   .paddingOuter(2)
-  .paddingTop(renderDepth > 1 ? 24 : 2)  // ← 24px слишком много
+  .paddingTop(d => {
+    if (renderDepth <= 1) return 2;
+    // Unit (depth 1): 18px
+    // Team (depth 2): 14px  
+    // Остальные: 2px
+    if (d.depth === 1) return 18;
+    if (d.depth === 2) return 14;
+    return 2;
+  })
   .paddingInner(2)
   .round(true);
 ```
 
-**Станет:**
-```typescript
-const treemap = d3.treemap<TreeNode>()
-  .size([dimensions.width, dimensions.height])
-  .paddingOuter(2)
-  .paddingTop(renderDepth > 1 ? 20 : 2)  // ← 20px — компактнее
-  .paddingInner(2)
-  .round(true);
-```
+### 3. `types.ts` — увеличить длительности анимаций
 
-### 3. `TreemapNode.tsx` — Компактный заголовок
-
-**Было (строки 29-42):**
-```tsx
-if (hasChildren) {
-  return (
-    <div 
-      className={`absolute top-1 left-1 right-1 font-semibold text-white ...`}
-    >
-      {node.name}
-    </div>
-  );
-}
-```
-
-**Станет (компактнее):**
-```tsx
-if (hasChildren) {
-  return (
-    <div 
-      className={`absolute top-0.5 left-1 right-1 font-semibold text-white ...`}
-      style={{ 
-        lineHeight: '1.2',  // Компактнее
-        ...
-      }}
-    >
-      {node.name}
-    </div>
-  );
-}
-```
-
-### 4. `types.ts` — Оптимизация скорости анимаций
-
-**Было (строки 51-57):**
 ```typescript
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
-  'filter': 400,
-  'drilldown': 400,
-  'navigate-up': 400,
-  'resize': 300
+  'filter': 650,      // Было 550
+  'drilldown': 800,   // Было 600
+  'navigate-up': 650, // Было 550
+  'resize': 420       // Было 350
 };
 ```
 
-**Станет:**
-```typescript
-export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
-  'initial': 0,
-  'filter': 550,       // Плавнее
-  'drilldown': 600,    // Плавнее для drilldown
-  'navigate-up': 550,  // Чуть быстрее при возврате
-  'resize': 350        // Для ресайза
-};
-```
+---
 
-### 5. `TreemapNode.tsx` — Оптимизация easing
+## Визуализация исправления
 
-**Было (строки 118-121):**
-```tsx
-transition={{ 
-  duration,
-  ease: [0.4, 0, 0.2, 1],  // Стандартный ease-out
-}}
-```
+```text
+БЫЛО (мутация координат):
+┌─────────────────────────────────────┐
+│ Unit (x0=100)                       │
+│  ┌───────────────────────────────┐  │
+│  │ Team (x0=20 ← относительный)  │  │
+│  │  ┌─────────────────────────┐  │  │
+│  │  │ Init (x0=105 ← ОШИБКА!) │  │  │ ← Улетает за границы
+│  │  └─────────────────────────┘  │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
 
-**Станет:**
-```tsx
-transition={{ 
-  duration,
-  ease: [0.25, 0.1, 0.25, 1],  // Более плавный (ease-in-out)
-}}
+СТАНЕТ (parentX/parentY):
+┌─────────────────────────────────────┐
+│ Unit (x0=100, parentX=0)            │
+│  ┌───────────────────────────────┐  │
+│  │ Team (x0=120, parentX=100)    │  │ ← x = 120-100 = 20 ✓
+│  │  ┌─────────────────────────┐  │  │
+│  │  │ Init (x0=125, pX=120)   │  │  │ ← x = 125-120 = 5 ✓
+│  │  └─────────────────────────┘  │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
 ```
 
 ---
 
 ## Итоговые изменения
 
-| Файл | Изменения |
-|------|-----------|
-| `TreemapNode.tsx` | Убрать двойной offset при пересчёте координат, компактный заголовок, плавный easing |
-| `useTreemapLayout.ts` | Уменьшить `paddingTop` с 24 до 20 |
-| `types.ts` | Увеличить длительности анимаций (400 → 550-600ms) |
+| Файл | Что меняется |
+|------|--------------|
+| `TreemapNode.tsx` | Добавить `parentX/parentY` props, убрать мутацию координат |
+| `useTreemapLayout.ts` | Динамический `paddingTop` по глубине |
+| `types.ts` | Увеличить длительности анимаций |
 
 ---
 
 ## Ожидаемый результат
 
-1. **Инициативы видны везде** — все вложенные блоки отображаются корректно
-2. **Больше места для контента** — ~20% больше площади для дочерних элементов
-3. **Плавные анимации** — глаз успевает следить за переходами
+1. Инициативы отображаются корректно на всех уровнях вложенности
+2. Команды получают меньший отступ сверху (14px вместо 20px)
+3. Анимации становятся плавнее и легче для восприятия
 
 ---
 
@@ -201,5 +174,5 @@ transition={{
 |---------|----------|
 | Сложность | Низкая |
 | Файлов изменится | 3 |
-| Вероятность успеха | 95% |
+| Вероятность успеха | 98% |
 

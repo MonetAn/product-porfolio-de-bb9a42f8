@@ -65,6 +65,9 @@ const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   
+  // Track if auto-Teams toggle was already triggered for current unit selection
+  const autoTeamsTriggeredRef = useRef<string | null>(null);
+  
   // Track if quarters were already initialized
   const quartersInitializedRef = useRef(false);
 
@@ -125,12 +128,20 @@ const Index = () => {
     rebuildTree();
   }, [rebuildTree]);
 
-  // Auto-enable Teams toggle when single Unit is selected (fixes sync bug)
+  // Auto-enable Teams toggle when single Unit is selected (only once per unit)
   useEffect(() => {
-    if (selectedUnits.length === 1 && !showTeams) {
-      setShowTeams(true);
+    if (selectedUnits.length === 1) {
+      const unitName = selectedUnits[0];
+      // Only trigger if this is a new unit (not one we've already triggered for)
+      if (autoTeamsTriggeredRef.current !== unitName && !showTeams) {
+        setShowTeams(true);
+        autoTeamsTriggeredRef.current = unitName;
+      }
+    } else {
+      // Reset flag when selection changes (multiple units or none)
+      autoTeamsTriggeredRef.current = null;
     }
-  }, [selectedUnits.length, showTeams]);
+  }, [selectedUnits, showTeams]);
   // Process CSV file - shared logic for upload and drag-drop (fallback mode)
   const processCSVFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {

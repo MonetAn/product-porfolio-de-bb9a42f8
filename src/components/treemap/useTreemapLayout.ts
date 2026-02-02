@@ -112,7 +112,7 @@ export function useTreemapLayout({
     const treemap = d3.treemap<TreeNode>()
       .size([dimensions.width, dimensions.height])
       .paddingOuter(2)
-      .paddingTop(renderDepth > 1 ? 24 : 2)
+      .paddingTop(renderDepth > 1 ? 20 : 2)
       .paddingInner(2)
       .round(true);
     

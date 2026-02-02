@@ -29,12 +29,13 @@ const TreemapNodeContent = memo(({ node, showValue }: { node: TreemapLayoutNode;
   if (hasChildren) {
     return (
       <div 
-        className={`absolute top-1 left-1 right-1 font-semibold text-white ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
+        className={`absolute top-0.5 left-1 right-1 font-semibold text-white ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
         style={{ 
           textShadow: '0 1px 2px rgba(0,0,0,0.3)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
+          lineHeight: '1.2',
         }}
       >
         {node.name}
@@ -117,7 +118,7 @@ const TreemapNode = memo(({
       exit={{ opacity: 0 }}
       transition={{ 
         duration,
-        ease: [0.4, 0, 0.2, 1],
+        ease: [0.25, 0.1, 0.25, 1],
       }}
       className={classNames}
       style={{
@@ -144,18 +145,18 @@ const TreemapNode = memo(({
       
       {/* Nested children */}
       {shouldRenderChildren && showChildren && (
-        <div className="absolute inset-0" style={{ padding: hasChildren ? '24px 4px 4px 4px' : '4px' }}>
+        <div className="absolute inset-0">
           <AnimatePresence mode="sync">
             {node.children!.map(child => (
               <TreemapNode
                 key={child.key}
                 node={{
                   ...child,
-                  // Adjust positions relative to parent (with header offset for parent nodes)
-                  x0: child.x0 - node.x0 - 4,
-                  y0: child.y0 - node.y0 - 24,
-                  x1: child.x1 - node.x0 - 4,
-                  y1: child.y1 - node.y0 - 24,
+                  // Adjust positions relative to parent - D3 already calculated with padding
+                  x0: child.x0 - node.x0,
+                  y0: child.y0 - node.y0,
+                  x1: child.x1 - node.x0,
+                  y1: child.y1 - node.y0,
                 }}
                 animationType={animationType}
                 onClick={onClick}

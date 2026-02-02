@@ -50,10 +50,10 @@ export type AnimationType = 'filter' | 'drilldown' | 'navigate-up' | 'resize' | 
 // Animation durations in ms
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
-  'filter': 400,
-  'drilldown': 400,
-  'navigate-up': 400,
-  'resize': 300
+  'filter': 550,
+  'drilldown': 600,
+  'navigate-up': 550,
+  'resize': 350
 };
 
 // Container dimensions

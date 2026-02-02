@@ -1,75 +1,88 @@
 
-# План: Исправление архитектуры тултипа — mouseLeave на каждой ноде
+# План: Исправление приоритета дочерних элементов при быстром наведении
 
-## Проблема
+## Диагноз проблемы
 
-Текущая архитектура полагается только на `mouseEnter` для смены тултипа. `mouseLeave` обрабатывается только на уровне контейнера, поэтому при переходе между элементами старый тултип "прилипает".
+Текущая логика корректна **теоретически**, но на практике возникает race condition из-за особенностей браузера:
 
-**Симптом**: Навёлся на элемент A → увидел тултип A → перешёл на элемент B → тултип A всё ещё показывается (иногда с обновлённой позицией).
+### Сценарий проблемы
 
-## Решение
+```text
+Курсор быстро входит в область Child (внутри Parent)
 
-### 1. Добавить `onMouseLeave` на каждую ноду
+Ожидание:
+1. mouseEnter(Parent) → depth=0
+2. mouseEnter(Child) → depth=1 > 0 → Child побеждает ✓
 
-Когда курсор покидает конкретную ноду, нужно:
-- Проверить, что эта нода действительно была "активной" (`hoveredNodeRef.current === node`)
-- Если да — сбросить тултип и refs
+Реальность (при быстром движении):
+1. mouseEnter(Parent) → depth=0, setTimeout запланирован
+2. mouseEnter(Child) → НЕ СРАБАТЫВАЕТ (курсор "перепрыгнул" или событие не успело)
+3. setTimeout → показывает Parent ✗
+```
+
+### Корневая причина
+
+Браузер может **не генерировать mouseEnter** на дочернем элементе, если:
+- Курсор движется слишком быстро
+- Между событиями прошло слишком мало времени
+- Дочерний элемент слишком маленький
+
+### Дополнительная проблема: Event Bubbling
+
+События `mouseEnter` **не bubble** (это non-bubbling event), но `mouseover` — bubble. Возможно, нужно использовать `mouseover` + `target` для точного определения.
+
+---
+
+## Решение: Использовать `mouseover` с проверкой `e.target`
+
+`mouseover` bubbles от самого глубокого элемента вверх, что гарантирует получение события от правильного элемента.
+
+### A) Изменить TreemapNode — использовать onMouseOver вместо onMouseEnter
 
 ```typescript
-// TreemapNode.tsx — добавить onMouseLeave в пропсы
-onMouseLeave={(e) => {
-  e.stopPropagation();
-  onMouseLeave?.(node); // Передаём ноду для проверки
+// TreemapNode.tsx
+onMouseOver={(e) => {
+  e.stopPropagation(); // Предотвращаем bubbling к родителям
+  onMouseEnter?.(e, node);
 }}
 ```
 
-### 2. Изменить сигнатуру `onMouseLeave`
+### B) Убрать проверку глубины — не нужна с stopPropagation
 
-Текущая сигнатура: `() => void`
-Новая сигнатура: `(node?: TreemapLayoutNode) => void`
-
-Если вызывается с нодой — это leave конкретного элемента.
-Если без ноды — это leave всего контейнера.
-
-### 3. Логика в `handleMouseLeave`
+Если `stopPropagation()` корректно останавливает bubbling, проверка глубины становится избыточной. Самый глубокий элемент получает событие первым и останавливает его.
 
 ```typescript
-const handleMouseLeave = useCallback((node?: TreemapLayoutNode) => {
-  // Cancel pending updates
+// TreemapContainer.tsx - упрощённый handleMouseEnter
+const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
+  hoveredNodeRef.current = node;
+  hoveredDepthRef.current = node.depth;
+
+  // Скрыть старый тултип мгновенно
+  setTooltipData(prev => (prev && prev.node.key !== node.key ? null : prev));
+  
+  // Отменить предыдущий timeout
   if (tooltipTimeoutRef.current !== null) {
     clearTimeout(tooltipTimeoutRef.current);
-    tooltipTimeoutRef.current = null;
   }
   
-  // If leaving a specific node, only clear if it's the active one
-  if (node) {
-    if (hoveredNodeRef.current?.key === node.key) {
-      hoveredNodeRef.current = null;
-      hoveredDepthRef.current = -1;
-      setTooltipData(null);
+  // Показать новый тултип с небольшой задержкой
+  tooltipTimeoutRef.current = window.setTimeout(() => {
+    if (hoveredNodeRef.current === node) {
+      setTooltipData({
+        node,
+        position: { x: e.clientX, y: e.clientY },
+      });
     }
-    // Otherwise ignore — cursor moved to a deeper child
-    return;
-  }
-  
-  // Leaving container — always clear
-  hoveredNodeRef.current = null;
-  hoveredDepthRef.current = -1;
-  setTooltipData(null);
+    tooltipTimeoutRef.current = null;
+  }, 5);
 }, []);
 ```
 
-### 4. Прокинуть `onMouseLeave` в дочерние ноды
+### C) Аналогично для onMouseOut вместо onMouseLeave
 
-```typescript
-// TreemapNode.tsx — в рекурсивном рендере
-{node.children!.map(child => (
-  <TreemapNode
-    ...
-    onMouseLeave={onMouseLeave}  // ← Добавить!
-  />
-))}
-```
+`mouseout` bubbles, `mouseleave` — нет. Но здесь сложнее, т.к. `mouseout` срабатывает при переходе на дочерний элемент.
+
+Лучше оставить `onMouseLeave` на ноде как есть — он уже работает корректно.
 
 ---
 
@@ -77,38 +90,92 @@ const handleMouseLeave = useCallback((node?: TreemapLayoutNode) => {
 
 | Файл | Изменение |
 |------|-----------|
-| `TreemapContainer.tsx` | Изменить `handleMouseLeave` для приёма опциональной ноды |
-| `TreemapNode.tsx` | 1) Добавить `onMouseLeave` в рекурсивный вызов детей<br>2) Изменить обработчик `onMouseLeave` на ноде для передачи `node` |
-| `types.ts` (опционально) | Обновить тип callback если используется |
+| `TreemapNode.tsx` | Заменить `onMouseEnter` на `onMouseOver` с `stopPropagation()` |
+| `TreemapContainer.tsx` | Убрать проверку глубины (станет не нужна) |
 
 ---
 
-## Итоговый flow событий
+## Почему `mouseover` + `stopPropagation` лучше
+
+| Аспект | `mouseEnter` | `mouseover` + stopPropagation |
+|--------|--------------|-------------------------------|
+| Bubbling | Не bubbles | Bubbles (но мы останавливаем) |
+| Порядок | Зависит от DOM | Сначала самый глубокий элемент |
+| Надёжность | Может "пропустить" элементы | Гарантированно срабатывает |
+| Быстрое движение | Проблемы | Надёжно |
+
+---
+
+## Альтернативное решение: Pointer Capture
+
+Более "тяжёлое" решение — использовать `setPointerCapture` для "захвата" курсора на конкретном элементе. Но это избыточно для нашего случая.
+
+---
+
+## Итоговый flow
 
 ```text
-Сценарий: Курсор переходит с Node A на Node B
+Сценарий: Курсор быстро входит в область Child
 
-1. mouseLeave(A) → проверка: hoveredNodeRef === A? 
-   - Да → сбросить тултип, refs
-   
-2. mouseEnter(B) → обновить refs, запланировать новый тултип
+1. mouseover срабатывает на Child (самый глубокий)
+2. stopPropagation() — событие не доходит до Parent
+3. handleMouseEnter получает Child
+4. setTimeout → показывает тултип Child ✓
 
-Результат: Тултип A исчезает мгновенно, тултип B появляется через 5ms ✓
+Результат: Всегда показывается самый глубокий элемент
 ```
 
 ---
 
-## Почему это сработает
+## Техническая реализация
 
-1. **Каждая нода отвечает за свой leave** — не полагаемся на порядок enter-событий
-2. **Проверка `hoveredNodeRef.current?.key === node.key`** — предотвращает ложные срабатывания при bubbling
-3. **`e.stopPropagation()`** — предотвращает всплытие leave-события к родителям
+### TreemapNode.tsx
 
----
+```typescript
+// Заменить onMouseEnter на onMouseOver
+<motion.div
+  ...
+  onMouseOver={(e) => {
+    e.stopPropagation();
+    onMouseEnter?.(e, node);
+  }}
+  onMouseMove={onMouseMove}
+  onMouseLeave={(e) => {
+    e.stopPropagation();
+    onMouseLeave?.(node);
+  }}
+>
+```
 
-## Альтернатива: CSS pointer-events
+### TreemapContainer.tsx
 
-Можно также добавить небольшой `gap` между нодами, чтобы курсор технически "выходил" на пустое пространство между ними. Но это изменит визуал treemap.
+```typescript
+// Убрать проверку глубины — теперь не нужна
+const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
+  // Обновляем refs синхронно
+  hoveredNodeRef.current = node;
+  hoveredDepthRef.current = node.depth;
+
+  // Скрыть старый тултип мгновенно если это другая нода
+  setTooltipData(prev => (prev && prev.node.key !== node.key ? null : prev));
+  
+  // Отменить предыдущий запланированный апдейт
+  if (tooltipTimeoutRef.current !== null) {
+    clearTimeout(tooltipTimeoutRef.current);
+  }
+  
+  // Показать новый тултип через 5ms
+  tooltipTimeoutRef.current = window.setTimeout(() => {
+    if (hoveredNodeRef.current === node) {
+      setTooltipData({
+        node,
+        position: { x: e.clientX, y: e.clientY },
+      });
+    }
+    tooltipTimeoutRef.current = null;
+  }, 5);
+}, []);
+```
 
 ---
 
@@ -118,5 +185,5 @@ const handleMouseLeave = useCallback((node?: TreemapLayoutNode) => {
 |---------|----------|
 | Сложность | Низкая |
 | Файлов изменится | 2 |
-| Риск регрессии | Низкий |
-| Надёжность | Высокая — детерминированная логика |
+| Риск регрессии | Минимальный |
+| Надёжность | Высокая — использует гарантированный порядок событий браузера |

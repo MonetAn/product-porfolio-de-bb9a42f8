@@ -1,5 +1,5 @@
 // D3-based treemap rendering layer with native D3 transitions
-// Replaces Framer Motion for full control over enter/update/exit animations
+// Uses explicit SVG layers for proper stacking order during drilldown
 
 import { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
@@ -12,7 +12,7 @@ interface TreemapD3LayerProps {
   height: number;
   animationType: AnimationType;
   zoomTarget: ZoomTargetInfo | null;
-  exitingNodes?: TreemapLayoutNode[]; // NEW: Pre-captured exiting nodes for drilldown
+  exitingNodes?: TreemapLayoutNode[]; // Pre-captured exiting nodes for drilldown
   renderDepth: number;
   onNodeClick: (node: TreemapLayoutNode) => void;
   onNodeMouseEnter: (e: MouseEvent, node: TreemapLayoutNode) => void;
@@ -197,6 +197,34 @@ function flattenNodes(nodes: TreemapLayoutNode[], renderDepth: number): TreemapL
   return result;
 }
 
+// Helper to create node group with rect and foreignObject
+function createNodeGroup(
+  selection: d3.Selection<SVGGElement, TreemapLayoutNode, any, unknown>,
+  generateContent: (d: TreemapLayoutNode) => string
+) {
+  selection.append('rect')
+    .attr('width', d => d.width)
+    .attr('height', d => d.height)
+    .attr('fill', d => d.color)
+    .attr('rx', 4)
+    .attr('ry', 4)
+    .style('stroke', 'rgba(255,255,255,0.3)')
+    .style('stroke-width', 1);
+  
+  selection.append('foreignObject')
+    .attr('width', d => d.width)
+    .attr('height', d => d.height)
+    .append('xhtml:div')
+    .style('width', '100%')
+    .style('height', '100%')
+    .style('position', 'relative')
+    .style('padding', '8px')
+    .style('box-sizing', 'border-box')
+    .style('overflow', 'hidden')
+    .style('pointer-events', 'none')
+    .html(d => generateContent(d));
+}
+
 const TreemapD3Layer = ({
   layoutNodes,
   width,
@@ -242,54 +270,50 @@ const TreemapD3Layer = ({
     
     // Flatten nodes for flat rendering approach
     const flatNodes = flattenNodes(layoutNodes, renderDepth);
-    const prevFlatNodes = prevNodesRef.current;
     
-    // Create lookup maps
-    const prevNodesMap = new Map(prevFlatNodes.map(n => [n.key, n]));
-    const currentNodesMap = new Map(flatNodes.map(n => [n.key, n]));
+    // CRITICAL: Ensure proper layer structure exists
+    // Order matters! enter-layer FIRST (bottom), exit-layer LAST (top)
+    let enterLayer = svg.select<SVGGElement>('g.enter-layer');
+    if (enterLayer.empty()) {
+      enterLayer = svg.append('g').attr('class', 'enter-layer');
+    }
     
-    // Data join with key function
-    const groups = svg.selectAll<SVGGElement, TreemapLayoutNode>('g.treemap-node')
-      .data(flatNodes, d => d.key);
+    let exitLayer = svg.select<SVGGElement>('g.exit-layer');
+    if (exitLayer.empty()) {
+      exitLayer = svg.append('g').attr('class', 'exit-layer');
+    }
+    
+    // Ensure exit-layer is always on top (re-append if needed)
+    exitLayer.raise();
     
     // ----- DRILLDOWN: Use pre-captured exiting nodes -----
     if (animationType === 'drilldown' && zoomTarget && exitingNodes.length > 0) {
       console.log('[D3] Drilldown with exitingNodes:', exitingNodes.length, 'zoomTarget:', zoomTarget.name);
+      console.log('[D3] exitingNodes names:', exitingNodes.map(n => n.name).join(', '));
       
-      // Remove any existing exiting nodes first
-      svg.selectAll('g.exiting-node').remove();
+      // Clear previous exit layer content
+      exitLayer.selectAll('*').remove();
       
-      // Create temporary groups for exiting nodes
-      const exitGroups = svg.selectAll<SVGGElement, TreemapLayoutNode>('g.exiting-node')
-        .data(exitingNodes, d => d.key)
+      // CRITICAL: Sort exiting nodes so target is rendered FIRST (bottom)
+      // and neighbors are rendered LAST (on top, visible during push)
+      const sortedExitNodes = [...exitingNodes].sort((a, b) => {
+        const aIsTarget = a.key === zoomTarget.key;
+        const bIsTarget = b.key === zoomTarget.key;
+        if (aIsTarget) return -1; // target goes first (rendered at bottom)
+        if (bIsTarget) return 1;
+        return 0;
+      });
+      
+      // Create groups for exiting nodes in exit-layer
+      const exitGroups = exitLayer.selectAll<SVGGElement, TreemapLayoutNode>('g.exiting-node')
+        .data(sortedExitNodes, d => d.key)
         .enter()
         .append('g')
-        .attr('class', 'exiting-node')
+        .attr('class', d => `exiting-node ${d.key === zoomTarget.key ? 'exit-target' : 'exit-neighbor'}`)
         .attr('transform', d => `translate(${d.x0}, ${d.y0})`);
       
-      // Add rect to exiting nodes
-      exitGroups.append('rect')
-        .attr('width', d => d.width)
-        .attr('height', d => d.height)
-        .attr('fill', d => d.color)
-        .attr('rx', 4)
-        .attr('ry', 4)
-        .style('stroke', 'rgba(255,255,255,0.3)')
-        .style('stroke-width', 1);
-      
-      // Add foreignObject for content
-      exitGroups.append('foreignObject')
-        .attr('width', d => d.width)
-        .attr('height', d => d.height)
-        .append('xhtml:div')
-        .style('width', '100%')
-        .style('height', '100%')
-        .style('position', 'relative')
-        .style('padding', '8px')
-        .style('box-sizing', 'border-box')
-        .style('overflow', 'hidden')
-        .style('pointer-events', 'none')
-        .html(d => generateNodeContent(d));
+      // Add rect and content
+      createNodeGroup(exitGroups, generateNodeContent);
       
       // Animate exiting nodes
       exitGroups.each(function(d) {
@@ -297,11 +321,14 @@ const TreemapD3Layer = ({
         const isZoomTarget = d.key === zoomTarget.key;
         
         if (isZoomTarget) {
-          // Zoom target expands to fullscreen then fades
+          // Target: start semi-transparent so neighbors are visible, then expand
+          group.style('opacity', 0.5); // DIAGNOSTIC: reduced opacity to see neighbors
+          
           group.transition()
             .duration(duration)
             .ease(d3.easeCubicInOut)
-            .attr('transform', `translate(0, 0)`);
+            .attr('transform', `translate(0, 0)`)
+            .style('opacity', 0.7); // Keep semi-transparent during expansion
           
           group.select('rect')
             .transition()
@@ -317,14 +344,16 @@ const TreemapD3Layer = ({
             .attr('width', width)
             .attr('height', height);
           
+          // Fade out completely at the end
           group.transition()
-            .delay(duration * 0.8)
-            .duration(duration * 0.2)
+            .delay(duration * 0.9)
+            .duration(duration * 0.1)
             .style('opacity', 0)
             .remove();
         } else {
-          // Neighbors: push off-screen
+          // Neighbors: push off-screen (these are rendered ON TOP of target)
           const pushPos = calculatePushPosition(d, zoomTarget, width, height);
+          console.log('[D3] Neighbor', d.name, 'pushing to:', pushPos.x.toFixed(0), pushPos.y.toFixed(0));
           
           group.transition()
             .duration(duration)
@@ -333,7 +362,23 @@ const TreemapD3Layer = ({
             .remove();
         }
       });
+      
+      // CRITICAL: Hide enter-layer during drilldown, then fade in
+      enterLayer.style('opacity', 0);
+      enterLayer.transition()
+        .delay(duration * 0.7) // Wait for most of the exit animation
+        .duration(duration * 0.3)
+        .style('opacity', 1);
+    } else {
+      // Non-drilldown: ensure enter-layer is visible
+      enterLayer.style('opacity', 1);
+      // Clear exit layer
+      exitLayer.selectAll('*').remove();
     }
+    
+    // Data join for regular treemap nodes (in enter-layer)
+    const groups = enterLayer.selectAll<SVGGElement, TreemapLayoutNode>('g.treemap-node')
+      .data(flatNodes, d => d.key);
     
     // ----- EXIT: Removed nodes (for non-drilldown cases) -----
     const exitSelection = groups.exit();
@@ -358,13 +403,13 @@ const TreemapD3Layer = ({
           .remove();
       });
     } else if (animationType !== 'drilldown') {
-      // Filter: simple fade out (skip for drilldown as we handle it separately)
+      // Filter: simple fade out
       exitSelection.transition()
         .duration(duration)
         .style('opacity', 0)
         .remove();
     } else {
-      // Drilldown: just remove without animation (exitingNodes handles it)
+      // Drilldown: just remove (exitingNodes in exit-layer handles animation)
       exitSelection.remove();
     }
     
@@ -383,7 +428,7 @@ const TreemapD3Layer = ({
         const enterPos = calculateEnterPosition(d, width, height);
         group.attr('transform', `translate(${enterPos.x}, ${enterPos.y})`);
       } else if (animationType === 'drilldown') {
-        // New nodes appear at final position (no fade for drilldown)
+        // New nodes start at final position (layer hidden, will fade in)
         group.attr('transform', `translate(${d.x0}, ${d.y0})`);
       } else if (animationType === 'initial') {
         // No animation
@@ -396,29 +441,8 @@ const TreemapD3Layer = ({
       }
     });
     
-    // Add rect background
-    enterSelection.append('rect')
-      .attr('width', d => d.width)
-      .attr('height', d => d.height)
-      .attr('fill', d => d.color)
-      .attr('rx', 4)
-      .attr('ry', 4)
-      .style('stroke', 'rgba(255,255,255,0.3)')
-      .style('stroke-width', 1);
-    
-    // Add foreignObject for HTML content
-    enterSelection.append('foreignObject')
-      .attr('width', d => d.width)
-      .attr('height', d => d.height)
-      .append('xhtml:div')
-      .style('width', '100%')
-      .style('height', '100%')
-      .style('position', 'relative')
-      .style('padding', '8px')
-      .style('box-sizing', 'border-box')
-      .style('overflow', 'hidden')
-      .style('pointer-events', 'none')
-      .html(d => generateNodeContent(d));
+    // Add rect and content
+    createNodeGroup(enterSelection, generateNodeContent);
     
     // Add event handlers
     enterSelection
@@ -437,8 +461,8 @@ const TreemapD3Layer = ({
         callbacksRef.current.onNodeMouseLeave();
       });
     
-    // Animate enter to final positions
-    if (animationType !== 'initial') {
+    // Animate enter to final positions (except drilldown - handled by layer fade)
+    if (animationType !== 'initial' && animationType !== 'drilldown') {
       enterSelection.transition()
         .duration(duration)
         .ease(d3.easeCubicInOut)

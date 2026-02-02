@@ -10,6 +10,8 @@
 - Если у узла есть `children` → рендерить label как **header вверху** (position: absolute, top: 0)
 - Если узел leaf → рендерить по центру как сейчас
 
+**СТАТУС**: ✅ ВЫПОЛНЕНО (Итерация 1)
+
 ### Проблема 2: Drilldown анимация не срабатывает
 **Причина**: Race condition в `TreemapContainer.tsx`:
 - `prevLayoutNodesRef.current` обновляется в `useEffect` после рендера
@@ -21,14 +23,17 @@
 - Передавать в D3 layer как отдельный prop `exitingNodes`
 - D3 сначала анимирует exit старых узлов, потом enter новых
 
+**СТАТУС**: 🔄 СЛЕДУЮЩАЯ ИТЕРАЦИЯ
+
 ## Итерации
 
-### Итерация 1 (текущая): Header для вложенных узлов
-1. Изменить `TreemapD3Layer.tsx`:
-   - Если `d.children && d.children.length > 0` → header вверху
-   - Если leaf → контент по центру
+### Итерация 1: Header для вложенных узлов ✅ ЗАВЕРШЕНО
+1. ✅ Изменить `TreemapD3Layer.tsx`:
+   - Добавлена функция `generateNodeContent()`
+   - Если `d.children && d.children.length > 0` → header вверху (position: absolute, top: 4px)
+   - Если leaf → контент по центру (position: absolute, top: 50%, transform: translate(-50%, -50%))
    
-### Итерация 2: Исправление drilldown анимации
+### Итерация 2: Исправление drilldown анимации (СЛЕДУЮЩАЯ)
 1. Изменить `TreemapContainer.tsx`:
    - Хранить `exitingNodesRef` отдельно
    - Обновлять его ПЕРЕД изменением `layoutNodes`
@@ -46,58 +51,10 @@
 
 | Аспект | Значение |
 |--------|----------|
-| Оставшиеся итерации | 2-3 |
-| Кредиты | 8-15 |
+| Оставшиеся итерации | 1-2 |
+| Кредиты | 5-10 |
 | Вероятность успеха push-анимации | 80-85% |
 
 ## Риски
 - **Средний**: Timing между exit и enter может потребовать отладки
 - **Низкий**: Визуальные отличия header-ов от старого Framer Motion кода
-
-## Технические детали
-
-### Изменения в TreemapD3Layer.tsx для header:
-```typescript
-.html(d => {
-  const hasChildren = d.children && d.children.length > 0;
-  
-  if (hasChildren) {
-    // Header style for parent nodes
-    return `<div style="
-      position: absolute;
-      top: 4px;
-      left: 8px;
-      right: 8px;
-      font-weight: 600;
-      color: white;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-      font-size: 12px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    ">${d.name}</div>`;
-  }
-  
-  // Centered content for leaf nodes
-  return `<div style="...centered...">${d.name}</div>`;
-})
-```
-
-### Изменения в TreemapContainer.tsx для exit tracking:
-```typescript
-// Новый ref для хранения exiting nodes
-const exitingNodesRef = useRef<TreemapLayoutNode[]>([]);
-
-// При смене данных - сохранить текущие как exiting
-useEffect(() => {
-  if (prevDataNameRef.current !== data.name) {
-    exitingNodesRef.current = prevLayoutNodesRef.current;
-  }
-}, [data.name]);
-
-// Передать в D3 layer
-<TreemapD3Layer
-  exitingNodes={exitingNodesRef.current}
-  ...
-/>
-```

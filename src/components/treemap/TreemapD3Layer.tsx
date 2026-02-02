@@ -119,6 +119,68 @@ function calculateEnterPosition(
   return { x: startX, y: startY };
 }
 
+// Generate HTML content for node (header for parents, centered for leaves)
+function generateNodeContent(d: TreemapLayoutNode): string {
+  const hasChildren = d.children && d.children.length > 0;
+  const isTiny = d.width < 60 || d.height < 40;
+  const isSmall = d.width < 100 || d.height < 60;
+  
+  if (d.height < 30) return '';
+  
+  const labelSize = isTiny ? '9px' : isSmall ? '11px' : '14px';
+  const valueSize = isSmall ? '10px' : '12px';
+  
+  if (hasChildren) {
+    // Header style for parent nodes (positioned at top)
+    return `<div style="
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      right: 4px;
+      font-weight: 600;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      font-size: ${labelSize};
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    ">${d.name}</div>`;
+  }
+  
+  // Centered content for leaf nodes
+  let html = `<div style="
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    padding: 0 4px;
+    box-sizing: border-box;
+    text-align: center;
+  ">
+    <div style="
+      font-weight: 600;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: ${labelSize};
+    ">${d.name}</div>`;
+  
+  if (d.height > 40 && !isTiny) {
+    html += `<div style="
+      color: rgba(255,255,255,0.9);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      margin-top: 2px;
+      font-size: ${valueSize};
+    ">${formatBudget(d.value)}</div>`;
+  }
+  
+  html += '</div>';
+  return html;
+}
+
 // Flatten hierarchical nodes for D3 data join
 function flattenNodes(nodes: TreemapLayoutNode[], renderDepth: number): TreemapLayoutNode[] {
   const result: TreemapLayoutNode[] = [];
@@ -295,47 +357,12 @@ const TreemapD3Layer = ({
       .append('xhtml:div')
       .style('width', '100%')
       .style('height', '100%')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('justify-content', 'center')
-      .style('align-items', 'center')
+      .style('position', 'relative')
       .style('padding', '8px')
       .style('box-sizing', 'border-box')
       .style('overflow', 'hidden')
       .style('pointer-events', 'none')
-      .html(d => {
-        const isTiny = d.width < 60 || d.height < 40;
-        const isSmall = d.width < 100 || d.height < 60;
-        const showValue = !d.children || d.children.length === 0;
-        
-        if (d.height < 30) return '';
-        
-        const labelSize = isTiny ? '9px' : isSmall ? '11px' : '14px';
-        const valueSize = isSmall ? '10px' : '12px';
-        
-        let html = `<div style="
-          font-weight: 600;
-          color: white;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 100%;
-          font-size: ${labelSize};
-          text-align: center;
-        ">${d.name}</div>`;
-        
-        if (showValue && d.height > 40 && !isTiny) {
-          html += `<div style="
-            color: rgba(255,255,255,0.9);
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-            margin-top: 2px;
-            font-size: ${valueSize};
-          ">${formatBudget(d.value)}</div>`;
-        }
-        
-        return html;
-      });
+      .html(d => generateNodeContent(d));
     
     // Add event handlers
     enterSelection
@@ -403,39 +430,7 @@ const TreemapD3Layer = ({
       
       // Update content
       updateSelection.select('foreignObject > div')
-        .html(d => {
-          const isTiny = d.width < 60 || d.height < 40;
-          const isSmall = d.width < 100 || d.height < 60;
-          const showValue = !d.children || d.children.length === 0;
-          
-          if (d.height < 30) return '';
-          
-          const labelSize = isTiny ? '9px' : isSmall ? '11px' : '14px';
-          const valueSize = isSmall ? '10px' : '12px';
-          
-          let html = `<div style="
-            font-weight: 600;
-            color: white;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 100%;
-            font-size: ${labelSize};
-            text-align: center;
-          ">${d.name}</div>`;
-          
-          if (showValue && d.height > 40 && !isTiny) {
-            html += `<div style="
-              color: rgba(255,255,255,0.9);
-              text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-              margin-top: 2px;
-              font-size: ${valueSize};
-            ">${formatBudget(d.value)}</div>`;
-          }
-          
-          return html;
-        });
+        .html(d => generateNodeContent(d));
     }
     
     // Store current nodes for next transition

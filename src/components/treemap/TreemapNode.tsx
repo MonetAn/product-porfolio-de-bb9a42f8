@@ -229,21 +229,24 @@ function createNodeVariants(
     exit: (customData: ZoomTargetInfo | null) => {
       // CRITICAL: Read animationType from customData, NOT from closure!
       const exitAnimationType = customData?.animationType;
+      const isZoomTarget = customData?.key === node.key;
       
-      // DEBUG: Log to verify data flow
+      // DEBUG: Enhanced logging to trace data flow
       console.log('EXIT variant triggered', { 
         nodeName: node.name, 
+        nodeKey: node.key,
         hasCustomData: !!customData,
         customAnimationType: exitAnimationType,  // From custom!
         closureAnimationType: animationType,     // From closure (may be stale)
         customDataKey: customData?.key,
+        isZoomTarget,
+        willUsePush: customData && exitAnimationType === 'drilldown' && !isZoomTarget,
       });
-      
-      const isZoomTarget = customData?.key === node.key;
       
       // Zoom target: expands to fullscreen (stays on top)
       // DEBUG: Using 0.5 opacity for X-ray vision
       if (isZoomTarget) {
+        console.log('EXIT: Zoom target expanding', { nodeName: node.name });
         return {
           x: 0,
           y: 0,
@@ -260,6 +263,11 @@ function createNodeVariants(
         const pushAnimation = getEdgeBasedExitAnimation(
           node, customData, containerWidth, containerHeight
         );
+        console.log('EXIT: Push animation calculated', { 
+          nodeName: node.name,
+          from: { x: node.x0, y: node.y0 },
+          to: { x: pushAnimation.x, y: pushAnimation.y },
+        });
         return {
           ...pushAnimation,
           zIndex: 0, // CRITICAL: under zoom target
@@ -267,6 +275,7 @@ function createNodeVariants(
       }
       
       // Fallback: simple fade
+      console.log('EXIT: Fallback fade', { nodeName: node.name, reason: 'no customData or not drilldown' });
       return { 
         opacity: 0,
         x: node.x0,

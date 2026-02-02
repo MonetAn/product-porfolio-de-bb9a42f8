@@ -111,6 +111,9 @@ const TreemapContainer = ({
     return () => resizeObserver.disconnect();
   }, []);
   
+  // CRITICAL: Track if a drilldown is in progress (prevents premature state reset)
+  const drilldownInProgressRef = useRef(false);
+  
   // Detect animation type based on data changes
   useEffect(() => {
     if (isEmpty) return;
@@ -132,6 +135,9 @@ const TreemapContainer = ({
     if (newAnimationType === 'drilldown' && clickedNodeName) {
       const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
       if (clickedNode) {
+        drilldownInProgressRef.current = true;  // MARK: Animation started
+        console.log('DRILLDOWN STARTED:', { clickedNodeName, nodeKey: clickedNode.key });
+        
         setZoomTargetInfo({
           key: clickedNode.key,
           name: clickedNode.name,
@@ -145,13 +151,10 @@ const TreemapContainer = ({
         });
         setNodesForExit(prevLayoutNodesRef.current);
       }
-    } else {
-      setZoomTargetInfo(null);
-      setNodesForExit([]);
     }
-    
-    // NOTE: Do NOT clear zoomTargetInfo here with setTimeout!
-    // AnimatePresence onExitComplete will handle cleanup after animations finish
+    // CRITICAL: Do NOT reset zoomTargetInfo/nodesForExit here!
+    // Only onExitComplete should do that. This prevents race condition
+    // where clickedNodeName=null triggers premature cleanup.
     
     // Show hint briefly
     setShowHint(true);
@@ -297,7 +300,8 @@ const TreemapContainer = ({
             custom={zoomTargetInfo}
             onExitComplete={() => {
               // CRITICAL: Only clear state AFTER all exit animations complete
-              console.log('AnimatePresence: onExitComplete triggered');
+              console.log('AnimatePresence: onExitComplete triggered, cleaning up');
+              drilldownInProgressRef.current = false;  // MARK: Animation finished
               setNodesForExit([]);
               setZoomTargetInfo(null);
             }}

@@ -243,10 +243,8 @@ const Index = () => {
   // Handle click on treemap node - select single item in filter and enable corresponding toggle
   const handleNodeClick = (node: TreeNode) => {
     // Store clicked node name for zoom animation
+    // CRITICAL: Do NOT clear via setTimeout - TreemapContainer handles cleanup via onExitComplete
     setClickedNodeName(node.name);
-    
-    // Clear after animation completes
-    setTimeout(() => setClickedNodeName(null), 600);
     
     if (node.isStakeholder) {
       // Clicking a stakeholder - filter by this stakeholder and enable Teams toggle

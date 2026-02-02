@@ -512,8 +512,9 @@ const colorPalette = [
 
 // Explicit colors for units that might have hash collisions
 const explicitUnitColors: Record<string, string> = {
-  'FAP': '#E67A3D',           // Orange (matches palette)
-  'TechPlatform': '#4A7DD7',  // Blue (matches palette)
+  'FAP': '#E67A3D',           // Тыквенный оранж
+  'TechPlatform': '#4A7DD7',  // Насыщенный синий
+  'Data Office': '#D4852C',   // Янтарь (избегаем коллизии с FAP)
 };
 
 const unitColors: Record<string, string> = {};

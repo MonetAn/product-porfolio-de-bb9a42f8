@@ -1,159 +1,204 @@
 
-## Контекст (что вижу в текущем коде и почему “всё ещё fade out” выглядит логично)
+# План: Переход на D3 Transitions для анимаций Treemap
 
-По текущим файлам `TreemapContainer.tsx` и `TreemapNode.tsx` видно, что “улёт соседей” технически **возможен** в нашей архитектуре (абсолютное позиционирование + variants + ручные x/y/width/height). Но сейчас есть один очень вероятный “убийца” всей схемы, который мы до конца не адресовали:
+## Резюме
+Переписать анимации treemap с Framer Motion на D3 transitions — **промышленный стандарт** для таких визуализаций (Flourish, Observable, DataWrapper используют этот подход).
 
-### Критический конфликт состояния: `clickedNodeName` принудительно очищается через 600мс в `Index.tsx`
-В `src/pages/Index.tsx` при клике:
-```ts
-setClickedNodeName(node.name);
-setTimeout(() => setClickedNodeName(null), 600);
+---
+
+## Оценка объёма работ
+
+### Количество итераций: **4–6 итераций**
+
+| Этап | Итерации | Описание |
+|------|----------|----------|
+| 1. Подготовка | 1 | Рефакторинг структуры, создание нового компонента |
+| 2. Базовый рендеринг | 1 | D3 рендеринг прямоугольников без анимаций |
+| 3. Drilldown анимация | 1–2 | Target zoom + соседи улетают |
+| 4. Navigate-up + Filter | 1 | Обратная анимация + фильтрация |
+| 5. Polish + Cleanup | 1 | Удаление старого кода, финальная отладка |
+
+### Примерное количество кредитов: **15–25 кредитов**
+(зависит от количества корректировок и отладки)
+
+---
+
+## Риски и их митигация
+
+### Риск 1: Потеря интерактивности (tooltip, hover) — **Средний**
+**Проблема**: D3 рендерит напрямую в DOM, React не контролирует элементы
+**Митигация**: 
+- Сохраним React для container, tooltip, back-button
+- D3 управляет только `<rect>` элементами внутри `<svg>`
+- Event handlers через D3 `.on('mouseenter', ...)` пробрасывают в React state
+
+### Риск 2: Потеря существующей функциональности — **Низкий**
+**Проблема**: Сложная логика (вложенные ноды, цвета, off-track индикатор)
+**Митигация**:
+- Сохраним `useTreemapLayout.ts` — он уже вычисляет D3 layout
+- Переиспользуем `types.ts`, `TreemapTooltip.tsx`
+- Меняем только слой "рендеринга + анимации"
+
+### Риск 3: Визуальные различия (шрифты, padding) — **Низкий**
+**Проблема**: SVG text vs DOM text могут отличаться
+**Митигация**: Можем использовать `<foreignObject>` для HTML-контента внутри SVG, либо рендерить labels как DOM overlay поверх SVG
+
+### Риск 4: Время на отладку exit-анимаций — **Средний**
+**Проблема**: D3 `.exit().transition()` требует аккуратной работы с data joins
+**Митигация**: 
+- Используем паттерн "general update pattern" от Майка Бостока
+- Ключевание по `node.key` (уже есть!)
+
+---
+
+## Архитектура решения
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    TreemapContainer.tsx                      │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │  React: Container, Tooltip, Back Button, Empty State    ││
+│  └─────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                    TreemapD3Layer.tsx                   ││
+│  │  ┌─────────────────────────────────────────────────────┐││
+│  │  │           <svg ref={svgRef}>                        │││
+│  │  │   D3 manages: rect elements, transitions, text      │││
+│  │  │   Events → React callbacks (onClick, onHover)       │││
+│  │  └─────────────────────────────────────────────────────┘││
+│  └─────────────────────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │  useTreemapLayout.ts (БЕЗ ИЗМЕНЕНИЙ)                    ││
+│  │  D3 hierarchy + treemap layout calculation              ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
 ```
 
-А в `src/components/treemap/TreemapContainer.tsx` логика анимации завязана на `clickedNodeName` как на “триггер” и одновременно “условие истинности” для сохранения `zoomTargetInfo`/`nodesForExit`:
+---
 
-```ts
+## Детальный план по этапам
+
+### Этап 1: Подготовка (1 итерация)
+**Файлы:**
+- Создать `src/components/treemap/TreemapD3Layer.tsx`
+- Модифицировать `TreemapContainer.tsx` — заменить Framer Motion на D3 layer
+
+**Изменения:**
+1. Удалить импорты `AnimatePresence`, `LayoutGroup` из `TreemapContainer`
+2. Создать SVG контейнер с ref
+3. Сохранить всю логику tooltip, back button, empty state
+
+### Этап 2: Базовый D3 рендеринг (1 итерация)
+**Цель:** Рендерить прямоугольники без анимаций
+
+**Код (концепция):**
+```typescript
+// TreemapD3Layer.tsx
 useEffect(() => {
-  ...
-  if (newAnimationType === 'drilldown' && clickedNodeName) {
-    setZoomTargetInfo(...); 
-    setNodesForExit(prevLayoutNodesRef.current);
-  } else {
-    setZoomTargetInfo(null);
-    setNodesForExit([]);
-  }
-}, [data.name, canNavigateBack, clickedNodeName, ...]);
+  const svg = d3.select(svgRef.current);
+  
+  // Data join with key function
+  const rects = svg.selectAll<SVGRectElement, TreemapLayoutNode>('rect')
+    .data(layoutNodes, d => d.key);  // KEY!
+  
+  // Enter: new nodes
+  rects.enter()
+    .append('rect')
+    .attr('x', d => d.x0)
+    .attr('y', d => d.y0)
+    .attr('width', d => d.width)
+    .attr('height', d => d.height)
+    .attr('fill', d => d.color);
+  
+  // Update: existing nodes
+  rects
+    .attr('x', d => d.x0)
+    .attr('y', d => d.y0)
+    .attr('width', d => d.width)
+    .attr('height', d => d.height);
+  
+  // Exit: removed nodes
+  rects.exit().remove();
+}, [layoutNodes]);
 ```
 
-То есть через ~600мс `clickedNodeName` становится `null` → эффект пересрабатывает → попадаем в `else` → **преждевременно** обнуляем `zoomTargetInfo` и `nodesForExit`, даже если визуальная сцена ещё должна “вылетать”.
+### Этап 3: Drilldown анимация (1–2 итерации)
+**Цель:** Target zoom + соседи улетают
 
-Это очень хорошо объясняет симптом:
-- “главный квадрат как будто анимируется” (новый слой появляется),
-- соседи “исчезают” (потому что выходящий слой/данные для `exit` сбрасываются в процессе).
+**Алгоритм:**
+1. При drilldown сохранить "старые" позиции нод
+2. Zoom target: анимировать к fullscreen (x: 0, y: 0, width: containerWidth, height: containerHeight)
+3. Соседи: вычислить push-direction, анимировать за пределы экрана
+4. После завершения — удалить exit-ноды, показать новые
 
-Важно: даже если у нас идеальные `variants`, если “customData” (zoomTargetInfo) внезапно становится `null` во время жизненного цикла exit-слоя, то `exit` начинает падать в fallback или прекращает быть “drilldown”.
-
----
-
-## Ответы на твои вопросы (по сути)
-
-### 1) Нужно ли переписать анимации с нуля / выбрать другой фреймворк?
-С высокой вероятностью **нет**, пока мы не исчерпали диагностику. Причина: текущая схема (Framer Motion + ручные variants) в принципе подходит для “camera zoom + push neighbours”.
-
-Менять “фреймворк/решение” имеет смысл только если:
-- мы подтвердим, что Framer Motion **фундаментально** не даёт одновременно: (a) zoom-target expand + (b) соседям ручной exit-x/y без конфликтов,
-- и при этом даже после стабилизации состояния и корректного жизненного цикла exit-слоя соседям всё равно невозможно применить transforms.
-
-Сейчас же у нас есть явный источник нестабильности: **внешний таймер** в `Index.tsx`, который вмешивается в оркестрацию анимаций контейнера.
-
-Альтернативы внутри текущего стека (если вдруг придём к переписыванию):
-- “ручной FLIP” (вычислять transforms самостоятельно),
-- “D3 transitions” (рендерить прямоугольники в SVG/Canvas или DOM и анимировать D3),
-- GSAP (но это уже другая философия).
-Но это всё стоит делать только после того, как мы точно поймём, что текущая модель не может.
-
-### 2) Гипотезы, почему всё ещё не работает (приоритет по вероятности)
-
-#### Гипотеза A (самая вероятная): преждевременный сброс `zoomTargetInfo/nodesForExit` из-за `clickedNodeName=null`
-Как описано выше: `clickedNodeName` — внешний таймер, который “обнуляет” анимационное состояние TreemapContainer посреди анимации.
-
-Признак: в консоли должны быть:
-- `EXIT variant triggered` сначала с `hasCustomData: true`,
-- а затем внезапно начнут появляться `EXIT variant triggered`/или поведение как будто `customData` стал null или exit ветка не та.
-
-#### Гипотеза B: `exit` реально не получает правильный `customData` на момент удаления
-Даже при `custom={zoomTarget}` на `motion.div` и `custom={zoomTargetInfo}` на `<AnimatePresence>`, если состояние сбрасывается, `customData` внутри exit-функции будет `null` → попадём в fallback `{ opacity: 0 }`.
-
-#### Гипотеза C: “физический улёт” происходит, но визуально его маскирует клиппинг
-У нас `.treemap-container` почти наверняка с `overflow: hidden` (и в `motion.div` тоже `overflow: hidden`), плюс вылет может быть очень быстрым и под зум-таргетом. Тогда глаз воспринимает как “исчезновение”.
-Но это вторично: даже с overflow hidden обычно виден хотя бы сдвиг до границы.
-
-#### Гипотеза D: конфликт детей/вложенных AnimatePresence
-`TreemapNode` рендерит вложенные `TreemapNode` (children) с относительными координатами. Во время drilldown меняется размер родителя и может происходить эффект “прыжков/перерисовки”, который визуально съедает движение соседей.
-Но это тоже обычно проявляется как “дёрганье”, а не полный fade-out.
-
----
-
-## 3) Диагностика пошагово (без “починки наугад”)
-
-### Шаг 0 — Зафиксировать “что именно происходит” через логи (мы уже частично это сделали)
-В `TreemapNode.tsx` уже есть:
-- `console.log('EXIT variant triggered', ...)`
-- `console.log('ISOLATION TEST: layoutId DISABLED for', ...)`
-
-Нам нужно получить ответы на 3 бинарных вопроса:
-1) Печатается ли `ISOLATION TEST: layoutId DISABLED...` для соседей?
-2) Печатается ли `EXIT variant triggered` для соседей?
-3) Что там по `hasCustomData` и `customAnimationType`?
-   - если `hasCustomData: false` или `customAnimationType !== 'drilldown'` → это почти гарантированно “проблема данных/жизненного цикла”, а не “невозможность улёта”.
-
-### Шаг 1 — Убрать внешний таймер (или сделать его не влияющим на TreemapContainer)
-Цель: чтобы `zoomTargetInfo` жил гарантированно до `onExitComplete`.
-
-Диагностический минимум:
-- временно убрать `setTimeout(() => setClickedNodeName(null), 600)` в `Index.tsx`
-  - или увеличить до 2000–3000мс, чтобы проверить гипотезу “таймер убивает анимацию”.
-  - или заменить на сброс “по событию” от TreemapContainer (см. следующий пункт).
-
-Правильная архитектура (если гипотеза подтвердится):
-- `clickedNodeName` должен быть “одноразовым сигналом старта”, а **не** частью условий жизненного цикла exit-слоя.
-- Сброс `clickedNodeName` должен происходить:
-  - либо внутри TreemapContainer через `onExitComplete` (и пробрасываться наверх callback’ом),
-  - либо храниться локально (ref/state) внутри TreemapContainer и не зависеть от внешнего таймера.
-
-### Шаг 2 — Стабилизировать условие в TreemapContainer: не очищать `nodesForExit/zoomTargetInfo`, пока exit не завершился
-Сейчас очистка делается в двух местах:
-- в `useEffect` (ветка `else`) — опасно,
-- в `onExitComplete` — правильно.
-
-Диагностический тест:
-- модифицировать `useEffect` так, чтобы **не** делать `setNodesForExit([])/setZoomTargetInfo(null)` в ситуации “идёт drilldown, есть nodesForExit”.
-  - То есть “useEffect определяет старт анимации”, а “onExitComplete завершает”.
-
-После этого:
-- если соседи начинают лететь — всё, причина найдена.
-
-### Шаг 3 — Изоляция Layout Projection (мы это уже делаем, но проверим, что тест реально “чистый”)
-В `TreemapNode.tsx` сейчас отключаем только `layoutId` для exit non-target:
-```ts
-layoutId={shouldDisableLayout ? undefined : node.key}
+**Код (концепция):**
+```typescript
+// Drilldown animation
+if (animationType === 'drilldown' && zoomTarget) {
+  // Exit: push neighbors off-screen
+  rects.exit()
+    .transition()
+    .duration(600)
+    .attr('x', d => calculatePushX(d, zoomTarget, containerWidth))
+    .attr('y', d => calculatePushY(d, zoomTarget, containerHeight))
+    .remove();
+  
+  // Zoom target: expand to fullscreen
+  rects.filter(d => d.key === zoomTarget.key)
+    .transition()
+    .duration(600)
+    .attr('x', 0)
+    .attr('y', 0)
+    .attr('width', containerWidth)
+    .attr('height', containerHeight);
+}
 ```
 
-Важные проверки:
-- Нет ли у `motion.div` пропа `layout` (в текущем файле не вижу, хорошо).
-- Не включён ли layout-projection каким-то внешним `LayoutGroup`/`layout` на других уровнях (у нас есть `<LayoutGroup>`; он сам по себе не должен включать layout без `layout/layoutId`, но влияет на shared layoutId transitions).
-- На время теста можно ещё сильнее “очистить” exit слой:
-  - отключить вложенных детей для exit нод (чтобы исключить влияние nested AnimatePresence),
-  - временно скрыть children, чтобы вылетали только top-level прямоугольники.
+### Этап 4: Navigate-up + Filter (1 итерация)
+**Navigate-up:** Обратная анимация (ноды прилетают с краёв)
+**Filter:** Простой морфинг позиций (уже работает в D3 через update)
 
-### Шаг 4 — Визуальный тест “улёт точно происходит”
-Чтобы отличить “улетели и сразу обрезались overflow hidden” от “не двигаются вообще”:
-- временно (только для диагностики) включить отображение движения:
-  - сделать duration 1.2s (чуть медленнее, но не 3s),
-  - и/или временно добавить `outline`/`boxShadow` + `background` контрастный,
-  - и/или на время диагностики сделать `overflow: visible` у контейнера (только для теста).
+### Этап 5: Polish (1 итерация)
+1. Удалить `TreemapNode.tsx` (весь Framer Motion код)
+2. Удалить debug-логи
+3. Проверить производительность
+4. Убедиться, что все edge cases работают (пустые данные, resize)
 
 ---
 
-## Итоговая рекомендация: переписывать или диагностировать?
-Лучше начать с **пошаговой диагностики**, потому что у нас есть сильная конкретная причина, почему “не работает даже когда логика правильная”:
-- внешнее состояние `clickedNodeName` сбрасывается таймером и участвует в условиях очистки exit-слоя.
-
-Если после стабилизации жизненного цикла (когда `zoomTargetInfo` гарантированно живёт до `onExitComplete`) и после “чистого” отключения layout-projection для exit non-target:
-- `EXIT variant triggered` показывает `hasCustomData: true` и `customAnimationType: 'drilldown'`,
-- и при этом красные блоки всё равно не смещаются (x/y не применяются),
-тогда уже имеет смысл рассматривать переписывание подхода (например, FLIP или D3 transitions). Но сейчас это преждевременно.
+## Что сохраняется без изменений
+- `useTreemapLayout.ts` — вычисление layout
+- `types.ts` — типы
+- `TreemapTooltip.tsx` — React tooltip
+- `treemap.css` — стили (минимальные правки)
+- Вся логика в `Index.tsx` (clickedNodeName, handleNodeClick)
 
 ---
 
-## Конкретный план следующих действий (что я сделаю после твоего подтверждения)
-1) Диагностически отключу/заменю таймер очистки `clickedNodeName` в `Index.tsx` так, чтобы он не обнулял состояние посреди exit.
-2) Перепишу `TreemapContainer.tsx`, чтобы очистка `nodesForExit/zoomTargetInfo` происходила только в `onExitComplete`, а не из `useEffect` при изменении `clickedNodeName`.
-3) Усилю диагностику:
-   - дополню лог `EXIT variant triggered` полями `exitAnimationType`, `customDataKey`, `nodeKey`, и флагами “попали ли в push ветку”.
-4) После этого проверим:
-   - есть ли красные рамки у соседей,
-   - летят ли они до границы,
-   - что показывают логи.
+## Что удаляется/заменяется
+- `TreemapNode.tsx` — полностью удаляется
+- Framer Motion imports в `TreemapContainer.tsx`
+- AnimatePresence, LayoutGroup, variants, exit animations
 
-Ожидаемый результат: после устранения “сброса данных” соседи должны начать двигаться (если push координаты вычисляются), и мы либо получим “полёт”, либо увидим точную точку, где ломается пайплайн (customData/exit ветка/DOM клиппинг).
+---
+
+## Вероятность успеха: **90–95%**
+
+**Почему высокая:**
+1. D3 transitions — это **тот же подход, что использует Flourish**
+2. У нас уже есть D3 layout (`useTreemapLayout.ts`)
+3. Exit-анимации в D3 — это просто `.exit().transition().attr(...)`, без React reconciliation
+4. Полный контроль над жизненным циклом элементов
+
+**Сравнение с текущим Framer Motion:**
+| Аспект | Framer Motion | D3 Transitions |
+|--------|---------------|----------------|
+| Exit control | Через AnimatePresence (косвенный) | Прямой через .exit() |
+| Sync timing | Сложно (custom, onExitComplete) | Просто (transition chaining) |
+| Layout conflicts | Layout Projection | Нет (ручные координаты) |
+| Debugging | Сложно (React lifecycle) | Просто (DOM инспектор) |
+
+---
+
+## Рекомендация
+**Переходить на D3 transitions**. Это промышленный стандарт для сложных визуализаций с "camera zoom" эффектом. Текущий подход с Framer Motion упирается в архитектурное ограничение: AnimatePresence не даёт прямого контроля над exit-анимациями, а Layout Projection конфликтует с ручными координатами.

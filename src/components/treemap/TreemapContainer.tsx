@@ -67,6 +67,17 @@ const TreemapContainer = ({
   const exitingNodesRef = useRef<TreemapLayoutNode[]>([]);
   const pendingZoomTargetRef = useRef<ZoomTargetInfo | null>(null);
   
+  // Helper: Flatten all nodes (including nested children) for complete tracking
+  const flattenAllNodes = useCallback((nodes: TreemapLayoutNode[]): TreemapLayoutNode[] => {
+    const result: TreemapLayoutNode[] = [];
+    function traverse(node: TreemapLayoutNode) {
+      result.push(node);
+      if (node.children) node.children.forEach(traverse);
+    }
+    nodes.forEach(traverse);
+    return result;
+  }, []);
+  
   // Tooltip state
   const [tooltipData, setTooltipData] = useState<{
     node: TreemapLayoutNode;
@@ -112,13 +123,20 @@ const TreemapContainer = ({
     if (clickedNodeName && prevLayoutNodesRef.current.length > 0) {
       console.log('[DRILLDOWN] clickedNodeName changed:', clickedNodeName);
       console.log('[DRILLDOWN] prevLayoutNodesRef has nodes:', prevLayoutNodesRef.current.length);
+      console.log('[DRILLDOWN] All node names:', prevLayoutNodesRef.current.map(n => `${n.name}(d${n.depth})`).join(', '));
       
-      // Capture snapshot NOW while data is still valid
-      exitingNodesRef.current = [...prevLayoutNodesRef.current];
-      
+      // Find clicked node in the FULL flattened list
       const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
+      
       if (clickedNode) {
-        console.log('[DRILLDOWN] Found clicked node, preparing zoomTarget:', clickedNode.name);
+        console.log('[DRILLDOWN] Found clicked node:', clickedNode.name, 'at depth:', clickedNode.depth);
+        
+        // Filter to get only siblings (same depth, same parent)
+        exitingNodesRef.current = prevLayoutNodesRef.current.filter(
+          n => n.depth === clickedNode.depth && n.parentName === clickedNode.parentName
+        );
+        console.log('[DRILLDOWN] exitingNodes (siblings):', exitingNodesRef.current.length, exitingNodesRef.current.map(n => n.name).join(', '));
+        
         pendingZoomTargetRef.current = {
           key: clickedNode.key,
           name: clickedNode.name,
@@ -131,7 +149,7 @@ const TreemapContainer = ({
           animationType: 'drilldown',
         };
       } else {
-        console.log('[DRILLDOWN] WARNING: Clicked node not found in prevLayoutNodes');
+        console.log('[DRILLDOWN] WARNING: Clicked node not found in prevLayoutNodes. Searched for:', clickedNodeName);
       }
     }
   }, [clickedNodeName]);
@@ -168,12 +186,14 @@ const TreemapContainer = ({
     setTimeout(() => setShowHint(false), 3000);
   }, [data.name, canNavigateBack, isEmpty, dimensions.width]);
   
-  // Store current layout for next transition
+  // Store ALL current layout nodes (flattened) for next transition
   useEffect(() => {
     if (layoutNodes.length > 0) {
-      prevLayoutNodesRef.current = layoutNodes;
+      // CRITICAL: Flatten ALL nodes including children for complete tracking
+      prevLayoutNodesRef.current = flattenAllNodes(layoutNodes);
+      console.log('[LAYOUT] Saved flattened nodes:', prevLayoutNodesRef.current.length, 'from', layoutNodes.length, 'root nodes');
     }
-  }, [layoutNodes]);
+  }, [layoutNodes, flattenAllNodes]);
   
   // Render depth calculation
   const renderDepth = useMemo(() => {

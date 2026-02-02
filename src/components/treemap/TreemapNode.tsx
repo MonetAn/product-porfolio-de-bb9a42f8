@@ -6,6 +6,23 @@ import { memo } from 'react';
 import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS } from './types';
 import { formatBudget } from '@/lib/dataManager';
 
+// Calculate relative luminance for WCAG contrast
+function getLuminance(hex: string): number {
+  const rgb = parseInt(hex.slice(1), 16);
+  const r = ((rgb >> 16) & 255) / 255;
+  const g = ((rgb >> 8) & 255) / 255;
+  const b = (rgb & 255) / 255;
+  
+  const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+// Returns appropriate text color based on background luminance
+function getTextColorClass(bgColor: string): string {
+  const luminance = getLuminance(bgColor);
+  return luminance > 0.4 ? 'text-gray-900' : 'text-white';
+}
+
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
   animationType: AnimationType;
@@ -19,8 +36,14 @@ interface TreemapNodeProps {
   renderDepth?: number;
 }
 
+interface TreemapNodeContentProps {
+  node: TreemapLayoutNode;
+  showValue: boolean;
+  textColorClass: string;
+}
+
 // Node content component
-const TreemapNodeContent = memo(({ node, showValue }: { node: TreemapLayoutNode; showValue: boolean }) => {
+const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNodeContentProps) => {
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
   const hasChildren = node.children && node.children.length > 0;
@@ -31,9 +54,9 @@ const TreemapNodeContent = memo(({ node, showValue }: { node: TreemapLayoutNode;
   if (hasChildren) {
     return (
       <div 
-        className={`absolute top-0.5 left-1 right-1 font-semibold text-white ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
+        className={`absolute top-0.5 left-1 right-1 font-semibold ${textColorClass} ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
         style={{ 
-          textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+          textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -50,9 +73,9 @@ const TreemapNodeContent = memo(({ node, showValue }: { node: TreemapLayoutNode;
     <div className="absolute inset-0 flex items-center justify-center p-1">
       <div className="text-center w-full px-1">
         <div 
-          className={`font-semibold text-white ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
+          className={`font-semibold ${textColorClass} ${isTiny ? 'text-[9px]' : isSmall ? 'text-[11px]' : 'text-[14px]'}`}
           style={{ 
-            textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+            textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -62,8 +85,8 @@ const TreemapNodeContent = memo(({ node, showValue }: { node: TreemapLayoutNode;
         </div>
         {showValue && node.height > 40 && !isTiny && (
           <div 
-            className={`text-white/90 mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
-            style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
+            className={`${textColorClass === 'text-white' ? 'text-white/90' : 'text-gray-700'} mt-0.5 ${isSmall ? 'text-[10px]' : 'text-[12px]'}`}
+            style={{ textShadow: textColorClass === 'text-white' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none' }}
           >
             {formatBudget(node.value)}
           </div>
@@ -92,6 +115,7 @@ const TreemapNode = memo(({
   const hasChildren = node.children && node.children.length > 0;
   const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
   const isLeaf = !hasChildren;
+  const textColorClass = getTextColorClass(node.color);
   
   // Calculate relative position from absolute coordinates
   const x = node.x0 - parentX;
@@ -157,7 +181,7 @@ const TreemapNode = memo(({
       onMouseLeave={onMouseLeave}
     >
       {/* Node content (label + value) */}
-      <TreemapNodeContent node={node} showValue={!shouldRenderChildren} />
+      <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
       
       {/* Nested children */}
       {shouldRenderChildren && showChildren && (

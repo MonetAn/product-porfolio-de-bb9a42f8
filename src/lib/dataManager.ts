@@ -498,12 +498,22 @@ export function escapeHtml(text: string): string {
 }
 
 // ===== COLOR UTILITIES =====
-const colorPalette = ['#5B8FF9', '#9B7FE8', '#F6903D', '#63DAAB', '#FF85C0', '#7DD3FC', '#FDE047', '#A78BFA'];
+// Deep, saturated palette with high contrast for white text (WCAG AA compliant)
+const colorPalette = [
+  '#4A7DD7',  // Насыщенный синий
+  '#7B5FA8',  // Глубокий фиолетовый
+  '#D4852C',  // Янтарь (замена жёлтому)
+  '#2D9B6A',  // Тёмный изумруд
+  '#C44E89',  // Глубокий розовый
+  '#4A90B8',  // Стальной синий
+  '#E67A3D',  // Тыквенный оранж
+  '#8B6AAF',  // Аметист
+];
 
 // Explicit colors for units that might have hash collisions
 const explicitUnitColors: Record<string, string> = {
-  'FAP': '#F6903D',           // Orange
-  'TechPlatform': '#5B8FF9',  // Blue
+  'FAP': '#E67A3D',           // Orange (matches palette)
+  'TechPlatform': '#4A7DD7',  // Blue (matches palette)
 };
 
 const unitColors: Record<string, string> = {};

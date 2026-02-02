@@ -3,8 +3,17 @@
 import { TreemapContainer } from './treemap';
 import { TreeNode, hashString } from '@/lib/dataManager';
 
-// Separate color palette for stakeholders
-const stakeholderColorPalette = ['#9B7FE8', '#5B8FF9', '#63DAAB', '#FF85C0', '#F6903D', '#7DD3FC', '#FDE047', '#A78BFA'];
+// Deep, saturated palette for stakeholders with high contrast for white text
+const stakeholderColorPalette = [
+  '#7B5FA8',  // Глубокий фиолетовый
+  '#4A7DD7',  // Насыщенный синий
+  '#2D9B6A',  // Тёмный изумруд
+  '#C44E89',  // Глубокий розовый
+  '#E67A3D',  // Тыквенный оранж
+  '#4A90B8',  // Стальной синий
+  '#D4852C',  // Янтарь
+  '#8B6AAF',  // Аметист
+];
 const stakeholderColors: Record<string, string> = {};
 
 function getStakeholderColor(name: string): string {

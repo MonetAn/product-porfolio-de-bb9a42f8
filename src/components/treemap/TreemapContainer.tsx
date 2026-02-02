@@ -1,12 +1,11 @@
-// Treemap container with Framer Motion animation orchestration
+// Treemap container with D3 transitions (replacing Framer Motion)
 
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { AnimatePresence, LayoutGroup } from 'framer-motion';
 import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
-import TreemapNode from './TreemapNode';
+import TreemapD3Layer from './TreemapD3Layer';
 import TreemapTooltip from './TreemapTooltip';
 import { useTreemapLayout } from './useTreemapLayout';
-import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS, ColorGetter, ZoomTargetInfo } from './types';
+import { TreemapLayoutNode, AnimationType, ZoomTargetInfo, ColorGetter } from './types';
 import { TreeNode } from '@/lib/dataManager';
 import '@/styles/treemap.css';
 
@@ -23,10 +22,7 @@ interface TreemapContainerProps {
   onResetFilters?: () => void;
   selectedUnitsCount?: number;
   clickedNodeName?: string | null;
-  // For Budget treemap: use unit colors
-  // For Stakeholders: use stakeholder colors
   getColor?: ColorGetter;
-  // Empty state customization
   emptyStateTitle?: string;
   emptyStateSubtitle?: string;
   showUploadButton?: boolean;
@@ -64,6 +60,7 @@ const TreemapContainer = ({
   
   // Track previous state for animation type detection
   const prevDataNameRef = useRef<string | null>(null);
+  const prevLayoutNodesRef = useRef<TreemapLayoutNode[]>([]);
   const isFirstRenderRef = useRef(true);
   
   // Tooltip state
@@ -84,10 +81,6 @@ const TreemapContainer = ({
     getColor,
   });
   
-  // Track layout nodes for exit animations
-  const prevLayoutNodesRef = useRef<TreemapLayoutNode[]>([]);
-  const [nodesForExit, setNodesForExit] = useState<TreemapLayoutNode[]>([]);
-  
   // Measure container
   useEffect(() => {
     if (!containerRef.current) return;
@@ -102,7 +95,6 @@ const TreemapContainer = ({
     updateDimensions();
     
     const resizeObserver = new ResizeObserver(() => {
-      // Debounce resize
       setTimeout(updateDimensions, 100);
     });
     
@@ -110,9 +102,6 @@ const TreemapContainer = ({
     
     return () => resizeObserver.disconnect();
   }, []);
-  
-  // CRITICAL: Track if a drilldown is in progress (prevents premature state reset)
-  const drilldownInProgressRef = useRef(false);
   
   // Detect animation type based on data changes
   useEffect(() => {
@@ -124,20 +113,17 @@ const TreemapContainer = ({
       isFirstRenderRef.current = false;
       newAnimationType = 'initial';
     } else if (dimensions.width > 0 && prevDataNameRef.current !== data.name) {
-      // Data root changed
+      // Data root changed - determine if drilldown or navigate-up
       newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
     }
     
     prevDataNameRef.current = data.name;
     setAnimationType(newAnimationType);
     
-    // For drilldown, set up exit animation with full zoom target info
+    // For drilldown, set up zoom target info
     if (newAnimationType === 'drilldown' && clickedNodeName) {
       const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
       if (clickedNode) {
-        drilldownInProgressRef.current = true;  // MARK: Animation started
-        console.log('DRILLDOWN STARTED:', { clickedNodeName, nodeKey: clickedNode.key });
-        
         setZoomTargetInfo({
           key: clickedNode.key,
           name: clickedNode.name,
@@ -147,14 +133,12 @@ const TreemapContainer = ({
           y1: clickedNode.y1,
           width: clickedNode.width,
           height: clickedNode.height,
-          animationType: 'drilldown',  // CRITICAL: Include animation type!
+          animationType: 'drilldown',
         });
-        setNodesForExit(prevLayoutNodesRef.current);
       }
+    } else {
+      setZoomTargetInfo(null);
     }
-    // CRITICAL: Do NOT reset zoomTargetInfo/nodesForExit here!
-    // Only onExitComplete should do that. This prevents race condition
-    // where clickedNodeName=null triggers premature cleanup.
     
     // Show hint briefly
     setShowHint(true);
@@ -168,18 +152,12 @@ const TreemapContainer = ({
     }
   }, [layoutNodes]);
   
-  // Render depth
+  // Render depth calculation
   const renderDepth = useMemo(() => {
     if (showTeams && showInitiatives) return 3;
     if (showTeams || showInitiatives) return 2;
     return 1;
   }, [showTeams, showInitiatives]);
-  
-  // Container center for enter animations
-  const containerCenter = useMemo(() => ({
-    x: dimensions.width / 2,
-    y: dimensions.height / 2,
-  }), [dimensions]);
   
   // Node click handler
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
@@ -190,21 +168,25 @@ const TreemapContainer = ({
     }
   }, [onNodeClick, onInitiativeClick]);
   
-  // Tooltip handlers
-  const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
+  // Tooltip handlers (adapted for native MouseEvent)
+  const handleMouseEnter = useCallback((e: MouseEvent, node: TreemapLayoutNode) => {
     setTooltipData({
       node,
       position: { x: e.clientX, y: e.clientY },
     });
   }, []);
   
-  // STABLE: No dependency on tooltipData - prevents re-renders on every mouse move
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     setTooltipData(prev => prev ? { ...prev, position: { x: e.clientX, y: e.clientY } } : null);
   }, []);
   
   const handleMouseLeave = useCallback(() => {
     setTooltipData(null);
+  }, []);
+  
+  // Animation complete handler
+  const handleAnimationComplete = useCallback(() => {
+    setZoomTargetInfo(null);
   }, []);
   
   // Drop zone handlers
@@ -242,30 +224,6 @@ const TreemapContainer = ({
       onFileDrop(file);
     }
   }, [onFileDrop]);
-  
-  // Determine which nodes to render (current + exiting)
-  const nodesToRender = useMemo(() => {
-    if (nodesForExit.length > 0 && animationType === 'drilldown') {
-      // During drilldown, render both exiting nodes and new nodes
-      return nodesForExit;
-    }
-    return layoutNodes;
-  }, [nodesForExit, layoutNodes, animationType]);
-  
-  // After drilldown animation completes, switch to new nodes
-  const [showNewNodes, setShowNewNodes] = useState(false);
-  
-  useEffect(() => {
-    if (animationType === 'drilldown' && nodesForExit.length > 0) {
-      setShowNewNodes(false);
-      const duration = ANIMATION_DURATIONS.drilldown;
-      setTimeout(() => {
-        setShowNewNodes(true);
-      }, duration * 0.8); // Show new nodes slightly before exit completes
-    } else {
-      setShowNewNodes(true);
-    }
-  }, [animationType, nodesForExit.length]);
 
   return (
     <div className="treemap-container" ref={containerRef}>
@@ -291,61 +249,21 @@ const TreemapContainer = ({
         totalValue={layoutNodes.reduce((sum, n) => sum + n.value, 0)}
       />
       
-      {/* Treemap nodes */}
+      {/* D3-based treemap rendering */}
       {!isEmpty && dimensions.width > 0 && (
-        <LayoutGroup>
-          {/* CRITICAL: custom prop passes zoomTargetInfo to all exiting nodes' variant functions */}
-          <AnimatePresence 
-            mode="sync" 
-            custom={zoomTargetInfo}
-            onExitComplete={() => {
-              // CRITICAL: Only clear state AFTER all exit animations complete
-              console.log('AnimatePresence: onExitComplete triggered, cleaning up');
-              drilldownInProgressRef.current = false;  // MARK: Animation finished
-              setNodesForExit([]);
-              setZoomTargetInfo(null);
-            }}
-          >
-            {/* Exiting nodes (during drilldown) - use edge-based push */}
-            {/* CRITICAL: Proper unmount timing - exit layer ONLY when showNewNodes is false */}
-            {/* This ensures AnimatePresence triggers exit when nodes are removed */}
-            {nodesForExit.length > 0 && !showNewNodes && nodesForExit.map(node => (
-              <TreemapNode
-                key={`exit-${node.key}`}           // Unique React key for reconciliation
-                node={node}                        // FIX: Keep original node.key for isZoomTarget matching!
-                animationType="drilldown"          // FORCE: hardcoded, not from state!
-                zoomTarget={zoomTargetInfo}        // Pass full info
-                isExitingNode={true}               // ISOLATION TEST: Flag to disable layoutId
-                containerWidth={dimensions.width}
-                containerHeight={dimensions.height}
-                onClick={handleNodeClick}
-                onMouseEnter={handleMouseEnter}
-                onMouseMove={handleMouseMove}
-                onMouseLeave={handleMouseLeave}
-                renderDepth={renderDepth}
-              />
-            ))}
-            
-            {/* Current/new nodes - use 'drilldown' animation type during drilldown to avoid fade */}
-            {(showNewNodes || animationType !== 'drilldown') && layoutNodes.map(node => (
-              <TreemapNode
-                key={node.key}
-                node={node}
-                animationType={animationType}  // FIXED: Don't override to 'filter'!
-                zoomTarget={zoomTargetInfo}
-                containerWidth={dimensions.width}
-                containerHeight={dimensions.height}
-                onClick={handleNodeClick}
-                onMouseEnter={handleMouseEnter}
-                onMouseMove={handleMouseMove}
-                onMouseLeave={handleMouseLeave}
-                isEntering={animationType === 'navigate-up'}
-                containerCenter={containerCenter}
-                renderDepth={renderDepth}
-              />
-            ))}
-          </AnimatePresence>
-        </LayoutGroup>
+        <TreemapD3Layer
+          layoutNodes={layoutNodes}
+          width={dimensions.width}
+          height={dimensions.height}
+          animationType={animationType}
+          zoomTarget={zoomTargetInfo}
+          renderDepth={renderDepth}
+          onNodeClick={handleNodeClick}
+          onNodeMouseEnter={handleMouseEnter}
+          onNodeMouseMove={handleMouseMove}
+          onNodeMouseLeave={handleMouseLeave}
+          onAnimationComplete={handleAnimationComplete}
+        />
       )}
       
       {/* Empty state: No initiatives for selected filters */}

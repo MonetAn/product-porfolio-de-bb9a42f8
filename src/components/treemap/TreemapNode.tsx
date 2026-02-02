@@ -173,7 +173,7 @@ const TreemapNode = memo(({
         e.stopPropagation();
         onClick?.(node);
       }}
-      onMouseEnter={(e) => {
+      onMouseOver={(e) => {
         e.stopPropagation();
         onMouseEnter?.(e, node);
       }}

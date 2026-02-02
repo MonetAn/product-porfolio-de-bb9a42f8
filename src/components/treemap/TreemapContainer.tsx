@@ -59,6 +59,8 @@ const TreemapContainer = ({
   
   // Track previous state for animation type detection
   const prevDataNameRef = useRef<string | null>(null);
+  const prevShowTeamsRef = useRef(showTeams);
+  const prevShowInitiativesRef = useRef(showInitiatives);
   const isFirstRenderRef = useRef(true);
   
   // Tooltip state
@@ -114,15 +116,21 @@ const TreemapContainer = ({
     } else if (dimensions.width > 0 && prevDataNameRef.current !== data.name) {
       // Data root changed - determine if drilldown or navigate-up
       newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
+    } else if (prevShowTeamsRef.current !== showTeams || 
+               prevShowInitiativesRef.current !== showInitiatives) {
+      // Checkbox filter change - use filter animation
+      newAnimationType = 'filter';
     }
     
     prevDataNameRef.current = data.name;
+    prevShowTeamsRef.current = showTeams;
+    prevShowInitiativesRef.current = showInitiatives;
     setAnimationType(newAnimationType);
     
     // Show hint briefly
     setShowHint(true);
     setTimeout(() => setShowHint(false), 3000);
-  }, [data.name, canNavigateBack, isEmpty, dimensions.width]);
+  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width]);
   
   // Render depth calculation
   const renderDepth = useMemo(() => {

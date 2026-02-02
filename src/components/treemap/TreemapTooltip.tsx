@@ -1,6 +1,6 @@
 // Treemap tooltip component
 
-import { useEffect, useRef, memo } from 'react';
+import { useLayoutEffect, useRef, useState, memo } from 'react';
 import { TreemapLayoutNode } from './types';
 import { formatBudget, escapeHtml } from '@/lib/dataManager';
 
@@ -16,9 +16,14 @@ interface TreemapTooltipProps {
 
 const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue }: TreemapTooltipProps) => {
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   
-  useEffect(() => {
-    if (!tooltipRef.current || !data) return;
+  // Calculate position when data changes - useLayoutEffect to avoid flicker
+  useLayoutEffect(() => {
+    if (!tooltipRef.current || !data) {
+      setPosition(null);
+      return;
+    }
     
     const tooltip = tooltipRef.current;
     const padding = 16;
@@ -43,8 +48,7 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
       y = padding;
     }
     
-    tooltip.style.left = `${x}px`;
-    tooltip.style.top = `${y}px`;
+    setPosition({ x, y });
   }, [data]);
   
   if (!data) {
@@ -127,10 +131,19 @@ const TreemapTooltip = memo(({ data, lastQuarter, selectedUnitsCount, totalValue
     return html;
   };
   
+  // Style with visibility hidden until position is calculated
+  const style: React.CSSProperties = position ? {
+    left: position.x,
+    top: position.y,
+  } : {
+    visibility: 'hidden',
+  };
+  
   return (
     <div 
       ref={tooltipRef} 
-      className={`treemap-tooltip ${data ? 'visible' : ''}`}
+      className={`treemap-tooltip ${data && position ? 'visible' : ''}`}
+      style={style}
       dangerouslySetInnerHTML={{ __html: renderContent() }}
     />
   );

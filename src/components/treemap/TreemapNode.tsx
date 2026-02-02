@@ -115,18 +115,20 @@ const TreemapNode = memo(({
   return (
     <motion.div
       layoutId={node.key}
-      initial={animationType === 'initial' ? false : { opacity: 0 }}
+      initial={animationType === 'initial' ? false : { opacity: 0, scale: 0.85 }}
       animate={{ 
         opacity: 1,
+        scale: 1,
         x,
         y,
         width: node.width,
         height: node.height,
       }}
-      exit={{ opacity: 0 }}
+      exit={{ opacity: 0, scale: 0.85 }}
       transition={{ 
         duration,
         ease: [0.25, 0.1, 0.25, 1],
+        scale: { duration: duration * 0.8 },
       }}
       className={classNames}
       style={{
@@ -136,6 +138,7 @@ const TreemapNode = memo(({
         overflow: 'hidden',
         cursor: 'pointer',
         border: '1px solid rgba(255,255,255,0.3)',
+        transformOrigin: 'center center',
       }}
       onClick={(e) => {
         e.stopPropagation();

@@ -132,6 +132,12 @@ const Index = () => {
   useEffect(() => {
     if (selectedUnits.length === 1) {
       const unitName = selectedUnits[0];
+      // If Teams is already enabled (e.g., via treemap click), remember that we've already
+      // "auto-triggered" for this unit so user can turn it off without it snapping back on.
+      if (showTeams && autoTeamsTriggeredRef.current !== unitName) {
+        autoTeamsTriggeredRef.current = unitName;
+        return;
+      }
       // Only trigger if this is a new unit (not one we've already triggered for)
       if (autoTeamsTriggeredRef.current !== unitName && !showTeams) {
         setShowTeams(true);

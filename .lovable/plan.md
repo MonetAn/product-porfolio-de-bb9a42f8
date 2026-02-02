@@ -1,102 +1,102 @@
 
-
-# План: Уникальные цвета с последовательным назначением и hue-сдвигом
+# План: Исправление тултипа при быстром наведении на вложенные элементы
 
 ## Проблема
 
-Текущий алгоритм `hash % 8` приводит к повторяющимся цветам при >8 сущностях или при коллизиях хешей.
+При быстром перемещении курсора с родительского элемента (Unit) на дочерний (Initiative), тултип показывает данные родителя вместо дочернего из-за race condition между событиями `mouseEnter` и `mouseLeave`.
+
+**Последовательность событий:**
+```text
+1. Курсор на FAP → tooltip = FAP
+2. Курсор быстро на инициативу внутри FAP:
+   - onMouseLeave(FAP) → setTooltipData(null)
+   - onMouseEnter(initiative) → setTooltipData(initiative)
+3. React batching может нарушить порядок
+```
 
 ---
 
 ## Решение
 
-### A) Добавить утилиты конвертации цветов в `dataManager.ts`
+Использовать **отложенный сброс тултипа** с проверкой актуальности:
+
+### A) Добавить ref для отслеживания текущего hovered node
 
 ```typescript
-// HEX → RGB
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : { r: 0, g: 0, b: 0 };
-}
-
-// RGB → HSL
-function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number }
-
-// HSL → RGB
-function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number }
-
-// RGB → HEX
-function rgbToHex(r: number, g: number, b: number): string
-
-// Сдвиг hue на заданный угол
-export function shiftHue(hex: string, degrees: number): string
+// В TreemapContainer.tsx
+const hoveredNodeRef = useRef<TreemapLayoutNode | null>(null);
 ```
 
-### B) Реализовать генератор расширенной палитры
+### B) Изменить handleMouseEnter
 
 ```typescript
-// Счётчик для последовательного назначения
-let unitColorIndex = 0;
-
-// Генерация цвета с расширением палитры
-function generateExtendedColor(index: number, palette: string[]): string {
-  const baseIndex = index % palette.length;
-  const generation = Math.floor(index / palette.length);
-  
-  if (generation === 0) {
-    return palette[baseIndex];
-  }
-  
-  // Для последующих поколений — сдвигаем hue
-  const hueShift = generation * 25 * (generation % 2 === 0 ? 1 : -1);
-  return shiftHue(palette[baseIndex], hueShift);
-}
+const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
+  hoveredNodeRef.current = node;  // Запоминаем текущий node
+  setTooltipData({
+    node,
+    position: { x: e.clientX, y: e.clientY },
+  });
+}, []);
 ```
 
-### C) Обновить `getUnitColor`
+### C) Изменить handleMouseLeave с задержкой
 
 ```typescript
-export function getUnitColor(unitName: string): string {
-  if (!unitColors[unitName]) {
-    if (explicitUnitColors[unitName]) {
-      unitColors[unitName] = explicitUnitColors[unitName];
-    } else {
-      unitColors[unitName] = generateExtendedColor(unitColorIndex++, colorPalette);
+const handleMouseLeave = useCallback(() => {
+  hoveredNodeRef.current = null;
+  
+  // Отложенный сброс - даём время на mouseEnter дочернего
+  setTimeout(() => {
+    // Сбрасываем только если никто новый не появился
+    if (hoveredNodeRef.current === null) {
+      setTooltipData(null);
     }
-  }
-  return unitColors[unitName];
-}
+  }, 10);  // Минимальная задержка для race condition
+}, []);
 ```
 
-### D) Обновить `StakeholdersTreemap.tsx`
+### D) Альтернатива: Использовать pointer-events на контейнере
 
-Перенести утилиты hue-сдвига в экспорт из `dataManager.ts` и использовать аналогичную логику:
+Добавить общий `onMouseLeave` на весь контейнер treemap, а не на каждый node:
 
 ```typescript
-import { shiftHue } from '@/lib/dataManager';
+// TreemapContainer.tsx
+<div 
+  className="treemap-container" 
+  ref={containerRef}
+  onMouseLeave={() => setTooltipData(null)}  // Только при выходе из всего контейнера
+>
+```
 
-let stakeholderColorIndex = 0;
+И убрать `onMouseLeave` из отдельных nodes — тогда `mouseEnter` будет просто перезаписывать tooltip данными нового node.
 
-function generateExtendedColor(index: number): string {
-  const baseIndex = index % stakeholderColorPalette.length;
-  const generation = Math.floor(index / stakeholderColorPalette.length);
-  
-  if (generation === 0) return stakeholderColorPalette[baseIndex];
-  
-  const hueShift = generation * 25 * (generation % 2 === 0 ? 1 : -1);
-  return shiftHue(stakeholderColorPalette[baseIndex], hueShift);
-}
+---
 
-function getStakeholderColor(name: string): string {
-  if (!stakeholderColors[name]) {
-    stakeholderColors[name] = generateExtendedColor(stakeholderColorIndex++);
-  }
-  return stakeholderColors[name];
-}
+## Рекомендуемое решение: Вариант D (контейнерный onMouseLeave)
+
+Это самое простое и надёжное решение:
+
+### Изменения в TreemapNode.tsx
+
+```typescript
+// Убрать onMouseLeave с отдельных nodes
+onMouseEnter={(e) => {
+  e.stopPropagation();
+  onMouseEnter?.(e, node);
+}}
+onMouseMove={onMouseMove}
+// onMouseLeave убираем отсюда
+```
+
+### Изменения в TreemapContainer.tsx
+
+```typescript
+// Добавить onMouseLeave на контейнер
+<div 
+  className="treemap-container" 
+  ref={containerRef}
+  onMouseLeave={handleMouseLeave}
+>
 ```
 
 ---
@@ -105,24 +105,31 @@ function getStakeholderColor(name: string): string {
 
 | Файл | Изменение |
 |------|-----------|
-| `src/lib/dataManager.ts` | Добавить утилиты конвертации цветов, `shiftHue`, `generateExtendedColor`, обновить `getUnitColor` |
-| `src/components/StakeholdersTreemap.tsx` | Использовать `shiftHue` из dataManager, реализовать последовательное назначение |
+| `src/components/treemap/TreemapNode.tsx` | Убрать передачу `onMouseLeave` в дочерние nodes, убрать `onMouseLeave` с motion.div |
+| `src/components/treemap/TreemapContainer.tsx` | Добавить `onMouseLeave` на контейнер `div`, передавать `undefined` для `onMouseLeave` в TreemapNode |
 
 ---
 
-## Гарантии уникальности
+## Логика после изменений
 
-| Количество сущностей | Результат |
-|---------------------|-----------|
-| 1-8 | Уникальные цвета из базовой палитры |
-| 9-16 | Hue-сдвиг +25° от базовых |
-| 17-24 | Hue-сдвиг -25° от базовых |
-| 25-32 | Hue-сдвиг +50° от базовых |
-| ... | Продолжение паттерна |
+```text
+1. Курсор на FAP → onMouseEnter(FAP) → tooltip = FAP
+2. Курсор на инициативу → onMouseEnter(initiative) → tooltip = initiative (перезапись)
+3. Курсор выходит из всего treemap → onMouseLeave контейнера → tooltip = null
+```
+
+**Преимущества:**
+- Нет race condition между enter/leave
+- Простая и понятная логика
+- Минимальные изменения кода
 
 ---
 
-## Безопасность для читаемости
+## Оценка
 
-Luminance остаётся неизменной при hue-сдвиге, а уже реализованная функция `getTextColorClass` автоматически подберёт белый или тёмный текст в зависимости от яркости фона.
-
+| Метрика | Значение |
+|---------|----------|
+| Сложность | Низкая |
+| Файлов изменится | 2 |
+| Риск регрессии | Низкий |
+| Время реализации | ~5 минут |

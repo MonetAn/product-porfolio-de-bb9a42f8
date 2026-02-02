@@ -53,7 +53,6 @@ const TreemapContainer = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [animationType, setAnimationType] = useState<AnimationType>('initial');
-  const [zoomTargetInfo, setZoomTargetInfo] = useState<ZoomTargetInfo | null>(null);
   const [showHint, setShowHint] = useState(true);
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
@@ -63,9 +62,9 @@ const TreemapContainer = ({
   const prevLayoutNodesRef = useRef<TreemapLayoutNode[]>([]);
   const isFirstRenderRef = useRef(true);
   
-  // NEW: Refs for drilldown animation fix
-  const exitingNodesRef = useRef<TreemapLayoutNode[]>([]);
-  const pendingZoomTargetRef = useRef<ZoomTargetInfo | null>(null);
+  // FIX: Use STATE instead of refs for drilldown snapshots (prevents race condition)
+  const [exitingNodesSnapshot, setExitingNodesSnapshot] = useState<TreemapLayoutNode[]>([]);
+  const [zoomTargetSnapshot, setZoomTargetSnapshot] = useState<ZoomTargetInfo | null>(null);
   
   // Helper: Flatten all nodes (including nested children) for complete tracking
   const flattenAllNodes = useCallback((nodes: TreemapLayoutNode[]): TreemapLayoutNode[] => {
@@ -119,11 +118,11 @@ const TreemapContainer = ({
   }, []);
   
   // CRITICAL: Capture exiting nodes BEFORE data changes (when clickedNodeName changes)
+  // FIX: Use STATE setters to guarantee React renders with consistent snapshot
   useEffect(() => {
     if (clickedNodeName && prevLayoutNodesRef.current.length > 0) {
       console.log('[DRILLDOWN] clickedNodeName changed:', clickedNodeName);
       console.log('[DRILLDOWN] prevLayoutNodesRef has nodes:', prevLayoutNodesRef.current.length);
-      console.log('[DRILLDOWN] All node names:', prevLayoutNodesRef.current.map(n => `${n.name}(d${n.depth})`).join(', '));
       
       // Find clicked node in the FULL flattened list
       const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
@@ -132,12 +131,14 @@ const TreemapContainer = ({
         console.log('[DRILLDOWN] Found clicked node:', clickedNode.name, 'at depth:', clickedNode.depth);
         
         // Filter to get only siblings (same depth, same parent)
-        exitingNodesRef.current = prevLayoutNodesRef.current.filter(
+        const siblings = prevLayoutNodesRef.current.filter(
           n => n.depth === clickedNode.depth && n.parentName === clickedNode.parentName
         );
-        console.log('[DRILLDOWN] exitingNodes (siblings):', exitingNodesRef.current.length, exitingNodesRef.current.map(n => n.name).join(', '));
+        console.log('[DRILLDOWN] Setting exitingNodesSnapshot (siblings):', siblings.length, siblings.map(n => n.name).join(', '));
         
-        pendingZoomTargetRef.current = {
+        // FIX: Set as STATE so React batches and D3Layer receives consistent data
+        setExitingNodesSnapshot(siblings);
+        setZoomTargetSnapshot({
           key: clickedNode.key,
           name: clickedNode.name,
           x0: clickedNode.x0,
@@ -147,7 +148,7 @@ const TreemapContainer = ({
           width: clickedNode.width,
           height: clickedNode.height,
           animationType: 'drilldown',
-        };
+        });
       } else {
         console.log('[DRILLDOWN] WARNING: Clicked node not found in prevLayoutNodes. Searched for:', clickedNodeName);
       }
@@ -155,6 +156,7 @@ const TreemapContainer = ({
   }, [clickedNodeName]);
   
   // Detect animation type based on data changes
+  // FIX: Do NOT clear snapshots here - let onAnimationComplete handle it
   useEffect(() => {
     if (isEmpty) return;
     
@@ -171,15 +173,13 @@ const TreemapContainer = ({
     prevDataNameRef.current = data.name;
     setAnimationType(newAnimationType);
     
-    // For drilldown, use pre-captured zoom target
-    if (newAnimationType === 'drilldown') {
-      console.log('[DRILLDOWN] Animation triggered, using pending zoomTarget:', pendingZoomTargetRef.current?.name);
-      setZoomTargetInfo(pendingZoomTargetRef.current);
-      // Don't clear yet - D3 layer needs it
-    } else {
-      setZoomTargetInfo(null);
-      exitingNodesRef.current = [];
+    // For non-drilldown, clear snapshots immediately
+    if (newAnimationType !== 'drilldown') {
+      setZoomTargetSnapshot(null);
+      setExitingNodesSnapshot([]);
     }
+    // For drilldown: snapshots are already set by clickedNodeName effect
+    // They will be cleared in onAnimationComplete
     
     // Show hint briefly
     setShowHint(true);
@@ -227,9 +227,10 @@ const TreemapContainer = ({
     setTooltipData(null);
   }, []);
   
-  // Animation complete handler
+  // Animation complete handler - FIX: Clear both snapshots here
   const handleAnimationComplete = useCallback(() => {
-    setZoomTargetInfo(null);
+    setZoomTargetSnapshot(null);
+    setExitingNodesSnapshot([]);
   }, []);
   
   // Drop zone handlers
@@ -299,8 +300,8 @@ const TreemapContainer = ({
           width={dimensions.width}
           height={dimensions.height}
           animationType={animationType}
-          zoomTarget={zoomTargetInfo}
-          exitingNodes={exitingNodesRef.current}
+          zoomTarget={zoomTargetSnapshot}
+          exitingNodes={exitingNodesSnapshot}
           renderDepth={renderDepth}
           onNodeClick={handleNodeClick}
           onNodeMouseEnter={handleMouseEnter}

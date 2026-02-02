@@ -265,6 +265,11 @@ const TreemapD3Layer = ({
   useEffect(() => {
     if (!svgRef.current || width === 0 || height === 0) return;
     
+    // DIAGNOSTIC: Log what D3Layer receives
+    console.log('[D3] Render with animationType:', animationType);
+    console.log('[D3] zoomTarget:', zoomTarget?.name);
+    console.log('[D3] exitingNodes.length:', exitingNodes.length);
+    
     const svg = d3.select(svgRef.current);
     const duration = ANIMATION_DURATIONS[animationType];
     

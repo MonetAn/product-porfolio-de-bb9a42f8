@@ -29,6 +29,7 @@ interface TreemapContainerProps {
   showUploadButton?: boolean;
   onUploadClick?: () => void;
   onFileDrop?: (file: File) => void;
+  extraDepth?: number;
 }
 
 const TreemapContainer = ({
@@ -49,6 +50,7 @@ const TreemapContainer = ({
   showUploadButton = false,
   onUploadClick,
   onFileDrop,
+  extraDepth = 0,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -79,6 +81,7 @@ const TreemapContainer = ({
     showTeams,
     showInitiatives,
     getColor,
+    extraDepth,
   });
   
   // Measure container synchronously to avoid flash

@@ -11,6 +11,7 @@ interface UseTreemapLayoutOptions {
   showTeams?: boolean;
   showInitiatives?: boolean;
   getColor?: ColorGetter;
+  extraDepth?: number;
 }
 
 // Flatten D3 hierarchy into array of layout nodes
@@ -86,7 +87,8 @@ export function useTreemapLayout({
   dimensions,
   showTeams = false,
   showInitiatives = false,
-  getColor = getUnitColor
+  getColor = getUnitColor,
+  extraDepth = 0
 }: UseTreemapLayoutOptions): TreemapLayoutNode[] {
   return useMemo(() => {
     if (!data.children || data.children.length === 0 || dimensions.width === 0 || dimensions.height === 0) {
@@ -102,6 +104,9 @@ export function useTreemapLayout({
     } else if (showInitiatives) {
       renderDepth = 2; // Units -> Initiatives
     }
+    
+    // Add extra depth for hierarchies with additional levels (e.g., Stakeholders)
+    renderDepth += extraDepth;
     
     // Create D3 hierarchy
     const root = d3.hierarchy(data)
@@ -134,7 +139,7 @@ export function useTreemapLayout({
     }
     
     return layoutNodes;
-  }, [data, dimensions.width, dimensions.height, showTeams, showInitiatives, getColor]);
+  }, [data, dimensions.width, dimensions.height, showTeams, showInitiatives, getColor, extraDepth]);
 }
 
 // Calculate exit direction for a node (used in drilldown animation)

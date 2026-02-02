@@ -58,6 +58,7 @@ const StakeholdersTreemap = ({
       emptyStateTitle="Нет инициатив по выбранным фильтрам"
       emptyStateSubtitle="Попробуйте изменить параметры фильтрации или сбросить фильтры"
       showUploadButton={false}
+      extraDepth={1}
     />
   );
 };

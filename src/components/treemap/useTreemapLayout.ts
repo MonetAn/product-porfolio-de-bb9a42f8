@@ -108,11 +108,17 @@ export function useTreemapLayout({
       .sum(d => d.value || 0)
       .sort((a, b) => (b.value || 0) - (a.value || 0));
     
-    // Create treemap layout
+    // Create treemap layout with dynamic padding based on depth
     const treemap = d3.treemap<TreeNode>()
       .size([dimensions.width, dimensions.height])
       .paddingOuter(2)
-      .paddingTop(renderDepth > 1 ? 20 : 2)
+      .paddingTop(d => {
+        if (renderDepth <= 1) return 2;
+        // Unit (depth 1): 18px, Team (depth 2): 14px, others: 2px
+        if (d.depth === 1) return 18;
+        if (d.depth === 2) return 14;
+        return 2;
+      })
       .paddingInner(2)
       .round(true);
     

@@ -167,6 +167,11 @@ const TreemapContainer = ({
     // Update refs synchronously - depth takes priority
     hoveredNodeRef.current = node;
     hoveredDepthRef.current = node.depth;
+
+    // Hide any previously shown tooltip immediately.
+    // This prevents the "old" tooltip content from sticking to the cursor while
+    // we debounce & confirm the actual hovered node.
+    setTooltipData(prev => (prev && prev.node.key !== node.key ? null : prev));
     
     // Cancel any pending tooltip update
     if (tooltipTimeoutRef.current !== null) {
@@ -187,7 +192,14 @@ const TreemapContainer = ({
   }, []);
   
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    setTooltipData(prev => prev ? { ...prev, position: { x: e.clientX, y: e.clientY } } : null);
+    // Only move the tooltip if it matches the currently hovered node.
+    // Otherwise the tooltip could visually "stick" to the cursor with stale content.
+    setTooltipData(prev => {
+      if (!prev) return null;
+      if (!hoveredNodeRef.current) return null;
+      if (prev.node.key !== hoveredNodeRef.current.key) return null;
+      return { ...prev, position: { x: e.clientX, y: e.clientY } };
+    });
   }, []);
   
   const handleMouseLeave = useCallback(() => {

@@ -1,204 +1,103 @@
 
-# План: Переход на D3 Transitions для анимаций Treemap
+# План: Исправление D3 Treemap (названия + анимации)
 
-## Резюме
-Переписать анимации treemap с Framer Motion на D3 transitions — **промышленный стандарт** для таких визуализаций (Flourish, Observable, DataWrapper используют этот подход).
+## Проблемы выявленные при анализе
 
----
+### Проблема 1: Потеряны названия юнитов/команд при вложенности
+**Причина**: В D3 layer контент центрируется (`justify-content: center`), нет логики "sticky header" для узлов с детьми.
 
-## Оценка объёма работ
+**Решение**: 
+- Если у узла есть `children` → рендерить label как **header вверху** (position: absolute, top: 0)
+- Если узел leaf → рендерить по центру как сейчас
 
-### Количество итераций: **4–6 итераций**
+### Проблема 2: Drilldown анимация не срабатывает
+**Причина**: Race condition в `TreemapContainer.tsx`:
+- `prevLayoutNodesRef.current` обновляется в `useEffect` после рендера
+- К моменту exit-анимации, D3 уже получил новые данные
+- `zoomTarget.key` не находится среди exiting nodes (разные ключи)
 
-| Этап | Итерации | Описание |
-|------|----------|----------|
-| 1. Подготовка | 1 | Рефакторинг структуры, создание нового компонента |
-| 2. Базовый рендеринг | 1 | D3 рендеринг прямоугольников без анимаций |
-| 3. Drilldown анимация | 1–2 | Target zoom + соседи улетают |
-| 4. Navigate-up + Filter | 1 | Обратная анимация + фильтрация |
-| 5. Polish + Cleanup | 1 | Удаление старого кода, финальная отладка |
+**Решение**:
+- Хранить snapshot предыдущих узлов ДО изменения данных
+- Передавать в D3 layer как отдельный prop `exitingNodes`
+- D3 сначала анимирует exit старых узлов, потом enter новых
 
-### Примерное количество кредитов: **15–25 кредитов**
-(зависит от количества корректировок и отладки)
+## Итерации
 
----
+### Итерация 1 (текущая): Header для вложенных узлов
+1. Изменить `TreemapD3Layer.tsx`:
+   - Если `d.children && d.children.length > 0` → header вверху
+   - Если leaf → контент по центру
+   
+### Итерация 2: Исправление drilldown анимации
+1. Изменить `TreemapContainer.tsx`:
+   - Хранить `exitingNodesRef` отдельно
+   - Обновлять его ПЕРЕД изменением `layoutNodes`
+   - Передавать в `TreemapD3Layer` как prop
+2. Изменить `TreemapD3Layer.tsx`:
+   - При drilldown: сначала анимировать exit из `exitingNodes`, потом enter новых
+   - Добавить диагностические логи
 
-## Риски и их митигация
+### Итерация 3: Polish и cleanup
+1. Удалить debug-код из `TreemapNode.tsx`
+2. Удалить сам `TreemapNode.tsx` (deprecated)
+3. Тонкая настройка timing и easing
 
-### Риск 1: Потеря интерактивности (tooltip, hover) — **Средний**
-**Проблема**: D3 рендерит напрямую в DOM, React не контролирует элементы
-**Митигация**: 
-- Сохраним React для container, tooltip, back-button
-- D3 управляет только `<rect>` элементами внутри `<svg>`
-- Event handlers через D3 `.on('mouseenter', ...)` пробрасывают в React state
+## Оценка
 
-### Риск 2: Потеря существующей функциональности — **Низкий**
-**Проблема**: Сложная логика (вложенные ноды, цвета, off-track индикатор)
-**Митигация**:
-- Сохраним `useTreemapLayout.ts` — он уже вычисляет D3 layout
-- Переиспользуем `types.ts`, `TreemapTooltip.tsx`
-- Меняем только слой "рендеринга + анимации"
+| Аспект | Значение |
+|--------|----------|
+| Оставшиеся итерации | 2-3 |
+| Кредиты | 8-15 |
+| Вероятность успеха push-анимации | 80-85% |
 
-### Риск 3: Визуальные различия (шрифты, padding) — **Низкий**
-**Проблема**: SVG text vs DOM text могут отличаться
-**Митигация**: Можем использовать `<foreignObject>` для HTML-контента внутри SVG, либо рендерить labels как DOM overlay поверх SVG
+## Риски
+- **Средний**: Timing между exit и enter может потребовать отладки
+- **Низкий**: Визуальные отличия header-ов от старого Framer Motion кода
 
-### Риск 4: Время на отладку exit-анимаций — **Средний**
-**Проблема**: D3 `.exit().transition()` требует аккуратной работы с data joins
-**Митигация**: 
-- Используем паттерн "general update pattern" от Майка Бостока
-- Ключевание по `node.key` (уже есть!)
+## Технические детали
 
----
-
-## Архитектура решения
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                    TreemapContainer.tsx                      │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │  React: Container, Tooltip, Back Button, Empty State    ││
-│  └─────────────────────────────────────────────────────────┘│
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │                    TreemapD3Layer.tsx                   ││
-│  │  ┌─────────────────────────────────────────────────────┐││
-│  │  │           <svg ref={svgRef}>                        │││
-│  │  │   D3 manages: rect elements, transitions, text      │││
-│  │  │   Events → React callbacks (onClick, onHover)       │││
-│  │  └─────────────────────────────────────────────────────┘││
-│  └─────────────────────────────────────────────────────────┘│
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │  useTreemapLayout.ts (БЕЗ ИЗМЕНЕНИЙ)                    ││
-│  │  D3 hierarchy + treemap layout calculation              ││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
+### Изменения в TreemapD3Layer.tsx для header:
+```typescript
+.html(d => {
+  const hasChildren = d.children && d.children.length > 0;
+  
+  if (hasChildren) {
+    // Header style for parent nodes
+    return `<div style="
+      position: absolute;
+      top: 4px;
+      left: 8px;
+      right: 8px;
+      font-weight: 600;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    ">${d.name}</div>`;
+  }
+  
+  // Centered content for leaf nodes
+  return `<div style="...centered...">${d.name}</div>`;
+})
 ```
 
----
-
-## Детальный план по этапам
-
-### Этап 1: Подготовка (1 итерация)
-**Файлы:**
-- Создать `src/components/treemap/TreemapD3Layer.tsx`
-- Модифицировать `TreemapContainer.tsx` — заменить Framer Motion на D3 layer
-
-**Изменения:**
-1. Удалить импорты `AnimatePresence`, `LayoutGroup` из `TreemapContainer`
-2. Создать SVG контейнер с ref
-3. Сохранить всю логику tooltip, back button, empty state
-
-### Этап 2: Базовый D3 рендеринг (1 итерация)
-**Цель:** Рендерить прямоугольники без анимаций
-
-**Код (концепция):**
+### Изменения в TreemapContainer.tsx для exit tracking:
 ```typescript
-// TreemapD3Layer.tsx
+// Новый ref для хранения exiting nodes
+const exitingNodesRef = useRef<TreemapLayoutNode[]>([]);
+
+// При смене данных - сохранить текущие как exiting
 useEffect(() => {
-  const svg = d3.select(svgRef.current);
-  
-  // Data join with key function
-  const rects = svg.selectAll<SVGRectElement, TreemapLayoutNode>('rect')
-    .data(layoutNodes, d => d.key);  // KEY!
-  
-  // Enter: new nodes
-  rects.enter()
-    .append('rect')
-    .attr('x', d => d.x0)
-    .attr('y', d => d.y0)
-    .attr('width', d => d.width)
-    .attr('height', d => d.height)
-    .attr('fill', d => d.color);
-  
-  // Update: existing nodes
-  rects
-    .attr('x', d => d.x0)
-    .attr('y', d => d.y0)
-    .attr('width', d => d.width)
-    .attr('height', d => d.height);
-  
-  // Exit: removed nodes
-  rects.exit().remove();
-}, [layoutNodes]);
+  if (prevDataNameRef.current !== data.name) {
+    exitingNodesRef.current = prevLayoutNodesRef.current;
+  }
+}, [data.name]);
+
+// Передать в D3 layer
+<TreemapD3Layer
+  exitingNodes={exitingNodesRef.current}
+  ...
+/>
 ```
-
-### Этап 3: Drilldown анимация (1–2 итерации)
-**Цель:** Target zoom + соседи улетают
-
-**Алгоритм:**
-1. При drilldown сохранить "старые" позиции нод
-2. Zoom target: анимировать к fullscreen (x: 0, y: 0, width: containerWidth, height: containerHeight)
-3. Соседи: вычислить push-direction, анимировать за пределы экрана
-4. После завершения — удалить exit-ноды, показать новые
-
-**Код (концепция):**
-```typescript
-// Drilldown animation
-if (animationType === 'drilldown' && zoomTarget) {
-  // Exit: push neighbors off-screen
-  rects.exit()
-    .transition()
-    .duration(600)
-    .attr('x', d => calculatePushX(d, zoomTarget, containerWidth))
-    .attr('y', d => calculatePushY(d, zoomTarget, containerHeight))
-    .remove();
-  
-  // Zoom target: expand to fullscreen
-  rects.filter(d => d.key === zoomTarget.key)
-    .transition()
-    .duration(600)
-    .attr('x', 0)
-    .attr('y', 0)
-    .attr('width', containerWidth)
-    .attr('height', containerHeight);
-}
-```
-
-### Этап 4: Navigate-up + Filter (1 итерация)
-**Navigate-up:** Обратная анимация (ноды прилетают с краёв)
-**Filter:** Простой морфинг позиций (уже работает в D3 через update)
-
-### Этап 5: Polish (1 итерация)
-1. Удалить `TreemapNode.tsx` (весь Framer Motion код)
-2. Удалить debug-логи
-3. Проверить производительность
-4. Убедиться, что все edge cases работают (пустые данные, resize)
-
----
-
-## Что сохраняется без изменений
-- `useTreemapLayout.ts` — вычисление layout
-- `types.ts` — типы
-- `TreemapTooltip.tsx` — React tooltip
-- `treemap.css` — стили (минимальные правки)
-- Вся логика в `Index.tsx` (clickedNodeName, handleNodeClick)
-
----
-
-## Что удаляется/заменяется
-- `TreemapNode.tsx` — полностью удаляется
-- Framer Motion imports в `TreemapContainer.tsx`
-- AnimatePresence, LayoutGroup, variants, exit animations
-
----
-
-## Вероятность успеха: **90–95%**
-
-**Почему высокая:**
-1. D3 transitions — это **тот же подход, что использует Flourish**
-2. У нас уже есть D3 layout (`useTreemapLayout.ts`)
-3. Exit-анимации в D3 — это просто `.exit().transition().attr(...)`, без React reconciliation
-4. Полный контроль над жизненным циклом элементов
-
-**Сравнение с текущим Framer Motion:**
-| Аспект | Framer Motion | D3 Transitions |
-|--------|---------------|----------------|
-| Exit control | Через AnimatePresence (косвенный) | Прямой через .exit() |
-| Sync timing | Сложно (custom, onExitComplete) | Просто (transition chaining) |
-| Layout conflicts | Layout Projection | Нет (ручные координаты) |
-| Debugging | Сложно (React lifecycle) | Просто (DOM инспектор) |
-
----
-
-## Рекомендация
-**Переходить на D3 transitions**. Это промышленный стандарт для сложных визуализаций с "camera zoom" эффектом. Текущий подход с Framer Motion упирается в архитектурное ограничение: AnimatePresence не даёт прямого контроля над exit-анимациями, а Layout Projection конфликтует с ручными координатами.

@@ -1,6 +1,6 @@
 // Treemap container with Framer Motion animations
 
-import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { ArrowUp, Upload, FileText, Search } from 'lucide-react';
 import TreemapNode from './TreemapNode';
@@ -79,8 +79,8 @@ const TreemapContainer = ({
     getColor,
   });
   
-  // Measure container
-  useEffect(() => {
+  // Measure container synchronously to avoid flash
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
     
     const updateDimensions = () => {
@@ -90,10 +90,11 @@ const TreemapContainer = ({
       }
     };
     
+    // Sync measurement before paint
     updateDimensions();
     
     const resizeObserver = new ResizeObserver(() => {
-      setTimeout(updateDimensions, 100);
+      requestAnimationFrame(updateDimensions);
     });
     
     resizeObserver.observe(containerRef.current);

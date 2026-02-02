@@ -28,11 +28,10 @@ interface TreemapNodeProps {
 }
 
 // Unified transition for synchronized animations (Camera Zoom effect)
-// TEMPORARY: 3.0s for slow-motion debug mode
 const ZOOM_TRANSITION = {
   type: 'tween' as const,
   ease: [0.4, 0, 0.2, 1] as [number, number, number, number], // ease-in-out cubic-bezier
-  duration: 3.0,  // DEBUG: was 0.6
+  duration: 0.6,
 };
 
 // Edge-based push calculation - nodes are "pushed" by expanding zoom target

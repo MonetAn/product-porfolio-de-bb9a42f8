@@ -9,6 +9,8 @@
   border-radius: 0;
   overflow: hidden;
   position: relative;
+  /* Prevent flash during tab switches */
+  contain: layout style paint;
 }
 
 /* Treemap Node Styles - Framer Motion handles animations */

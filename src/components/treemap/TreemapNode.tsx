@@ -115,7 +115,7 @@ const TreemapNode = memo(({
   return (
     <motion.div
       layoutId={node.key}
-      initial={{ opacity: 0 }}
+      initial={animationType === 'initial' ? false : { opacity: 0 }}
       animate={{ 
         opacity: 1,
         x,

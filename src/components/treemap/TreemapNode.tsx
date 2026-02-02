@@ -112,10 +112,15 @@ const TreemapNode = memo(({
     node.isInitiative && 'is-initiative',
   ].filter(Boolean).join(' ');
 
+  // Initial state includes geometry so nodes appear in their cell, not from (0,0)
+  const initialState = animationType === 'initial' 
+    ? false 
+    : { opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height };
+
   return (
     <motion.div
       layoutId={node.key}
-      initial={animationType === 'initial' ? false : { opacity: 0, scale: 0.85 }}
+      initial={initialState}
       animate={{ 
         opacity: 1,
         scale: 1,
@@ -124,7 +129,7 @@ const TreemapNode = memo(({
         width: node.width,
         height: node.height,
       }}
-      exit={{ opacity: 0, scale: 0.85 }}
+      exit={{ opacity: 0, scale: 0.92 }}
       transition={{ 
         duration,
         ease: [0.25, 0.1, 0.25, 1],

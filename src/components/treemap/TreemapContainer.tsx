@@ -303,14 +303,12 @@ const TreemapContainer = ({
             }}
           >
             {/* Exiting nodes (during drilldown) - use edge-based push */}
-            {/* CRITICAL: No animationType check - React state may be stale during exit */}
-            {nodesForExit.length > 0 && nodesForExit.map(node => (
+            {/* CRITICAL: Proper unmount timing - exit layer ONLY when showNewNodes is false */}
+            {/* This ensures AnimatePresence triggers exit when nodes are removed */}
+            {nodesForExit.length > 0 && !showNewNodes && nodesForExit.map(node => (
               <TreemapNode
-                key={`exit-${node.key}`}           // Unique key for exiting nodes!
-                node={{
-                  ...node,
-                  key: `exit-${node.key}`,         // Unique layoutId too!
-                }}
+                key={`exit-${node.key}`}           // Unique React key for reconciliation
+                node={node}                        // FIX: Keep original node.key for isZoomTarget matching!
                 animationType="drilldown"          // FORCE: hardcoded, not from state!
                 zoomTarget={zoomTargetInfo}        // Pass full info
                 isExitingNode={true}               // ISOLATION TEST: Flag to disable layoutId

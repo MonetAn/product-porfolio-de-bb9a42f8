@@ -1,198 +1,212 @@
 
-# План: Исправление drilldown анимации — финальная итерация
+# План: Возврат к Framer Motion с чистыми fade-анимациями
 
-## Диагноз (100% подтверждён логами)
+## Что сейчас есть
 
-### Факт из логов:
-```
-[DRILLDOWN] exitingNodes (siblings): 4 Data Office, FAP, Client Platform, Tech Platform
-[LAYOUT] Saved flattened nodes: 4 from 4 root nodes
-[LAYOUT] Saved flattened nodes: 6 from 1 root nodes
-```
+Текущая реализация использует D3 для рендеринга и анимаций с:
+- Сложной логикой `exit-layer` / `enter-layer`
+- `zoomTargetSnapshot` и `exitingNodesSnapshot` для drilldown push-эффекта
+- Race condition между useState и D3 рендерингом
+- ~548 строк кода в `TreemapD3Layer.tsx`
 
-**НО логов `[D3] Drilldown with exitingNodes:` НЕТ!**
+## Что будет после рефакторинга
 
-Это означает, что ветка drilldown в `TreemapD3Layer.tsx` (строка 290) не выполняется:
-```typescript
-if (animationType === 'drilldown' && zoomTarget && exitingNodes.length > 0)
-```
-
-### Причина: Race condition в передаче exitingNodes
-
-Код передаёт `exitingNodesRef.current` как value:
-```typescript
-<TreemapD3Layer
-  exitingNodes={exitingNodesRef.current}  // ← VALUE, не REF!
-  ...
-/>
-```
-
-К моменту когда D3Layer получает props, `exitingNodesRef.current` мог быть **очищен или перезаписан** из-за порядка выполнения useEffect-ов.
-
-### Почему у Flourish работает
-Flourish использует чистый D3: один SVG, никакой смены данных при drilldown — только transform viewport. D3 сам знает "старые" позиции всех элементов.
-
-У нас: React меняет данные → D3 получает УЖЕ НОВЫЕ данные → нет "памяти" о старом состоянии.
+Простая Framer Motion реализация с:
+- `AnimatePresence` для enter/exit анимаций
+- `layoutId` для плавных transitions позиций
+- Только fade-анимации (никакого push-эффекта)
+- ~150 строк кода в новом компоненте
 
 ---
 
-## Решение: Использовать useState вместо useRef
+## Архитектура
 
-Проблема в том, что `exitingNodesRef.current` не вызывает re-render. К моменту рендера D3Layer значение могло измениться.
-
-### Изменения в TreemapContainer.tsx
-
-```typescript
-// БЫЛО (проблема):
-const exitingNodesRef = useRef<TreemapLayoutNode[]>([]);
-...
-exitingNodesRef.current = prevLayoutNodesRef.current.filter(...);
-...
-<TreemapD3Layer exitingNodes={exitingNodesRef.current} />
-
-// СТАНЕТ (решение):
-const [exitingNodesSnapshot, setExitingNodesSnapshot] = useState<TreemapLayoutNode[]>([]);
-...
-setExitingNodesSnapshot(prevLayoutNodesRef.current.filter(...));
-...
-<TreemapD3Layer exitingNodes={exitingNodesSnapshot} />
-```
-
-### Также исправить zoomTargetInfo
-
-Аналогично `pendingZoomTargetRef` нужно синхронизировать с state:
-```typescript
-const [zoomTargetSnapshot, setZoomTargetSnapshot] = useState<ZoomTargetInfo | null>(null);
-```
-
-### Критические изменения
-
-#### 1. TreemapContainer.tsx — использовать state вместо ref
-
-```typescript
-// Заменить refs на state для snapshot данных
-const [exitingNodesSnapshot, setExitingNodesSnapshot] = useState<TreemapLayoutNode[]>([]);
-const [zoomTargetSnapshot, setZoomTargetSnapshot] = useState<ZoomTargetInfo | null>(null);
-
-// В useEffect при изменении clickedNodeName:
-useEffect(() => {
-  if (clickedNodeName && prevLayoutNodesRef.current.length > 0) {
-    const clickedNode = prevLayoutNodesRef.current.find(n => n.name === clickedNodeName);
-    
-    if (clickedNode) {
-      // Сохраняем siblings как STATE (будет передан в D3Layer при следующем render)
-      const siblings = prevLayoutNodesRef.current.filter(
-        n => n.depth === clickedNode.depth && n.parentName === clickedNode.parentName
-      );
-      setExitingNodesSnapshot(siblings);
-      
-      // Сохраняем zoomTarget как STATE
-      setZoomTargetSnapshot({
-        key: clickedNode.key,
-        name: clickedNode.name,
-        x0: clickedNode.x0,
-        y0: clickedNode.y0,
-        x1: clickedNode.x1,
-        y1: clickedNode.y1,
-        width: clickedNode.width,
-        height: clickedNode.height,
-        animationType: 'drilldown',
-      });
-    }
-  }
-}, [clickedNodeName]);
-
-// В useEffect для animationType НЕ ОЧИЩАТЬ сразу:
-useEffect(() => {
-  if (isEmpty) return;
-  
-  let newAnimationType: AnimationType = 'filter';
-  
-  if (isFirstRenderRef.current) {
-    isFirstRenderRef.current = false;
-    newAnimationType = 'initial';
-  } else if (dimensions.width > 0 && prevDataNameRef.current !== data.name) {
-    newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
-  }
-  
-  prevDataNameRef.current = data.name;
-  setAnimationType(newAnimationType);
-  
-  // НЕ очищать zoomTargetSnapshot и exitingNodesSnapshot здесь!
-  // Они будут очищены в onAnimationComplete
-  
-}, [data.name, canNavigateBack, isEmpty, dimensions.width]);
-
-// В handleAnimationComplete — очистить snapshots:
-const handleAnimationComplete = useCallback(() => {
-  setZoomTargetSnapshot(null);
-  setExitingNodesSnapshot([]);
-}, []);
-
-// В JSX — передать state:
-<TreemapD3Layer
-  zoomTarget={zoomTargetSnapshot}
-  exitingNodes={exitingNodesSnapshot}
-  ...
-/>
-```
-
-#### 2. TreemapD3Layer.tsx — добавить диагностику
-
-```typescript
-// В начале useEffect для D3 рендеринга (после строки 268):
-console.log('[D3] Render with animationType:', animationType);
-console.log('[D3] zoomTarget:', zoomTarget?.name);
-console.log('[D3] exitingNodes.length:', exitingNodes.length);
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  TreemapContainer                                               │
+│  ├── AnimatePresence                                            │
+│  │   └── TreemapNode (для каждого узла с layoutId)              │
+│  │       ├── motion.div с позицией и размером                   │
+│  │       ├── Контент (название, бюджет)                         │
+│  │       └── Вложенные TreemapNode (если есть children)         │
+│  └── TreemapTooltip                                             │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Почему это решит проблему
+## Какие анимации останутся
 
-| Проблема | Решение |
-|----------|---------|
-| `exitingNodesRef.current` перезаписывается до рендера D3Layer | useState создаёт immutable snapshot |
-| Refs не вызывают re-render | State вызовет render с правильными данными |
-| Race condition между useEffect-ами | React batches state updates и рендерит с консистентными данными |
-
----
-
-## Ожидаемый результат
-
-После исправления логи будут:
-```
-[D3] Render with animationType: drilldown
-[D3] zoomTarget: FAP
-[D3] exitingNodes.length: 4
-[D3] Drilldown with exitingNodes: 4 zoomTarget: FAP
-[D3] Neighbor Data Office pushing to: -300, 100
-[D3] Neighbor Client Platform pushing to: 1500, 100
-[D3] Neighbor Tech Platform pushing to: 1500, 700
-```
-
-И визуально соседи будут улетать за края экрана.
+| Тип | Поведение |
+|-----|-----------|
+| **initial** | Без анимации — блоки появляются сразу |
+| **filter** | fade-out уходящих, fade-in новых, плавное перестроение позиций (layoutId) |
+| **drilldown** | fade-out старых блоков, fade-in новых |
+| **navigate-up** | fade-out + плавное появление родительских блоков |
 
 ---
 
 ## Файлы для изменения
 
-| Файл | Изменения |
-|------|-----------|
-| `TreemapContainer.tsx` | useRef → useState для exitingNodes и zoomTarget |
-| `TreemapD3Layer.tsx` | Добавить diagnostic logs в начале useEffect |
+### 1. Удалить `TreemapD3Layer.tsx` (548 строк)
+Этот файл больше не нужен — D3 используется только для расчёта layout в `useTreemapLayout.ts`.
+
+### 2. Переписать `TreemapNode.tsx` (~150 строк)
+Упростить до чистого Framer Motion компонента без push-логики:
+
+```typescript
+const TreemapNode = memo(({
+  node,
+  animationType,
+  onClick,
+  onMouseEnter,
+  onMouseMove,
+  onMouseLeave,
+  showChildren,
+  renderDepth,
+}) => {
+  const hasChildren = node.children && node.children.length > 0;
+  const shouldRenderChildren = hasChildren && node.depth < renderDepth - 1;
+  
+  return (
+    <motion.div
+      layoutId={node.key}
+      initial={{ opacity: 0 }}
+      animate={{ 
+        opacity: 1,
+        x: node.x0,
+        y: node.y0,
+        width: node.width,
+        height: node.height,
+      }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: animationType === 'initial' ? 0 : 0.4 }}
+      // ... остальные props
+    >
+      <TreemapNodeContent node={node} />
+      
+      {shouldRenderChildren && showChildren && (
+        <AnimatePresence mode="sync">
+          {node.children!.map(child => (
+            <TreemapNode key={child.key} node={child} ... />
+          ))}
+        </AnimatePresence>
+      )}
+    </motion.div>
+  );
+});
+```
+
+### 3. Упростить `TreemapContainer.tsx` (~150 строк удалить)
+
+**Удалить:**
+- `exitingNodesSnapshot`, `zoomTargetSnapshot` состояния
+- `flattenAllNodes` функцию
+- useEffect для `clickedNodeName` (строки 120-156)
+- `handleAnimationComplete` callback
+- Props для `zoomTarget`, `exitingNodes`
+
+**Упростить:**
+- useEffect для определения `animationType` — простая логика без snapshot
+
+**Заменить:**
+- `<TreemapD3Layer>` на рендеринг `<TreemapNode>` компонентов через `AnimatePresence`
+
+### 4. Обновить `types.ts`
+
+**Удалить:**
+- `ZoomTargetInfo` interface
+- `ExitDirection` interface
+
+### 5. Обновить `index.ts`
+
+**Удалить:**
+- Экспорт `TreemapD3Layer`
+
+---
+
+## Структура нового TreemapContainer
+
+```typescript
+const TreemapContainer = ({ data, showTeams, showInitiatives, ... }) => {
+  const [animationType, setAnimationType] = useState<AnimationType>('initial');
+  const prevDataNameRef = useRef<string | null>(null);
+  const isFirstRenderRef = useRef(true);
+  
+  // Compute layout (без изменений)
+  const layoutNodes = useTreemapLayout({ data, dimensions, showTeams, showInitiatives, getColor });
+  
+  // Определение типа анимации (упрощённо)
+  useEffect(() => {
+    if (isEmpty) return;
+    
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      setAnimationType('initial');
+    } else if (prevDataNameRef.current !== data.name) {
+      setAnimationType(canNavigateBack ? 'drilldown' : 'navigate-up');
+    } else {
+      setAnimationType('filter');
+    }
+    
+    prevDataNameRef.current = data.name;
+  }, [data.name, canNavigateBack, isEmpty, layoutNodes]);
+  
+  // Рендеринг
+  return (
+    <div ref={containerRef} className="treemap-container">
+      <AnimatePresence mode="sync">
+        {layoutNodes.map(node => (
+          <TreemapNode
+            key={node.key}
+            node={node}
+            animationType={animationType}
+            onClick={handleNodeClick}
+            onMouseEnter={handleMouseEnter}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            showChildren={true}
+            renderDepth={renderDepth}
+          />
+        ))}
+      </AnimatePresence>
+      
+      <TreemapTooltip ... />
+      {/* Empty states... */}
+    </div>
+  );
+};
+```
+
+---
+
+## Итоговая разница в коде
+
+| Файл | Было | Станет | Разница |
+|------|------|--------|---------|
+| `TreemapD3Layer.tsx` | 548 строк | **Удалён** | -548 |
+| `TreemapNode.tsx` | 482 строки | ~150 строк | -332 |
+| `TreemapContainer.tsx` | 371 строка | ~220 строк | -151 |
+| `types.ts` | 87 строк | ~60 строк | -27 |
+| **Итого** | | | **-1058 строк** |
+
+---
+
+## Критерии готовности
+
+1. Никаких прозрачных/пропадающих блоков при любых фильтрах
+2. Плавный fade-out/fade-in при drilldown и navigate-up
+3. Плавные transitions позиций при изменении фильтров (благодаря layoutId)
+4. Корректная работа при быстром переключении фильтров
+5. Никаких console warnings/errors
+
+---
 
 ## Оценка
 
-- **Сложность**: низкая-средняя
-- **Итерации**: 1 (это финальное исправление)
-- **Вероятность успеха**: 90-95%
-
-## План Б (если не сработает)
-
-Если после этого исправления соседи всё ещё не улетают:
-1. Проверить что D3 transitions запускаются (логи `[D3] Neighbor X pushing to:`)
-2. Если логи есть но визуально нет — проблема в layering/opacity
-3. Если логов нет — проблема в условии входа в ветку drilldown
-
-В крайнем случае — принять fade-out анимацию как fallback.
+| Метрика | Значение |
+|---------|----------|
+| Сложность | Низкая |
+| Удаление кода | ~1000+ строк |
+| Стабильность | Высокая |
+| Вероятность успеха | 95% |

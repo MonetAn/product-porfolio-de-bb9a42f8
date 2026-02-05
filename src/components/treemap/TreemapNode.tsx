@@ -166,7 +166,6 @@ const TreemapNode = memo(({
         borderRadius: 4,
         overflow: 'hidden',
         cursor: 'pointer',
-        border: '1px solid rgba(255,255,255,0.3)',
         transformOrigin: 'center center',
       }}
       onClick={(e) => {

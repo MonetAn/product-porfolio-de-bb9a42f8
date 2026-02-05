@@ -95,12 +95,12 @@
 
 /* Nested node styling */
 .treemap-node.depth-0 {
-  border: 3px solid rgba(0,0,0,0.3);
+  /* border removed for cleaner look */
 }
 
 /* Visual distinction for Team vs Initiative in Stakeholders treemap */
 .treemap-node.is-team {
-  border-left: 3px solid rgba(255,255,255,0.4);
+  /* border removed for cleaner look */
 }
 
 .treemap-node.is-initiative {
@@ -108,11 +108,11 @@
 }
 
 .treemap-node.depth-1 {
-  border: 2px solid rgba(255,255,255,0.3);
+  /* border removed for cleaner look */
 }
 
 .treemap-node.depth-2 {
-  border: 1px solid rgba(255,255,255,0.2);
+  /* border removed for cleaner look */
 }
 
 /* Tooltip */

@@ -1,88 +1,72 @@
 
-# План: Исправление приоритета дочерних элементов при быстром наведении
 
-## Диагноз проблемы
+# План: Изменить логику off-track на "последний квартал периода"
 
-Текущая логика корректна **теоретически**, но на практике возникает race condition из-за особенностей браузера:
+## Текущее поведение
 
-### Сценарий проблемы
+Инициатива считается off-track, если она была off-track **хотя бы в одном квартале** выбранного диапазона.
 
-```text
-Курсор быстро входит в область Child (внутри Parent)
-
-Ожидание:
-1. mouseEnter(Parent) → depth=0
-2. mouseEnter(Child) → depth=1 > 0 → Child побеждает ✓
-
-Реальность (при быстром движении):
-1. mouseEnter(Parent) → depth=0, setTimeout запланирован
-2. mouseEnter(Child) → НЕ СРАБАТЫВАЕТ (курсор "перепрыгнул" или событие не успело)
-3. setTimeout → показывает Parent ✗
+```typescript
+// Текущая логика
+return selectedQuarters.some(q => {
+  const qData = row.quarterlyData[q];
+  return qData && !qData.onTrack;
+});
 ```
 
-### Корневая причина
+## Новое поведение
 
-Браузер может **не генерировать mouseEnter** на дочернем элементе, если:
-- Курсор движется слишком быстро
-- Между событиями прошло слишком мало времени
-- Дочерний элемент слишком маленький
-
-### Дополнительная проблема: Event Bubbling
-
-События `mouseEnter` **не bubble** (это non-bubbling event), но `mouseover` — bubble. Возможно, нужно использовать `mouseover` + `target` для точного определения.
+Инициатива считается off-track, если она off-track **в последнем квартале** выбранного диапазона.
 
 ---
 
-## Решение: Использовать `mouseover` с проверкой `e.target`
+## Изменения
 
-`mouseover` bubbles от самого глубокого элемента вверх, что гарантирует получение события от правильного элемента.
-
-### A) Изменить TreemapNode — использовать onMouseOver вместо onMouseEnter
+### 1. `src/lib/dataManager.ts` — функция `isInitiativeOffTrack`
 
 ```typescript
-// TreemapNode.tsx
-onMouseOver={(e) => {
-  e.stopPropagation(); // Предотвращаем bubbling к родителям
-  onMouseEnter?.(e, node);
-}}
+export function isInitiativeOffTrack(row: RawDataRow, selectedQuarters: string[]): boolean {
+  if (selectedQuarters.length === 0) return false;
+  
+  // Off-track only if the LAST quarter in selected period was off-track
+  const lastQuarter = selectedQuarters[selectedQuarters.length - 1];
+  const qData = row.quarterlyData[lastQuarter];
+  return qData ? !qData.onTrack : false;
+}
 ```
 
-### B) Убрать проверку глубины — не нужна с stopPropagation
+---
 
-Если `stopPropagation()` корректно останавливает bubbling, проверка глубины становится избыточной. Самый глубокий элемент получает событие первым и останавливает его.
+## Что использует эту функцию
+
+| Место | Эффект изменения |
+|-------|------------------|
+| `shouldIncludeRow()` | Фильтр "показать только off-track" будет показывать только инициативы с off-track в последнем квартале |
+| `buildFullTree()` | Статус `offTrack` на нодах тримапа будет отражать последний квартал |
+| `FilterBar.tsx` | Счётчик off-track инициатив обновится автоматически |
+
+---
+
+## Консистентность с логикой Support
+
+Эта логика станет **идентичной** логике фильтра Support (которая уже работает по последнему кварталу):
 
 ```typescript
-// TreemapContainer.tsx - упрощённый handleMouseEnter
-const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
-  hoveredNodeRef.current = node;
-  hoveredDepthRef.current = node.depth;
-
-  // Скрыть старый тултип мгновенно
-  setTooltipData(prev => (prev && prev.node.key !== node.key ? null : prev));
-  
-  // Отменить предыдущий timeout
-  if (tooltipTimeoutRef.current !== null) {
-    clearTimeout(tooltipTimeoutRef.current);
-  }
-  
-  // Показать новый тултип с небольшой задержкой
-  tooltipTimeoutRef.current = window.setTimeout(() => {
-    if (hoveredNodeRef.current === node) {
-      setTooltipData({
-        node,
-        position: { x: e.clientX, y: e.clientY },
-      });
-    }
-    tooltipTimeoutRef.current = null;
-  }, 5);
-}, []);
+// isInitiativeSupport — уже использует последний квартал
+const lastQuarter = selectedQuarters[selectedQuarters.length - 1];
+const lastQData = row.quarterlyData[lastQuarter];
+return lastQData?.support || false;
 ```
 
-### C) Аналогично для onMouseOut вместо onMouseLeave
+---
 
-`mouseout` bubbles, `mouseleave` — нет. Но здесь сложнее, т.к. `mouseout` срабатывает при переходе на дочерний элемент.
+## Обновление документации
 
-Лучше оставить `onMouseLeave` на ноде как есть — он уже работает корректно.
+Нужно обновить тултип в FilterBar, чтобы он отражал новую логику:
+
+**Было**: "Инициатива считается off-track, если была off-track хотя бы в одном квартале периода"
+
+**Станет**: "Инициатива считается off-track, если off-track в последнем квартале периода"
 
 ---
 
@@ -90,92 +74,8 @@ const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNo
 
 | Файл | Изменение |
 |------|-----------|
-| `TreemapNode.tsx` | Заменить `onMouseEnter` на `onMouseOver` с `stopPropagation()` |
-| `TreemapContainer.tsx` | Убрать проверку глубины (станет не нужна) |
-
----
-
-## Почему `mouseover` + `stopPropagation` лучше
-
-| Аспект | `mouseEnter` | `mouseover` + stopPropagation |
-|--------|--------------|-------------------------------|
-| Bubbling | Не bubbles | Bubbles (но мы останавливаем) |
-| Порядок | Зависит от DOM | Сначала самый глубокий элемент |
-| Надёжность | Может "пропустить" элементы | Гарантированно срабатывает |
-| Быстрое движение | Проблемы | Надёжно |
-
----
-
-## Альтернативное решение: Pointer Capture
-
-Более "тяжёлое" решение — использовать `setPointerCapture` для "захвата" курсора на конкретном элементе. Но это избыточно для нашего случая.
-
----
-
-## Итоговый flow
-
-```text
-Сценарий: Курсор быстро входит в область Child
-
-1. mouseover срабатывает на Child (самый глубокий)
-2. stopPropagation() — событие не доходит до Parent
-3. handleMouseEnter получает Child
-4. setTimeout → показывает тултип Child ✓
-
-Результат: Всегда показывается самый глубокий элемент
-```
-
----
-
-## Техническая реализация
-
-### TreemapNode.tsx
-
-```typescript
-// Заменить onMouseEnter на onMouseOver
-<motion.div
-  ...
-  onMouseOver={(e) => {
-    e.stopPropagation();
-    onMouseEnter?.(e, node);
-  }}
-  onMouseMove={onMouseMove}
-  onMouseLeave={(e) => {
-    e.stopPropagation();
-    onMouseLeave?.(node);
-  }}
->
-```
-
-### TreemapContainer.tsx
-
-```typescript
-// Убрать проверку глубины — теперь не нужна
-const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
-  // Обновляем refs синхронно
-  hoveredNodeRef.current = node;
-  hoveredDepthRef.current = node.depth;
-
-  // Скрыть старый тултип мгновенно если это другая нода
-  setTooltipData(prev => (prev && prev.node.key !== node.key ? null : prev));
-  
-  // Отменить предыдущий запланированный апдейт
-  if (tooltipTimeoutRef.current !== null) {
-    clearTimeout(tooltipTimeoutRef.current);
-  }
-  
-  // Показать новый тултип через 5ms
-  tooltipTimeoutRef.current = window.setTimeout(() => {
-    if (hoveredNodeRef.current === node) {
-      setTooltipData({
-        node,
-        position: { x: e.clientX, y: e.clientY },
-      });
-    }
-    tooltipTimeoutRef.current = null;
-  }, 5);
-}, []);
-```
+| `src/lib/dataManager.ts` | Изменить `isInitiativeOffTrack` — проверять только последний квартал |
+| `src/components/FilterBar.tsx` (опционально) | Обновить тултип для тоггла off-track |
 
 ---
 
@@ -183,7 +83,8 @@ const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNo
 
 | Метрика | Значение |
 |---------|----------|
-| Сложность | Низкая |
-| Файлов изменится | 2 |
-| Риск регрессии | Минимальный |
-| Надёжность | Высокая — использует гарантированный порядок событий браузера |
+| Сложность | Очень низкая |
+| Файлов изменится | 1-2 |
+| Риск регрессии | Минимальный — изолированная функция |
+| Время реализации | 2-3 минуты |
+

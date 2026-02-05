@@ -714,7 +714,7 @@ const FilterBar = ({
                 </label>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[280px] text-xs">
-                Инициатива считается Off-track, если она была off-track хотя бы 1 квартал за выбранный период
+                Инициатива считается Off-track, если она off-track в последнем квартале выбранного периода
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

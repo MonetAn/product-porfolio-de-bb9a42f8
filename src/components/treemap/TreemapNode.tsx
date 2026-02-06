@@ -160,7 +160,7 @@ const TreemapNode = memo(({
       },
     },
     exit: (customClickCenter: { x: number; y: number } | null) => {
-      if (animationType === 'drilldown' && customClickCenter && containerDimensions && !isHero) {
+      if (customClickCenter && containerDimensions && !isHero) {
         const nodeCenterX = node.x0 + node.width / 2;
         const nodeCenterY = node.y0 + node.height / 2;
         const dx = nodeCenterX - customClickCenter.x;

@@ -636,6 +636,18 @@
   margin-bottom: 0;
 }
 
+.gantt-name-popup-section.clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-radius: 6px;
+  margin: -4px -8px;
+  padding: 4px 8px;
+}
+
+.gantt-name-popup-section.clickable:hover {
+  background-color: hsl(var(--secondary));
+}
+
 .gantt-name-popup-label {
   font-size: 11px;
   font-weight: 600;

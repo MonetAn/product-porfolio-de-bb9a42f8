@@ -58,6 +58,8 @@ const TreemapContainer = ({
   const [showHint, setShowHint] = useState(true);
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
+  const [lastClickCenter, setLastClickCenter] = useState<{ x: number; y: number } | null>(null);
+  const [clickedNodeKey, setClickedNodeKey] = useState<string | null>(null);
   
   // Track previous state for animation type detection
   const prevDataNameRef = useRef<string | null>(null);
@@ -133,6 +135,12 @@ const TreemapContainer = ({
     prevShowInitiativesRef.current = showInitiatives;
     setAnimationType(newAnimationType);
     
+    // Reset click state for non-drilldown animations
+    if (newAnimationType === 'navigate-up' || newAnimationType === 'filter') {
+      setLastClickCenter(null);
+      setClickedNodeKey(null);
+    }
+    
     // Show hint briefly
     setShowHint(true);
     const timer = setTimeout(() => setShowHint(false), 3000);
@@ -149,6 +157,13 @@ const TreemapContainer = ({
   
   // Node click handler
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
+    // Save click center and key for push-out exit animation
+    setLastClickCenter({
+      x: node.x0 + node.width / 2,
+      y: node.y0 + node.height / 2,
+    });
+    setClickedNodeKey(node.key);
+
     if (node.data.isInitiative && onInitiativeClick) {
       onInitiativeClick(node.data.name);
     } else if (onNodeClick) {
@@ -256,7 +271,7 @@ const TreemapContainer = ({
   }, [onFileDrop]);
 
   return (
-    <div className="treemap-container" ref={containerRef} onMouseLeave={() => handleMouseLeave()}>
+    <div className="treemap-container" ref={containerRef} style={{ overflow: animationType === 'drilldown' ? 'visible' : undefined }} onMouseLeave={() => handleMouseLeave()}>
       {/* Navigate back button */}
       <button
         className={`navigate-back-button ${canNavigateBack ? 'visible' : ''}`}
@@ -281,12 +296,15 @@ const TreemapContainer = ({
       
       {/* Framer Motion treemap rendering */}
       {!isEmpty && dimensions.width > 0 && (
-        <AnimatePresence mode="sync">
+        <AnimatePresence mode="sync" custom={lastClickCenter}>
           {layoutNodes.map(node => (
             <TreemapNode
               key={node.key}
               node={node}
               animationType={animationType}
+              clickCenter={lastClickCenter}
+              isHero={node.key === clickedNodeKey}
+              containerDimensions={dimensions}
               onClick={handleNodeClick}
               onMouseEnter={handleMouseEnter}
               onMouseMove={handleMouseMove}

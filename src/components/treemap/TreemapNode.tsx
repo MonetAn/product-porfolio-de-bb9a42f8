@@ -142,46 +142,51 @@ const TreemapNode = memo(({
     node.isInitiative && 'is-initiative',
   ].filter(Boolean).join(' ');
 
-  // Initial state includes geometry so nodes appear in their cell, not from (0,0)
-  const initialState = animationType === 'initial' 
-    ? false 
-    : { opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height };
+  // Variants: exit receives fresh custom from AnimatePresence (fixes stale props)
+  const skipInitial = animationType === 'initial';
+  const variants = {
+    initial: { opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height },
+    animate: {
+      opacity: 1,
+      scale: 1,
+      x,
+      y,
+      width: node.width,
+      height: node.height,
+      transition: {
+        duration,
+        ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number],
+        scale: { duration: duration * 0.8 },
+      },
+    },
+    exit: (customClickCenter: { x: number; y: number } | null) => {
+      if (animationType === 'drilldown' && customClickCenter && containerDimensions && !isHero) {
+        const nodeCenterX = node.x0 + node.width / 2;
+        const nodeCenterY = node.y0 + node.height / 2;
+        const dx = nodeCenterX - customClickCenter.x;
+        const dy = nodeCenterY - customClickCenter.y;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        const force = Math.max(containerDimensions.width, containerDimensions.height) * 1.5;
+        return {
+          x: x + (dx / distance) * force,
+          y: y + (dy / distance) * force,
+          opacity: 0,
+          scale: 0.8,
+          transition: { duration: 0.7, ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number] },
+        };
+      }
+      return { opacity: 0, scale: 0.92 };
+    },
+  };
 
   return (
     <motion.div
       layoutId={node.key}
-      initial={initialState}
-      animate={{ 
-        opacity: 1,
-        scale: 1,
-        x,
-        y,
-        width: node.width,
-        height: node.height,
-      }}
-      exit={(() => {
-        if (animationType === 'drilldown' && clickCenter && containerDimensions && !isHero) {
-          const nodeCenterX = node.x0 + node.width / 2;
-          const nodeCenterY = node.y0 + node.height / 2;
-          const dx = nodeCenterX - clickCenter.x;
-          const dy = nodeCenterY - clickCenter.y;
-          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = Math.max(containerDimensions.width, containerDimensions.height) * 1.5;
-          return {
-            x: x + (dx / distance) * force,
-            y: y + (dy / distance) * force,
-            opacity: 0,
-            scale: 0.8,
-            transition: { duration: 0.7, ease: [0.25, 0.1, 0.25, 1] },
-          };
-        }
-        return { opacity: 0, scale: 0.92 };
-      })()}
-      transition={{ 
-        duration,
-        ease: [0.25, 0.1, 0.25, 1],
-        scale: { duration: duration * 0.8 },
-      }}
+      custom={clickCenter}
+      variants={variants}
+      initial={skipInitial ? false : "initial"}
+      animate="animate"
+      exit="exit"
       className={classNames}
       style={{
         position: 'absolute',

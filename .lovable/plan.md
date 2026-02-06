@@ -1,82 +1,37 @@
 
 
-# Фикс: Stale Props в exit-анимации тримапа
+# Фикс: убрать stale `animationType` из exit-условия
 
 ## Проблема
 
-IIFE `exit={(() => { ... })()}` вычисляется при рендере. Exiting-узлы — снимки прошлого рендера, где `clickCenter` ещё `null`. Условие push-анимации не срабатывает.
+Код уже использует `variants` — Gemini ошибся, старые inline-пропсы давно удалены. Настоящая причина: строка 163 проверяет `animationType === 'drilldown'`, но эта переменная — часть замыкания exiting-узла, который видит предыдущее значение (например, `'filter'` или `'initial'`). Механизм `custom` в `AnimatePresence` прокидывает только `clickCenter`, а `animationType` остаётся stale.
 
 ## Решение
 
-Заменить IIFE на `variants` с функцией `exit`, которая получает актуальный `custom` из `AnimatePresence`.
+Убрать `animationType === 'drilldown'` из условия. Наличие `customClickCenter !== null` уже является надёжным индикатором drilldown, потому что `lastClickCenter` сбрасывается в `null` при `filter` и `navigate-up` в `TreemapContainer.tsx`.
 
-## Изменения (только `src/components/treemap/TreemapNode.tsx`)
+## Изменение
 
-`TreemapContainer.tsx` уже корректен: `custom={lastClickCenter}` передаётся в `AnimatePresence`.
+### `src/components/treemap/TreemapNode.tsx`, строка 163
 
-### Заменить блок initial/animate/exit/transition (строки 145-184) на variants:
-
+Было:
 ```typescript
-const variants = {
-  initial: animationType === 'initial'
-    ? (false as const)
-    : { opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height },
-
-  animate: {
-    opacity: 1,
-    scale: 1,
-    x,
-    y,
-    width: node.width,
-    height: node.height,
-    transition: {
-      duration,
-      ease: [0.25, 0.1, 0.25, 1],
-      scale: { duration: duration * 0.8 },
-    },
-  },
-
-  // custom получается из AnimatePresence, а НЕ из пропсов
-  exit: (customClickCenter: { x: number; y: number } | null) => {
-    if (animationType === 'drilldown' && customClickCenter && containerDimensions && !isHero) {
-      const nodeCenterX = node.x0 + node.width / 2;
-      const nodeCenterY = node.y0 + node.height / 2;
-      const dx = nodeCenterX - customClickCenter.x;
-      const dy = nodeCenterY - customClickCenter.y;
-      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = Math.max(containerDimensions.width, containerDimensions.height) * 1.5;
-      return {
-        x: x + (dx / distance) * force,
-        y: y + (dy / distance) * force,
-        opacity: 0,
-        scale: 0.8,
-        transition: { duration: 0.7, ease: [0.25, 0.1, 0.25, 1] },
-      };
-    }
-    return { opacity: 0, scale: 0.92 };
-  },
-};
+if (animationType === 'drilldown' && customClickCenter && containerDimensions && !isHero) {
 ```
 
-### Обновить motion.div:
-
-```tsx
-<motion.div
-  layoutId={node.key}
-  custom={clickCenter}
-  variants={variants}
-  initial="initial"
-  animate="animate"
-  exit="exit"
-  // transition убирается — она теперь внутри variants.animate
-  className={classNames}
-  style={{ ... }}  // без изменений
->
+Станет:
+```typescript
+if (customClickCenter && containerDimensions && !isHero) {
 ```
 
-## Файлы
+Одна строка. Больше ничего не меняется.
 
-| Файл | Что меняется |
-|---|---|
-| `src/components/treemap/TreemapNode.tsx` | IIFE заменяется на variants |
+## Почему это безопасно
+
+В `TreemapContainer.tsx` (строки ~140-141) при `navigate-up` и `filter` выполняется:
+```typescript
+setLastClickCenter(null);
+setClickedNodeKey(null);
+```
+Это значение передаётся как `custom` в `AnimatePresence`, поэтому `customClickCenter` будет `null` для всех не-drilldown сценариев -- fallback `{ opacity: 0, scale: 0.92 }` сработает корректно.
 

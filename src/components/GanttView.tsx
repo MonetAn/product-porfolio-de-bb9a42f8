@@ -497,7 +497,7 @@ const GanttView = ({
     const periodCost = calculateBudget(row, selectedQuarters);
     const allQuarters = getInitiativeQuarters(row);
     const showPeriodCost = selectedQuarters.length < allQuarters.length && periodCost !== totalCost;
-    const descriptionLong = row.description && row.description.length > 150;
+    const descriptionLong = row.description && row.description.length > 450;
 
     // Dynamic sizing: use measured size or fallback
     const padding = 16;
@@ -571,7 +571,7 @@ const GanttView = ({
             >
               {nameExpandedSections['description'] || !descriptionLong 
                 ? row.description 
-                : row.description.slice(0, 150) + '…'}
+                : row.description.slice(0, 450) + '…'}
             </div>
           </div>
         )}

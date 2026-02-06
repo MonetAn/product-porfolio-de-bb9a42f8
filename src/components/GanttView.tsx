@@ -554,11 +554,11 @@ const GanttView = ({
         </div>
 
         {row.description && (
-          <div className="gantt-name-popup-section">
-            <div 
-              className="gantt-name-popup-label expandable-header"
-              onClick={() => pinned && descriptionLong && toggleNameSection('description')}
-            >
+          <div 
+            className={`gantt-name-popup-section ${pinned && descriptionLong ? 'clickable' : ''}`}
+            onClick={() => pinned && descriptionLong && toggleNameSection('description')}
+          >
+            <div className="gantt-name-popup-label expandable-header">
               Описание
               {pinned && descriptionLong && (
                 nameExpandedSections['description'] 
@@ -567,7 +567,7 @@ const GanttView = ({
               )}
             </div>
             <div 
-              className={`gantt-name-popup-text ${!nameExpandedSections['description'] && descriptionLong ? 'truncated' : ''}`}
+              className={`gantt-name-popup-text ${!nameExpandedSections['description'] && descriptionLong ? 'truncated' : ''} ${nameExpandedSections['description'] ? 'expanded' : ''}`}
             >
               {nameExpandedSections['description'] || !descriptionLong 
                 ? row.description 

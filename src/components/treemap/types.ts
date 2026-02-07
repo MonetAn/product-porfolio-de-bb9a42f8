@@ -45,14 +45,14 @@ export interface TreemapLayoutNode {
 }
 
 // Animation type determines duration and behavior
-export type AnimationType = 'filter' | 'drilldown' | 'drilldown-crossfade' | 'navigate-up' | 'resize' | 'initial';
+export type AnimationType = 'filter' | 'drilldown' | 'drilldown-fast' | 'navigate-up' | 'resize' | 'initial';
 
 // Animation durations in ms
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
   'filter': 750,
   'drilldown': 1200,
-  'drilldown-crossfade': 1200,
+  'drilldown-fast': 400,
   'navigate-up': 700,
   'resize': 420
 };

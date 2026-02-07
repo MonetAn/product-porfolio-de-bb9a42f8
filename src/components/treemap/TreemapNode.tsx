@@ -33,8 +33,6 @@ interface TreemapNodeProps {
   onMouseLeave?: (node?: TreemapLayoutNode) => void;
   showChildren?: boolean;
   renderDepth?: number;
-  fadingOut?: boolean;
-  childrenFadingOut?: boolean;
 }
 
 interface TreemapNodeContentProps {
@@ -107,8 +105,6 @@ const TreemapNode = memo(({
   onMouseLeave,
   showChildren = true,
   renderDepth = 3,
-  fadingOut = false,
-  childrenFadingOut = false,
 }: TreemapNodeProps) => {
   const duration = animationType === 'initial' ? 0 : ANIMATION_DURATIONS[animationType] / 1000;
   const hasChildren = node.children && node.children.length > 0;
@@ -138,16 +134,16 @@ const TreemapNode = memo(({
   const variants = {
     initial: { opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height },
     animate: {
-      opacity: fadingOut ? 0 : 1,
+      opacity: 1,
       scale: 1,
       x,
       y,
       width: node.width,
       height: node.height,
       transition: {
-        duration: fadingOut ? 0.25 : duration,
+        duration,
         ease: [0.4, 0, 0.2, 1] as [number, number, number, number],
-        scale: { duration: (fadingOut ? 0.25 : duration) * 0.8 },
+        scale: { duration: duration * 0.8 },
       },
     },
     exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
@@ -185,28 +181,25 @@ const TreemapNode = memo(({
     >
       <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
       
-      {shouldRenderChildren && showChildren && (
-        <div className="absolute inset-0">
-          <AnimatePresence mode="sync">
-            {node.children!.map(child => (
-              <TreemapNode
-                key={child.key}
-                node={child}
-                animationType={animationType}
-                parentX={node.x0}
-                parentY={node.y0}
-                onClick={onClick}
-                onMouseEnter={onMouseEnter}
-                onMouseMove={onMouseMove}
-                onMouseLeave={onMouseLeave}
-                showChildren={showChildren}
-                renderDepth={renderDepth}
-                fadingOut={fadingOut || childrenFadingOut}
-              />
-            ))}
-          </AnimatePresence>
-        </div>
-      )}
+      <AnimatePresence mode="sync">
+        {shouldRenderChildren && showChildren &&
+          node.children!.map(child => (
+            <TreemapNode
+              key={child.key}
+              node={child}
+              animationType={animationType}
+              parentX={node.x0}
+              parentY={node.y0}
+              onClick={onClick}
+              onMouseEnter={onMouseEnter}
+              onMouseMove={onMouseMove}
+              onMouseLeave={onMouseLeave}
+              showChildren={showChildren}
+              renderDepth={renderDepth}
+            />
+          ))
+        }
+      </AnimatePresence>
     </motion.div>
   );
 });

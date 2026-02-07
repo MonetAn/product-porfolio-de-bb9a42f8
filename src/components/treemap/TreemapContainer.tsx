@@ -75,7 +75,6 @@ const TreemapContainer = ({
   
   // Flourish-style zoom: internal focused path (array of node names from root children)
   const [focusedPath, setFocusedPath] = useState<string[]>([]);
-  const [isFadingOut, setIsFadingOut] = useState(false);
   
   
   // Track previous state for animation type detection
@@ -117,12 +116,7 @@ const TreemapContainer = ({
     }
   }, [resetZoomTrigger, onFocusedPathChange]);
 
-  // Auto-reset isFadingOut after fade animation completes
-  useEffect(() => {
-    if (!isFadingOut) return;
-    const timer = setTimeout(() => setIsFadingOut(false), 250);
-    return () => clearTimeout(timer);
-  }, [isFadingOut]);
+
 
   // Compute layout using D3, with focusedPath for zoom
   const layoutNodes = useTreemapLayout({
@@ -220,15 +214,7 @@ const TreemapContainer = ({
       renderDepthTimerRef.current = null;
     }
     
-    if (targetRenderDepth >= renderDepth) {
-      setRenderDepth(targetRenderDepth);
-    } else {
-      // Delay decrease so children animate out with the zoom
-      renderDepthTimerRef.current = window.setTimeout(() => {
-        setRenderDepth(targetRenderDepth);
-        renderDepthTimerRef.current = null;
-      }, 600);
-    }
+    setRenderDepth(targetRenderDepth);
     
     return () => {
       if (renderDepthTimerRef.current !== null) clearTimeout(renderDepthTimerRef.current);
@@ -287,7 +273,6 @@ const TreemapContainer = ({
   // Navigate back handler — zoom out one level with symmetric auto-disable
   const handleNavigateBack = useCallback(() => {
     if (focusedPath.length > 0) {
-      setIsFadingOut(true);
       const oldLength = focusedPath.length;
       const newPath = focusedPath.slice(0, -1);
       const newLength = newPath.length;
@@ -306,6 +291,7 @@ const TreemapContainer = ({
       onNavigateBack();
     }
   }, [focusedPath, onNavigateBack, onFocusedPathChange, onAutoDisableTeams, onAutoDisableInitiatives]);
+
   
   const canZoomOut = focusedPath.length > 0 || canNavigateBack;
   
@@ -435,7 +421,6 @@ const TreemapContainer = ({
                 onMouseLeave={handleMouseLeave}
                 showChildren={true}
                 renderDepth={renderDepth}
-                childrenFadingOut={isFadingOut}
               />
             ))}
           </AnimatePresence>

@@ -1,87 +1,64 @@
 
-# Исправить 3 бага анимации treemap
 
-## Корневые причины
+# Логика дочерних элементов при zoom in/out
 
-### Баг 1: "Инициативы" показывает команды
-Дерево теперь всегда строится полным (Unit > Team > Initiative). Но `useTreemapLayout` до сих пор использует `showTeams`/`showInitiatives` для расчёта `renderDepth`, ограничивая глубину `flattenHierarchy`. При `showInitiatives=true, showTeams=false` renderDepth=2, что показывает depth 0 (units) и depth 1 (teams), а не инициативы.
+## Текущая проблема
 
-### Баг 2: Зависание при быстрых кликах
-Убрана защита `isZooming` (была в CSS zoom подходе). Каждый клик ставит `setFocusedPath`, вызывая пересчёт layout. Быстрые клики создают каскад пересчётов. Плюс `useEffect` на `data` сбрасывает `focusedPath` в `[]`, что может вызвать цикл.
+Сейчас `showTeams` и `showInitiatives` управляются только из FilterBar (Index.tsx), а внутренний зум тримапа (`focusedPath`) не влияет на галочки. Нужна двусторонняя связь: зум может автоматически включать галочки, но не должен их сбрасывать при возврате.
 
-### Баг 3: Зум не работает с включёнными чекбоксами
-Связан с багом 1. Layout hook вычисляет позиции только до глубины 2, поэтому `findNodeByPath` находит узел, но его children не включены в layout nodes. Framer Motion не может анимировать то, что не вычислено.
+## Правила поведения (из запроса)
 
-## Решение
+1. **Zoom in (клик на узел с детьми)**: Автоматически включить галочку "Команды", если она не была вручную выключена пользователем. Не трогать "Инициативы".
+2. **Zoom out**: Никогда не убирать галочки автоматически. Если при возвращении галочки стояли -- они остаются.
+3. **Ручное изменение галочки**: Запоминается. Автоматика больше не включает/выключает эту галочку до следующего полного сброса.
+4. **renderDepth при зуме**: При zoom in на уровень Unit, если стоит только "Инициативы" без "Команды", показывать инициативы напрямую (Unit > Initiatives). Если стоит "Команды" -- показывать Unit > Teams.
 
-### 1. `src/components/treemap/useTreemapLayout.ts`
+## Изменения
 
-Убрать `showTeams`/`showInitiatives` из расчёта `renderDepth`. Всегда вычислять layout на полную глубину дерева (3 + extraDepth). Визуальный контроль глубины — только через `renderDepth` в `TreemapNode`.
+### 1. `TreemapContainer.tsx` -- колбэк для автоматического включения галочек
 
-```text
-// Было:
-let renderDepth = 1;
-if (showTeams && showInitiatives) renderDepth = 3;
-else if (showTeams) renderDepth = 2;
-else if (showInitiatives) renderDepth = 2;
-
-// Станет:
-const renderDepth = 3 + extraDepth; // Always compute full depth
-```
-
-Убрать `showTeams` и `showInitiatives` из интерфейса и из зависимостей `useMemo`.
-
-### 2. `src/components/treemap/TreemapContainer.tsx`
-
-**RenderDepth**: Поскольку дерево всегда полное, чекбокс "инициативы" без "команды" должен показывать все 3 уровня (units + teams + initiatives):
+Добавить новый проп `onAutoEnableTeams`:
 
 ```text
-// Было:
-let depth = 1;
-if (showTeams && showInitiatives) depth = 3;
-else if (showTeams || showInitiatives) depth = 2;
-
-// Станет:
-let depth = 1;
-if (showInitiatives) depth = 3;  // initiatives implies teams visible
-else if (showTeams) depth = 2;
+interface TreemapContainerProps {
+  ...
+  onAutoEnableTeams?: () => void;  // Called when zoom-in wants to auto-enable teams
+}
 ```
 
-**Защита от быстрых кликов**: Добавить `isAnimating` ref с таймером:
+В `handleNodeClick`, при зуме в узел с children (Unit/Stakeholder):
+- Вызвать `onAutoEnableTeams?.()` если `!showTeams && !showInitiatives` (базовый вид без галочек)
+- Если хотя бы одна галочка уже стоит -- не вызывать (пользователь сам настроил)
 
-```text
-const isAnimatingRef = useRef(false);
+### 2. `Index.tsx` -- логика автоматического включения
 
-const handleNodeClick = useCallback((node) => {
-  if (isAnimatingRef.current) return; // Блокировать клики во время анимации
-  
-  // ... existing logic ...
-  
-  isAnimatingRef.current = true;
-  setTimeout(() => { isAnimatingRef.current = false; }, 700);
-}, [...]);
-```
+Колбэк `handleAutoEnableTeams`:
+- Проверяет `autoTeamsTriggeredRef` -- если уже сработал для текущего контекста, не включает повторно
+- Устанавливает `showTeams = true`
+- Помечает что автовключение произошло
 
-**Сброс focusedPath**: Использовать стабильную ссылку на `data` вместо объекта:
+Убрать старый `useEffect` который следил за `selectedUnits` для автовключения Teams (строки 132-151), так как теперь зум управляется внутри тримапа, а не через фильтры Unit.
 
-```text
-// Было (вызывает сброс при каждом ре-рендере из-за нового объекта):
-useEffect(() => { setFocusedPath([]); }, [data]);
+### 3. `BudgetTreemap.tsx` и `StakeholdersTreemap.tsx` -- прокинуть проп
 
-// Станет (сброс только при реальной смене корня):
-const dataIdRef = useRef(data.name + (data.children?.length || 0));
-useEffect(() => {
-  const newId = data.name + (data.children?.length || 0);
-  if (dataIdRef.current !== newId) {
-    dataIdRef.current = newId;
-    setFocusedPath([]);
-  }
-}, [data]);
-```
+Добавить проп `onAutoEnableTeams` и передать его в `TreemapContainer`.
 
-### 3. Файлы
+### 4. Render depth -- без изменений
+
+Текущая логика уже корректна:
+- `showInitiatives` -> depth 3 (Units + Teams + Initiatives)
+- `showTeams` -> depth 2 (Units + Teams)
+- Ни одна -> depth 1 (только Units)
+- `Math.max(depth, focusedPath.length + 1)` гарантирует видимость при зуме
+
+При zoom out галочки не снимаются, поэтому depth не уменьшается -- дочерние элементы остаются видимыми на всех уровнях.
+
+## Файлы
 
 | Файл | Что меняется |
 |---|---|
-| `src/components/treemap/useTreemapLayout.ts` | Убрать showTeams/showInitiatives, всегда full depth |
-| `src/components/treemap/TreemapContainer.tsx` | Исправить renderDepth, добавить isAnimating guard, стабильный сброс focusedPath |
+| `src/components/treemap/TreemapContainer.tsx` | Добавить проп `onAutoEnableTeams`, вызывать его при zoom in если нет галочек |
+| `src/components/BudgetTreemap.tsx` | Прокинуть `onAutoEnableTeams` |
+| `src/components/StakeholdersTreemap.tsx` | Прокинуть `onAutoEnableTeams` |
+| `src/pages/Index.tsx` | Добавить `handleAutoEnableTeams` колбэк, убрать старый auto-teams useEffect |
+

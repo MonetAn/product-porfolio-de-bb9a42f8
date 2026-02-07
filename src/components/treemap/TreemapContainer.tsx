@@ -143,7 +143,12 @@ const TreemapContainer = ({
       newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
     } else if (prevFocusedPathRef.current.length !== focusedPath.length) {
       // Focused path changed — this is a zoom drill-down/up
-      newAnimationType = focusedPath.length > prevFocusedPathRef.current.length ? 'drilldown' : 'navigate-up';
+      // Preserve crossfade if it was set by handleNodeClick
+      if (zoomTargetKey && focusedPath.length > prevFocusedPathRef.current.length) {
+        newAnimationType = 'drilldown-crossfade';
+      } else {
+        newAnimationType = focusedPath.length > prevFocusedPathRef.current.length ? 'drilldown' : 'navigate-up';
+      }
     } else if (prevShowTeamsRef.current !== showTeams || 
                prevShowInitiativesRef.current !== showInitiatives) {
       newAnimationType = 'filter';
@@ -159,7 +164,7 @@ const TreemapContainer = ({
     setShowHint(true);
     const timer = setTimeout(() => setShowHint(false), 3000);
     return () => clearTimeout(timer);
-  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, focusedPath]);
+  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, focusedPath, zoomTargetKey]);
   
   // Render depth: matches actual tree structure from toggles
   const targetRenderDepth = useMemo(() => {

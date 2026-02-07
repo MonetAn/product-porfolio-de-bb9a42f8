@@ -435,7 +435,7 @@ const TreemapContainer = ({
                 onMouseLeave={handleMouseLeave}
                 showChildren={true}
                 renderDepth={renderDepth}
-                fadingOut={isFadingOut}
+                childrenFadingOut={isFadingOut}
               />
             ))}
           </AnimatePresence>

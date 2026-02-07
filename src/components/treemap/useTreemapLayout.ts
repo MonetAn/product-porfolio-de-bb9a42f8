@@ -8,8 +8,6 @@ import { TreemapLayoutNode, ColorGetter, ContainerDimensions } from './types';
 interface UseTreemapLayoutOptions {
   data: TreeNode;
   dimensions: ContainerDimensions;
-  showTeams?: boolean;
-  showInitiatives?: boolean;
   getColor?: ColorGetter;
   extraDepth?: number;
   focusedPath?: string[]; // e.g. ['UnitA'] or ['UnitA', 'Team1']
@@ -138,8 +136,6 @@ function applyFocusTransform(
 export function useTreemapLayout({
   data,
   dimensions,
-  showTeams = false,
-  showInitiatives = false,
   getColor = getUnitColor,
   extraDepth = 0,
   focusedPath = [],
@@ -149,18 +145,8 @@ export function useTreemapLayout({
       return [];
     }
     
-    // Determine render depth based on toggles
-    let renderDepth = 1; // Units only by default
-    if (showTeams && showInitiatives) {
-      renderDepth = 3; // Units -> Teams -> Initiatives
-    } else if (showTeams) {
-      renderDepth = 2; // Units -> Teams
-    } else if (showInitiatives) {
-      renderDepth = 2; // Units -> Initiatives
-    }
-    
-    // Add extra depth for hierarchies with additional levels (e.g., Stakeholders)
-    renderDepth += extraDepth;
+    // Always compute full depth so all nodes have coordinates for zoom
+    const renderDepth = 3 + extraDepth;
     
     // Create D3 hierarchy
     const root = d3.hierarchy(data)
@@ -204,7 +190,7 @@ export function useTreemapLayout({
     }
     
     return layoutNodes;
-  }, [data, dimensions.width, dimensions.height, showTeams, showInitiatives, getColor, extraDepth, focusedPath]);
+  }, [data, dimensions.width, dimensions.height, getColor, extraDepth, focusedPath]);
 }
 
 // Calculate exit direction for a node (used in drilldown animation)

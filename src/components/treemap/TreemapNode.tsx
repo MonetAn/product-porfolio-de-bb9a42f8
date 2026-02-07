@@ -181,8 +181,6 @@ const TreemapNode = memo(({
 
   return (
     <motion.div
-      layoutId={node.key}
-      custom={clickCenter}
       variants={variants}
       initial={skipInitial ? false : "initial"}
       animate="animate"
@@ -217,7 +215,7 @@ const TreemapNode = memo(({
       {/* Nested children */}
       {shouldRenderChildren && showChildren && (
         <div className="absolute inset-0">
-          <AnimatePresence mode="sync">
+          <AnimatePresence mode="sync" custom={clickCenter}>
             {node.children!.map(child => (
               <TreemapNode
                 key={child.key}

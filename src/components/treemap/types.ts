@@ -52,7 +52,7 @@ export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
   'filter': 750,
   'drilldown': 1400,
-  'navigate-up': 900,
+  'navigate-up': 800,
   'resize': 420
 };
 

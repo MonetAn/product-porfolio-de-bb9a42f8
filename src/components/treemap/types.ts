@@ -51,7 +51,7 @@ export type AnimationType = 'filter' | 'drilldown' | 'navigate-up' | 'resize' | 
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'initial': 0,
   'filter': 750,
-  'drilldown': 1100,
+  'drilldown': 1400,
   'navigate-up': 900,
   'resize': 420
 };

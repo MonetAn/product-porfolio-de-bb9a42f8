@@ -151,13 +151,15 @@ const TreemapContainer = ({
     return () => clearTimeout(timer);
   }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, focusedPath]);
   
-  // Render depth calculation
+  // Render depth: base from toggles + extra from focused zoom depth
   const renderDepth = useMemo(() => {
     let depth = 1;
     if (showTeams && showInitiatives) depth = 3;
     else if (showTeams || showInitiatives) depth = 2;
+    // When zoomed in, ensure we show at least one level of children of focused node
+    depth = Math.max(depth, focusedPath.length + 1);
     return depth + extraDepth;
-  }, [showTeams, showInitiatives, extraDepth]);
+  }, [showTeams, showInitiatives, extraDepth, focusedPath.length]);
   
   // Node click handler — Flourish-style: zoom into node by updating focusedPath
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {

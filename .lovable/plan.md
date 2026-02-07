@@ -1,168 +1,144 @@
 
 
-# Переписать drilldown: CSS Zoom вместо Framer Motion exit
+# Подход Flourish: анимация перерасчёта layout без смены данных
 
-## Почему push через AnimatePresence не работал (и не мог)
+## Почему текущий CSS Zoom не работает как Flourish
 
-Цепочка событий при клике на unit:
-1. `handleNodeClick` в TreemapContainer сохраняет `lastClickCenter`
-2. Вызывает `onNodeClick` -> Index.tsx меняет фильтры (`selectedUnits`, `showTeams`)
-3. `rebuildTree` создаёт новое дерево с корнем "Все Unit" (имя НЕ меняется)
-4. `useLayoutEffect` видит `data.name` === прежнее -> классифицирует как `'filter'`
-5. Для `'filter'` сбрасывает `lastClickCenter = null`
-6. AnimatePresence вызывает exit с `custom = null` -> fallback на fade
+Текущая архитектура имеет два раздельных этапа:
+1. CSS zoom приближает камеру к блоку
+2. React заменяет данные, все компоненты перемонтируются
 
-Координаты клика стирались **до начала** exit-анимации. Никакие фиксы в exit-варианте не могли это исправить.
+Flourish работает иначе: он **не перемонтирует компоненты**. Он пересчитывает D3 layout для новой области и анимирует каждый прямоугольник от старой позиции/размера к новой.
 
-## Новый подход: CSS Zoom
+## Новый подход: Single-pass layout transition
 
-Вместо того чтобы бороться с AnimatePresence, используем подход Flourish/d3-zoom:
+Вместо zoom + remount, делаем один переход:
 
-1. Клик на узел -> НЕ менять данные сразу
-2. Применить CSS `transform: scale(X) translate(Y)` ко всему контейнеру с узлами
-3. Контейнер масштабируется так, что кликнутый узел заполняет viewport
-4. Все остальные узлы естественно "уезжают" за край (это и есть push)
-5. После завершения CSS transition (~600ms) -> сменить данные и сбросить transform
+1. Клик на узел Unit
+2. D3 пересчитывает layout: **те же данные**, но размеры контейнера = размерам кликнутого узла (расширенным до полного viewport)
+3. Framer Motion анимирует каждый узел от старого `{x, y, width, height}` к новому
+4. Узлы за пределами viewport обрезаются `overflow: hidden`
+5. Кликнутый узел растягивается на весь экран, его дети перераспределяются внутри
 
-Визуально это выглядит ровно как в Flourish: камера приближается к кликнутому блоку, остальные уходят за края.
+## Ключевое архитектурное изменение
 
-## Изменения
+Сейчас при клике на Unit мы **меняем дерево данных** (фильтруем по unit, включаем showTeams). Это вызывает полную перерисовку.
 
-### 1. `src/components/treemap/TreemapContainer.tsx` — основные изменения
+Новый подход: **не менять дерево**. Вместо этого:
+- Хранить "focused node" — узел, на который кликнули
+- D3 layout пересчитывает позиции так, что focused node занимает весь viewport
+- Дочерние узлы focused node получают больше пространства и становятся видимыми
+- Соседние узлы сжимаются до 0 и уходят за край
 
-Добавить состояние зума и отложенный вызов:
+## Детальные изменения
 
-```text
-// Новые состояния:
-const [zoomTransform, setZoomTransform] = useState<string>('none');
-const [isZooming, setIsZooming] = useState(false);
-const pendingCallbackRef = useRef<(() => void) | null>(null);
+### 1. Новый хук `useTreemapZoom.ts` (новый файл)
 
-// Убрать:
-// - lastClickCenter
-// - clickedNodeKey 
-// - всю логику isHero
-// - overflow: visible
-```
-
-Переписать `handleNodeClick`:
+Управляет состоянием зума:
 
 ```text
-const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
-  if (isZooming) return; // Игнорировать клики во время зума
-
-  // Сохранить callback для вызова после анимации
-  const callback = () => {
-    if (node.data.isInitiative && onInitiativeClick) {
-      onInitiativeClick(node.data.name);
-    } else if (onNodeClick) {
-      onNodeClick(node.data);
-    }
-  };
-
-  // Рассчитать zoom transform
-  const scaleX = dimensions.width / node.width;
-  const scaleY = dimensions.height / node.height;
-  const scale = Math.min(scaleX, scaleY);
-
-  // Translate: сместить кликнутый узел в начало координат, затем масштабировать
-  const tx = -node.x0;
-  const ty = -node.y0;
-
-  setZoomTransform(`scale(${scale}) translate(${tx}px, ${ty}px)`);
-  setIsZooming(true);
-  pendingCallbackRef.current = callback;
-
-  // После завершения CSS transition -> сменить данные
-  setTimeout(() => {
-    setZoomTransform('none');
-    setIsZooming(false);
-    pendingCallbackRef.current?.();
-    pendingCallbackRef.current = null;
-  }, 600);
-}, [dimensions, onNodeClick, onInitiativeClick, isZooming]);
-```
-
-Обновить JSX — обернуть узлы в div с transform:
-
-```text
-<div 
-  style={{
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-    transform: zoomTransform,
-    transformOrigin: '0 0',
-    transition: isZooming ? 'transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1)' : 'none',
-  }}
->
-  <AnimatePresence mode="sync">
-    {layoutNodes.map(node => (
-      <TreemapNode ... />
-    ))}
-  </AnimatePresence>
-</div>
-```
-
-Контейнер `.treemap-container` остаётся с `overflow: hidden` — масштабированные узлы за пределами viewport будут обрезаны.
-
-Убрать `custom={lastClickCenter}` из AnimatePresence -- он больше не нужен.
-
-### 2. `src/components/treemap/TreemapNode.tsx` — упрощение
-
-Убрать все push-related пропсы и логику:
-
-- Убрать из интерфейса: `clickCenter`, `isHero`, `containerDimensions`
-- Упростить `exit` variant до простого объекта:
-```text
-exit: { opacity: 0, scale: 0.92 }
-```
-- Убрать `zIndex: isHero ? 10 : 1` (просто `zIndex: 1`)
-- Убрать передачу `clickCenter`, `isHero`, `containerDimensions` в рекурсивные дочерние TreemapNode
-- Убрать `custom={clickCenter}` из вложенного AnimatePresence
-
-Exit-анимация теперь только для случаев фильтрации и навигации назад (где fade+scale уместен). При drilldown exit НЕ вызывается, потому что данные меняются после завершения CSS zoom.
-
-### 3. `src/components/treemap/TreemapContainer.tsx` — useLayoutEffect
-
-Убрать сброс `lastClickCenter`/`clickedNodeKey` (их больше нет):
-
-```text
-// Было:
-if (newAnimationType === 'navigate-up' || newAnimationType === 'filter') {
-  setLastClickCenter(null);
-  setClickedNodeKey(null);
+interface ZoomState {
+  // Путь от корня до текущего focused node (для навигации назад)
+  path: TreeNode[];  
+  // Текущий focused node (или корень)
+  currentNode: TreeNode;
 }
-
-// Станет: просто убрать эти строки
 ```
 
-### 4. `src/components/treemap/useTreemapLayout.ts`
+- `zoomIn(node)` — добавляет узел в path, пересчитывает layout
+- `zoomOut()` — убирает последний узел из path
+- `canZoomOut` — есть ли куда возвращаться
 
-Без изменений — D3 layout остаётся как есть.
+### 2. Изменения в `useTreemapLayout.ts`
 
-## Что происходит визуально
+Новый параметр `focusedNodePath`:
 
-### Drilldown (клик на unit)
-1. Весь treemap плавно масштабируется, "наезжая камерой" на кликнутый блок
-2. Кликнутый блок растёт до размеров контейнера
-3. Соседние блоки уезжают за край (обрезаются overflow: hidden)
-4. После завершения анимации: данные меняются, новые блоки (команды) появляются с fade+scale
+```text
+interface UseTreemapLayoutOptions {
+  data: TreeNode;
+  dimensions: ContainerDimensions;
+  focusedNodePath?: string[];  // e.g. ['Все Unit', 'UnitA']
+  ...
+}
+```
 
-### Фильтрация / навигация назад
-Без изменений — fade+scale через Framer Motion variants (работает сейчас).
+Логика:
+- Если `focusedNodePath` не задан — обычный layout на всё дерево
+- Если задан — layout рассчитывается так, что focused node занимает весь viewport
+- D3 `treemap.size([fullWidth, fullHeight])` применяется к focused node
+- Родительские и соседние узлы получают координаты за пределами viewport
 
-## Почему это сработает
+Конкретнее: вместо `treemap.size([width, height])` на root, мы делаем layout на root, но потом **масштабируем координаты** так, чтобы focused node заполнял `[0, 0, width, height]`.
 
-- Никакого конфликта с Framer Motion: CSS transform на контейнере, FM управляет только enter/exit отдельных узлов
-- Нет проблем со stale props: координаты рассчитываются синхронно в момент клика
-- Нет проблем с AnimatePresence: данные меняются ПОСЛЕ завершения зума, а не одновременно
-- `overflow: hidden` на контейнере обеспечивает обрезку узлов за пределами viewport
+Формула трансформации:
+```text
+// focusedNode имеет координаты [fx0, fy0, fx1, fy1] в оригинальном layout
+// Нужно: fx0->0, fy0->0, fx1->width, fy1->height
+scaleX = width / (fx1 - fx0)
+scaleY = height / (fy1 - fy0)
+scale = min(scaleX, scaleY)  // Или использовать оба для stretch
+
+// Для каждого узла:
+newX0 = (node.x0 - fx0) * scale
+newY0 = (node.y0 - fy0) * scale
+newX1 = (node.x1 - fx0) * scale  
+newY1 = (node.y1 - fy0) * scale
+```
+
+Это означает, что соседние узлы получат отрицательные координаты или координаты за пределами viewport — и будут обрезаны `overflow: hidden`.
+
+### 3. Изменения в `TreemapContainer.tsx`
+
+- Убрать `zoomTransform`, `isZooming`, `pendingCallbackRef` (CSS zoom больше не нужен)
+- Убрать обёртку с `transform`
+- Добавить `focusedPath` state (массив имён узлов от корня)
+- `handleNodeClick`:
+  - Не вызывать `onNodeClick` напрямую
+  - Добавить имя кликнутого узла в `focusedPath`
+  - `useTreemapLayout` получит новый `focusedPath` и вернёт пересчитанные позиции
+  - Framer Motion автоматически анимирует узлы к новым позициям
+- `onNavigateBack`:
+  - Убрать последний элемент из `focusedPath`
+- Для инициатив: по-прежнему вызывать `onInitiativeClick`
+
+### 4. Изменения в `TreemapNode.tsx`
+
+Минимальные:
+- Убрать CSS zoom-related код (уже нет после текущей итерации)
+- Variants.animate уже содержит `x, y, width, height` — Framer Motion будет интерполировать
+
+### 5. Изменения в `Index.tsx`
+
+Ключевое: при клике на unit в treemap **не менять фильтры** (не вызывать `setSelectedUnits`, `setShowTeams`). Вместо этого treemap управляет зумом внутри себя.
+
+Но: фильтры из FilterBar по-прежнему должны работать. Это значит:
+- `onNodeClick` из `BudgetTreemap` больше не пробрасывается в `Index.tsx` для смены фильтров
+- Навигация внутрь — полностью внутри TreemapContainer
+- FilterBar фильтрует данные до передачи в TreemapContainer
+
+## Визуальный результат
+
+1. Клик на Unit "TechPlatform"
+2. Блок "TechPlatform" плавно растягивается до размеров всего treemap (600ms)
+3. Соседние блоки ("FAP", "Data Office") сжимаются и уезжают за край
+4. Внутри TechPlatform появляются команды (если showTeams включён) — они растут из 0
+5. Один непрерывный переход, без мигания
+
+## Риски и ограничения
+
+1. **Производительность**: D3 layout пересчитывается при каждом зуме, но это быстро (< 5ms для сотен узлов)
+2. **Совместимость с фильтрами**: фильтры FilterBar меняют входные данные, что вызовет пересчёт layout с учётом текущего focusedPath
+3. **Глубина вложенности**: focusedPath может быть произвольной глубины (Unit -> Team -> ...)
 
 ## Файлы
 
 | Файл | Что меняется |
 |---|---|
-| `src/components/treemap/TreemapContainer.tsx` | Добавить CSS zoom, убрать click-center state |
-| `src/components/treemap/TreemapNode.tsx` | Убрать push-пропсы, упростить exit |
+| `src/components/treemap/useTreemapLayout.ts` | Добавить `focusedNodePath`, пересчёт координат |
+| `src/components/treemap/TreemapContainer.tsx` | Убрать CSS zoom, добавить `focusedPath` state, новый handleNodeClick |
+| `src/components/treemap/TreemapNode.tsx` | Убрать остатки CSS zoom кода |
+| `src/components/treemap/types.ts` | Добавить focusedNodePath в типы |
+| `src/components/BudgetTreemap.tsx` | Убрать onNodeClick проброс (зум внутри контейнера) |
+| `src/components/StakeholdersTreemap.tsx` | Аналогично |
+| `src/pages/Index.tsx` | Убрать логику смены фильтров при клике на treemap unit |
 

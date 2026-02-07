@@ -220,7 +220,7 @@ const TreemapContainer = ({
       renderDepthTimerRef.current = window.setTimeout(() => {
         setRenderDepth(targetRenderDepth);
         renderDepthTimerRef.current = null;
-      }, 800);
+      }, 600);
     }
     
     return () => {

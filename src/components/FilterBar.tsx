@@ -61,6 +61,9 @@ interface FilterBarProps {
   onCostFilterChange?: (min: number | null, max: number | null) => void;
   costType?: 'period' | 'total';
   onCostTypeChange?: (type: 'period' | 'total') => void;
+  
+  // Zoom breadcrumb (visual only, no data effect)
+  zoomPath?: string[];
 }
 
 const FilterBar = ({
@@ -97,7 +100,8 @@ const FilterBar = ({
   costFilterMax = null,
   onCostFilterChange,
   costType = 'period',
-  onCostTypeChange
+  onCostTypeChange,
+  zoomPath = []
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -355,6 +359,18 @@ const FilterBar = ({
     <div className="bg-card border-b border-border fixed top-14 left-0 right-0 z-40">
       {/* Single responsive row */}
       <div className="h-auto min-h-[44px] flex flex-wrap items-center px-4 py-1.5 gap-2">
+        {/* Zoom breadcrumb */}
+        {zoomPath.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground mr-1">
+            <span className="opacity-60">📍</span>
+            {zoomPath.map((segment, i) => (
+              <span key={i} className="flex items-center gap-1">
+                {i > 0 && <span className="opacity-40">›</span>}
+                <span className="font-medium text-foreground/80">{segment}</span>
+              </span>
+            ))}
+          </div>
+        )}
         {/* Filters Group */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Unit multi-select */}

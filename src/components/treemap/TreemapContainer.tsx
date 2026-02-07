@@ -157,11 +157,12 @@ const TreemapContainer = ({
     return () => clearTimeout(timer);
   }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, focusedPath]);
   
-  // Render depth: base from toggles + extra from focused zoom depth
+  // Render depth: matches actual tree structure from toggles
   const targetRenderDepth = useMemo(() => {
-    let depth = 1;
-    if (showInitiatives) depth = 3;
-    else if (showTeams) depth = 2;
+    let depth = 1; // Units only
+    if (showTeams && showInitiatives) depth = 3; // Unit > Team > Initiative
+    else if (showTeams) depth = 2; // Unit > Team
+    else if (showInitiatives) depth = 2; // Unit > Initiative (teams skipped in data)
     depth = Math.max(depth, focusedPath.length + 1);
     return depth + extraDepth;
   }, [showTeams, showInitiatives, extraDepth, focusedPath.length]);

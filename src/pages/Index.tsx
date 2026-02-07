@@ -137,6 +137,7 @@ const Index = () => {
 
   // Track current zoom path for breadcrumb display (does NOT affect filters/data)
   const [zoomPath, setZoomPath] = useState<string[]>([]);
+  const [resetZoomTrigger, setResetZoomTrigger] = useState(0);
 
   const handleFocusedPathChange = useCallback((path: string[]) => {
     setZoomPath(path);
@@ -446,15 +447,27 @@ const Index = () => {
         teams={teams}
         selectedUnits={selectedUnits}
         selectedTeams={selectedTeams}
-        onUnitsChange={setSelectedUnits}
-        onTeamsChange={setSelectedTeams}
+        onUnitsChange={(units) => {
+          setSelectedUnits(units);
+          setZoomPath([]);
+          setResetZoomTrigger(prev => prev + 1);
+        }}
+        onTeamsChange={(teams) => {
+          setSelectedTeams(teams);
+          setZoomPath([]);
+          setResetZoomTrigger(prev => prev + 1);
+        }}
         hideSupport={hideSupport}
         onHideSupportChange={setHideSupport}
         showOnlyOfftrack={showOnlyOfftrack}
         onShowOnlyOfftrackChange={setShowOnlyOfftrack}
         allStakeholders={stakeholderCombinations}
         selectedStakeholders={selectedStakeholders}
-        onStakeholdersChange={setSelectedStakeholders}
+        onStakeholdersChange={(stakeholders) => {
+          setSelectedStakeholders(stakeholders);
+          setZoomPath([]);
+          setResetZoomTrigger(prev => prev + 1);
+        }}
         availableYears={availableYears}
         availableQuarters={availableQuarters}
         selectedQuarters={selectedQuarters}
@@ -483,6 +496,7 @@ const Index = () => {
         costType={costType}
         onCostTypeChange={setCostType}
         zoomPath={currentView !== 'timeline' ? zoomPath : []}
+        zoomActiveTab={currentView === 'stakeholders' ? 'stakeholders' : 'budget'}
       />
 
       {/* Main Content - full height without padding for immersive treemap */}
@@ -511,6 +525,7 @@ const Index = () => {
             onAutoEnableTeams={handleAutoEnableTeams}
             onAutoEnableInitiatives={handleAutoEnableInitiatives}
             onFocusedPathChange={handleFocusedPathChange}
+            resetZoomTrigger={resetZoomTrigger}
           />
         )}
 
@@ -531,6 +546,7 @@ const Index = () => {
             onAutoEnableTeams={handleAutoEnableTeams}
             onAutoEnableInitiatives={handleAutoEnableInitiatives}
             onFocusedPathChange={handleFocusedPathChange}
+            resetZoomTrigger={resetZoomTrigger}
           />
         )}
 

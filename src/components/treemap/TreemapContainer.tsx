@@ -33,6 +33,7 @@ interface TreemapContainerProps {
   onAutoEnableTeams?: () => void;
   onAutoEnableInitiatives?: () => void;
   onFocusedPathChange?: (path: string[]) => void;
+  resetZoomTrigger?: number;
 }
 
 const TreemapContainer = ({
@@ -57,6 +58,7 @@ const TreemapContainer = ({
   onAutoEnableTeams,
   onAutoEnableInitiatives,
   onFocusedPathChange,
+  resetZoomTrigger,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -100,6 +102,16 @@ const TreemapContainer = ({
     }
   }, [data]);
   
+  // Reset focusedPath when manual filters trigger a reset
+  const prevResetTriggerRef = useRef(resetZoomTrigger);
+  useEffect(() => {
+    if (resetZoomTrigger !== undefined && resetZoomTrigger !== prevResetTriggerRef.current) {
+      prevResetTriggerRef.current = resetZoomTrigger;
+      setFocusedPath([]);
+      onFocusedPathChange?.([]);
+    }
+  }, [resetZoomTrigger, onFocusedPathChange]);
+
   
   // Compute layout using D3, with focusedPath for zoom
   const layoutNodes = useTreemapLayout({

@@ -52,6 +52,7 @@ interface StakeholdersTreemapProps {
   onAutoEnableTeams?: () => void;
   onAutoEnableInitiatives?: () => void;
   onFocusedPathChange?: (path: string[]) => void;
+  resetZoomTrigger?: number;
 }
 
 const StakeholdersTreemap = ({
@@ -66,7 +67,8 @@ const StakeholdersTreemap = ({
   clickedNodeName = null,
   onAutoEnableTeams,
   onAutoEnableInitiatives,
-  onFocusedPathChange
+  onFocusedPathChange,
+  resetZoomTrigger
 }: StakeholdersTreemapProps) => {
   return (
     <TreemapContainer
@@ -89,6 +91,7 @@ const StakeholdersTreemap = ({
       onAutoEnableTeams={onAutoEnableTeams}
       onAutoEnableInitiatives={onAutoEnableInitiatives}
       onFocusedPathChange={onFocusedPathChange}
+      resetZoomTrigger={resetZoomTrigger}
     />
   );
 };

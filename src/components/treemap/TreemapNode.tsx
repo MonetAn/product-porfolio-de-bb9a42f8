@@ -146,7 +146,9 @@ const TreemapNode = memo(({
         scale: { duration: duration * 0.8 },
       },
     },
-    exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
+    exit: animationType.includes('navigate-up')
+      ? { opacity: 0, transition: { duration: 0.15 } }
+      : { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
   };
 
   return (

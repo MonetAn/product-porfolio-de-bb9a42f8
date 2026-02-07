@@ -143,7 +143,20 @@ const TreemapContainer = ({
       newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
     } else if (prevFocusedPathRef.current.length !== focusedPath.length) {
       // Focused path changed — this is a zoom drill-down/up
-      newAnimationType = focusedPath.length > prevFocusedPathRef.current.length ? 'drilldown' : 'navigate-up';
+      if (focusedPath.length > prevFocusedPathRef.current.length) {
+        newAnimationType = 'drilldown';
+      } else {
+        // Zoom out: check aspect ratio of the node we're returning FROM
+        // (the node at the previous focused path, which is now expanding back)
+        const prevLastName = prevFocusedPathRef.current[prevFocusedPathRef.current.length - 1];
+        const returningNode = prevLastName ? layoutNodes.find(n => n.name === prevLastName) : null;
+        if (returningNode) {
+          const ar = returningNode.width / returningNode.height;
+          newAnimationType = (ar > 3 || ar < 1/3) ? 'navigate-up-fast' : 'navigate-up';
+        } else {
+          newAnimationType = 'navigate-up';
+        }
+      }
     } else if (prevShowTeamsRef.current !== showTeams || 
                prevShowInitiativesRef.current !== showInitiatives) {
       newAnimationType = 'filter';

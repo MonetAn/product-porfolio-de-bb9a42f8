@@ -45,7 +45,7 @@ export interface TreemapLayoutNode {
 }
 
 // Animation type determines duration and behavior
-export type AnimationType = 'filter' | 'drilldown' | 'drilldown-fast' | 'navigate-up' | 'resize' | 'initial';
+export type AnimationType = 'filter' | 'drilldown' | 'drilldown-fast' | 'navigate-up' | 'navigate-up-fast' | 'resize' | 'initial';
 
 // Animation durations in ms
 export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
@@ -54,6 +54,7 @@ export const ANIMATION_DURATIONS: Record<AnimationType, number> = {
   'drilldown': 1200,
   'drilldown-fast': 400,
   'navigate-up': 700,
+  'navigate-up-fast': 350,
   'resize': 420
 };
 

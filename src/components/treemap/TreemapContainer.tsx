@@ -31,6 +31,7 @@ interface TreemapContainerProps {
   onFileDrop?: (file: File) => void;
   extraDepth?: number;
   onAutoEnableTeams?: () => void;
+  onAutoEnableInitiatives?: () => void;
 }
 
 const TreemapContainer = ({
@@ -53,6 +54,7 @@ const TreemapContainer = ({
   onFileDrop,
   extraDepth = 0,
   onAutoEnableTeams,
+  onAutoEnableInitiatives,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -207,9 +209,11 @@ const TreemapContainer = ({
     const isNonLeaf = node.data.isUnit || node.data.isTeam || node.data.isStakeholder;
     
     if (isNonLeaf) {
-      // Auto-enable teams if no checkboxes are active
-      if (!showTeams && !showInitiatives) {
-        onAutoEnableTeams?.();
+      // Smart auto-enable: show children based on node type
+      if (node.data.isUnit || node.data.isStakeholder) {
+        if (!showTeams) onAutoEnableTeams?.();
+      } else if (node.data.isTeam) {
+        if (!showInitiatives) onAutoEnableInitiatives?.();
       }
       isAnimatingRef.current = true;
       setTimeout(() => { isAnimatingRef.current = false; }, 700);

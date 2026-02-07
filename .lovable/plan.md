@@ -1,95 +1,79 @@
 
 
-# Breadcrumbs вшитые в фильтры (с UX-улучшениями)
+# Автоматический сброс уровней вложенности при zoom-out
 
-## Основной план (без изменений)
+## Идея
 
-Кнопки фильтров "Юниты" и "Команды" визуально отражают текущий уровень зума в тримапе без пересборки данных. Отдельный блок breadcrumbs удаляется.
+При drill-down система автоматически включает уровни вложенности (Teams, Initiatives). При zoom-out она должна симметрично их выключать -- но только те, что были включены автоматически, а не вручную пользователем.
 
-## UX-улучшения поверх базового плана
-
-### 1. Визуальное отличие zoom-контекста от ручного фильтра
-
-Когда кнопка показывает zoom-позицию (а не ручной выбор пользователя), она должна выглядеть иначе -- чтобы пользователь понимал, что это "где я нахожусь", а не "что я отфильтровал". Предлагаю:
-
-- **Ручной фильтр** (текущее поведение): кнопка с `bg-primary/10 border-primary/30` -- яркий акцент
-- **Zoom-контекст**: кнопка с `border-dashed border-muted-foreground/40` и текст чуть приглушённый (`text-foreground/70`) -- визуально "мягче", как подсказка
-
-Это тонкое, но важное различие: пользователь интуитивно понимает, что dashed border = автоматическая подсказка, а solid + цвет = его выбор.
-
-### 2. Клик по zoom-кнопке открывает дропдаун как обычно
-
-Если пользователь видит "Tech Platform" в кнопке юнитов (из-за зума) и кликает на неё -- открывается обычный дропдаун со всеми юнитами. Ничего не предвыбрано (потому что реально фильтр пуст). Это позволяет в любой момент переключиться с зума на ручной фильтр.
-
-### 3. Стейкхолдеры на вкладке Stakeholders
-
-На вкладке стейкхолдеров `zoomPath[0]` -- это стейкхолдер, не юнит. Нужно учесть это и показывать zoom-контекст в кнопке "Стейкх." когда активна вкладка стейкхолдеров. Для этого потребуется передать информацию о текущей вкладке или типе тримапа.
-
-## Поведение (уточненное)
+## Поведение
 
 ```text
-Тримап бюджетов:
-  Zoom в юнит "Tech Platform":
-    Кнопка юнитов: "Tech Platform" (dashed border, приглушённый)
-    Кнопка команд: "Команды" (без изменений)
+Drill-down в юнит:
+  autoEnabled = { teams: true }
+  showTeams = true
 
-  Zoom в команду "Backend":
-    Кнопка юнитов: "Tech Platform" (dashed)
-    Кнопка команд: "Backend" (dashed)
+Drill-down в команду:
+  autoEnabled = { teams: true, initiatives: true }
+  showTeams = true, showInitiatives = true
 
-  Zoom out полностью:
-    Кнопка юнитов: "Юниты" (обычная)
-    Кнопка команд: "Команды" (обычная)
+Zoom-out на уровень юнита:
+  autoEnabled.initiatives было true → выключаем showInitiatives
+  autoEnabled = { teams: true }
 
-Тримап стейкхолдеров:
-  Zoom в стейкхолдера "VP Product":
-    Кнопка стейкхолдеров: "VP Product" (dashed)
-    
-  Zoom глубже в юнит:
-    Кнопка стейкхолдеров: "VP Product" (dashed)
-    Кнопка юнитов: "Unit Name" (dashed)
+Zoom-out на корень:
+  autoEnabled.teams было true → выключаем showTeams
+  autoEnabled = {}
 
-Ручной клик по фильтру:
-  Zoom сбрасывается
-  Кнопка показывает выбранное значение (solid border, яркий)
+Если пользователь вручную включил "Команды" (через чекбокс):
+  autoEnabled.teams = false (не помечено как авто)
+  При zoom-out "Команды" НЕ выключаются
 ```
 
 ## Технические изменения
 
-### 1. `src/components/FilterBar.tsx`
+### 1. `src/pages/Index.tsx`
 
-- Удалить блок breadcrumb (строки 362-373)
-- Добавить проп `zoomActiveTab?: 'budget' | 'stakeholders'` для понимания, что означает zoomPath[0]
-- Обновить `getUnitLabel()`:
-  - Если `selectedUnits` пуст и `zoomActiveTab === 'budget'` и `zoomPath[0]` существует -- вернуть `zoomPath[0]`
-  - Если `selectedUnits` пуст и `zoomActiveTab === 'stakeholders'` и `zoomPath[1]` существует -- вернуть `zoomPath[1]`
-- Обновить `getTeamLabel()`:
-  - Аналогичная логика со сдвигом на 1 уровень для стейкхолдеров
-- Обновить `getStakeholderLabel()`:
-  - Если `selectedStakeholders` пуст и `zoomActiveTab === 'stakeholders'` и `zoomPath[0]` существует -- вернуть `zoomPath[0]`
-- Добавить вспомогательную функцию `isZoomContext(filterType)` -- возвращает true, если кнопка показывает zoom-путь, а не ручной фильтр
-- Применить стиль `border-dashed border-muted-foreground/40 text-foreground/70` к кнопкам в zoom-контексте
+- Добавить ref `autoEnabledRef = useRef({ teams: false, initiatives: false })`
+- Изменить `handleAutoEnableTeams`:
+  - Если `showTeams` уже true (пользователь включил вручную) -- не помечать как auto
+  - Иначе: `setShowTeams(true)` + `autoEnabledRef.current.teams = true`
+- Аналогично `handleAutoEnableInitiatives`
+- Добавить `handleAutoDisableTeams` и `handleAutoDisableInitiatives`:
+  - Если `autoEnabledRef.current.teams === true` → `setShowTeams(false)`, сбросить флаг
+  - Аналогично для initiatives
+- При ручном переключении чекбокса Teams/Initiatives пользователем -- сбросить соответствующий `autoEnabledRef` флаг в `false`
+- Передать `onAutoDisableTeams` и `onAutoDisableInitiatives` в тримапы
 
-### 2. `src/pages/Index.tsx`
+### 2. `src/components/treemap/TreemapContainer.tsx`
 
-- При ручном изменении фильтров: инкрементировать `resetZoomTrigger` и очистить `zoomPath`
-- Передать `zoomPath` и текущую вкладку в FilterBar
-- Передать `resetZoomTrigger` в BudgetTreemap/StakeholdersTreemap
+- Добавить пропсы `onAutoDisableTeams?: () => void` и `onAutoDisableInitiatives?: () => void`
+- В `handleNavigateBack`: после изменения `focusedPath`, определить какой уровень покидаем:
+  - Если уходим с глубины 2+ на 1 (покидаем команду) → `onAutoDisableInitiatives?.()`
+  - Если уходим с глубины 1 на 0 (покидаем юнит/стейкхолдер) → `onAutoDisableTeams?.()`
+- Логика определения: сравнить `focusedPath.length` до и после (oldLength vs newLength)
 
-### 3. `src/components/treemap/TreemapContainer.tsx`
+### 3. `src/components/BudgetTreemap.tsx` и `src/components/StakeholdersTreemap.tsx`
 
-- Принять проп `resetZoomTrigger?: number`
-- При изменении `resetZoomTrigger` -- сбросить `focusedPath` в `[]`
-- `onFocusedPathChange` уже есть, без дополнительных изменений
+- Прокинуть новые пропсы `onAutoDisableTeams` и `onAutoDisableInitiatives`
 
-### 4. `src/components/BudgetTreemap.tsx` и `StakeholdersTreemap.tsx`
+### 4. Сброс autoEnabled при ручном переключении
 
-- Прокинуть `resetZoomTrigger` в TreemapContainer
+- В Index.tsx, при ручном переключении `showTeams` через FilterBar:
+  - `autoEnabledRef.current.teams = false`
+- Аналогично для `showInitiatives`
+- Это гарантирует, что ручной выбор не будет отменён при zoom-out
 
 ## Что НЕ меняется
 
 - Анимации zoom-in/out
-- Логика фильтрации данных
-- Пересборка дерева (только от ручных фильтров)
+- Логика auto-enable при drill-down (только добавляется tracking)
+- Визуальное поведение фильтров как breadcrumbs
 - Кнопка "Наверх"
+
+## Результат
+
+- При drill-down уровни появляются автоматически (как сейчас)
+- При zoom-out автоматически включённые уровни убираются -- тримап не перегружается
+- Если пользователь сам включил уровень через чекбокс -- он сохраняется при zoom-out
 

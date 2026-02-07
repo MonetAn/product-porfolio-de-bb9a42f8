@@ -129,26 +129,12 @@ const Index = () => {
     rebuildTree();
   }, [rebuildTree]);
 
-  // Auto-enable Teams toggle when single Unit is selected (only once per unit)
-  useEffect(() => {
-    if (selectedUnits.length === 1) {
-      const unitName = selectedUnits[0];
-      // If Teams is already enabled (e.g., via treemap click), remember that we've already
-      // "auto-triggered" for this unit so user can turn it off without it snapping back on.
-      if (showTeams && autoTeamsTriggeredRef.current !== unitName) {
-        autoTeamsTriggeredRef.current = unitName;
-        return;
-      }
-      // Only trigger if this is a new unit (not one we've already triggered for)
-      if (autoTeamsTriggeredRef.current !== unitName && !showTeams) {
-        setShowTeams(true);
-        autoTeamsTriggeredRef.current = unitName;
-      }
-    } else {
-      // Reset flag when selection changes (multiple units or none)
-      autoTeamsTriggeredRef.current = null;
-    }
-  }, [selectedUnits, showTeams]);
+  // Auto-enable Teams when zooming into a node (called from TreemapContainer)
+  const handleAutoEnableTeams = useCallback(() => {
+    if (autoTeamsTriggeredRef.current === 'zoom') return; // Already triggered
+    setShowTeams(true);
+    autoTeamsTriggeredRef.current = 'zoom';
+  }, []);
   // Process CSV file - shared logic for upload and drag-drop (fallback mode)
   const processCSVFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -515,6 +501,7 @@ const Index = () => {
             onResetFilters={resetFilters}
             selectedUnitsCount={selectedUnits.length}
             clickedNodeName={clickedNodeName}
+            onAutoEnableTeams={handleAutoEnableTeams}
           />
         )}
 
@@ -532,6 +519,7 @@ const Index = () => {
             onResetFilters={resetFilters}
             selectedUnitsCount={selectedUnits.length}
             clickedNodeName={clickedNodeName}
+            onAutoEnableTeams={handleAutoEnableTeams}
           />
         )}
 

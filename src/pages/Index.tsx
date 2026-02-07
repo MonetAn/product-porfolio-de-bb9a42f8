@@ -65,8 +65,6 @@ const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   
-  // Track if auto-Teams toggle was already triggered for current unit selection
-  const autoTeamsTriggeredRef = useRef<string | null>(null);
   
   // Track if quarters were already initialized
   const quartersInitializedRef = useRef(false);
@@ -128,11 +126,13 @@ const Index = () => {
     rebuildTree();
   }, [rebuildTree]);
 
-  // Auto-enable Teams when zooming into a node (called from TreemapContainer)
+  // Auto-enable toggles when zooming into a node (called from TreemapContainer)
   const handleAutoEnableTeams = useCallback(() => {
-    if (autoTeamsTriggeredRef.current === 'zoom') return; // Already triggered
     setShowTeams(true);
-    autoTeamsTriggeredRef.current = 'zoom';
+  }, []);
+
+  const handleAutoEnableInitiatives = useCallback(() => {
+    setShowInitiatives(true);
   }, []);
   // Process CSV file - shared logic for upload and drag-drop (fallback mode)
   const processCSVFile = useCallback((file: File) => {
@@ -501,6 +501,7 @@ const Index = () => {
             selectedUnitsCount={selectedUnits.length}
             clickedNodeName={clickedNodeName}
             onAutoEnableTeams={handleAutoEnableTeams}
+            onAutoEnableInitiatives={handleAutoEnableInitiatives}
           />
         )}
 
@@ -519,6 +520,7 @@ const Index = () => {
             selectedUnitsCount={selectedUnits.length}
             clickedNodeName={clickedNodeName}
             onAutoEnableTeams={handleAutoEnableTeams}
+            onAutoEnableInitiatives={handleAutoEnableInitiatives}
           />
         )}
 

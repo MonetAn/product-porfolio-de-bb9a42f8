@@ -50,6 +50,7 @@ interface StakeholdersTreemapProps {
   selectedUnitsCount?: number;
   clickedNodeName?: string | null;
   onAutoEnableTeams?: () => void;
+  onAutoEnableInitiatives?: () => void;
 }
 
 const StakeholdersTreemap = ({
@@ -62,7 +63,8 @@ const StakeholdersTreemap = ({
   onResetFilters,
   selectedUnitsCount = 0,
   clickedNodeName = null,
-  onAutoEnableTeams
+  onAutoEnableTeams,
+  onAutoEnableInitiatives
 }: StakeholdersTreemapProps) => {
   return (
     <TreemapContainer
@@ -83,6 +85,7 @@ const StakeholdersTreemap = ({
       showUploadButton={false}
       extraDepth={1}
       onAutoEnableTeams={onAutoEnableTeams}
+      onAutoEnableInitiatives={onAutoEnableInitiatives}
     />
   );
 };

@@ -1,53 +1,80 @@
 
 
-# Fix: Broken unit level + working fade-out for children
+# Полная переработка fade-out при zoom-out
 
-## Root Cause
+## Почему текущее решение не работает
 
-The `fadingOut` mechanism relies on `animationType` which is **persistent state** -- it stays `'navigate-up'` until the next user action. This means children permanently have `opacity: 0` after zoom-out completes, producing the solid color block shown in the screenshot.
+Проблема `fadingOut` через `isFadingOut` состояние: дочерние узлы одновременно получают **и fade opacity, и изменение координат/размеров**. Два конкурирующих типа анимации (прозрачность + геометрия) создают дерганье и визуальные артефакты.
 
-## New Approach: Transient `isFadingOut` state in TreemapContainer
+## Новый подход: использовать Framer Motion `exit` как задумано
 
-Instead of deriving fade-out from `animationType` (which never resets), add a dedicated boolean state `isFadingOut` that:
-1. Turns ON when zoom-out starts
-2. Automatically turns OFF after 250ms (the fade duration)
+Идея простая: вместо ручного управления opacity, **позволить AnimatePresence корректно запускать exit-анимацию** при удалении дочерних узлов из DOM.
 
-This is clean, predictable, and doesn't interfere with any other animation logic.
+Сейчас `exit` не срабатывает, потому что `AnimatePresence` обернут в условие `{shouldRenderChildren && ...}` — когда условие становится false, весь блок вместе с `AnimatePresence` удаляется, и exit-анимации не успевают запуститься.
 
-## Changes
+## Конкретные изменения
 
-### 1. `src/components/treemap/TreemapContainer.tsx`
+### 1. `src/components/treemap/TreemapNode.tsx`
 
-- Add state: `const [isFadingOut, setIsFadingOut] = useState(false)`
-- In the `handleNavigateBack` callback, set `setIsFadingOut(true)` before updating `focusedPath`
-- Add a `useEffect` that resets it: when `isFadingOut` is true, set a 250ms timeout to set it back to false
-- Pass `fadingOut={isFadingOut}` to each top-level `TreemapNode` in the render
+**Убрать** пропсы `fadingOut` и `childrenFadingOut` полностью. Убрать всю логику opacity через fadingOut из `animate` variant. Вернуть чистый `animate: { opacity: 1, ... }`.
 
-### 2. `src/components/treemap/TreemapNode.tsx`
+**Ключевое изменение** — вынести `AnimatePresence` за пределы условия:
 
-- Simplify the recursive `fadingOut` prop: just pass through the parent's value as-is
-- Change line 202 from:
-  ```
-  fadingOut={fadingOut || (animationType.includes('navigate-up') && node.depth >= 0)}
-  ```
-  to simply:
-  ```
-  fadingOut={fadingOut}
-  ```
-- The `animate` variant logic stays the same (opacity 0 when fadingOut, 1 otherwise, with 0.25s duration)
+Было:
+```text
+{shouldRenderChildren && showChildren && (
+  <div>
+    <AnimatePresence>
+      {children.map(...)}
+    </AnimatePresence>
+  </div>
+)}
+```
 
-## Why This Works
+Станет:
+```text
+<AnimatePresence mode="sync">
+  {shouldRenderChildren && showChildren && 
+    children.map(child => <TreemapNode .../>)
+  }
+</AnimatePresence>
+```
 
-- `isFadingOut` is true for exactly 250ms during zoom-out
-- ALL children at every depth receive `fadingOut=true` and animate to opacity 0
-- After 250ms, `isFadingOut` resets to false, children animate back to opacity 1
-- But by then, `renderDepth` has decreased (600ms delay), so collapsed children are already unmounted
-- No more permanent invisible state
+Теперь `AnimatePresence` всегда смонтирован, а дочерние элементы добавляются/удаляются внутри него. При удалении Framer Motion корректно запустит `exit` variant.
 
-## What Doesn't Change
+### 2. `src/components/treemap/TreemapContainer.tsx`
 
-- Zoom-in (drilldown) animations
-- Filter animations
-- renderDepth delay logic
-- animationType detection logic
-- Component structure
+**Убрать** состояние `isFadingOut`, `setIsFadingOut`, useEffect для авто-сброса, и проп `childrenFadingOut` из `TreemapNode`.
+
+**Убрать задержку 600мс** при уменьшении renderDepth. Сделать немедленное обновление: `setRenderDepth(targetRenderDepth)` всегда. `AnimatePresence` теперь сам отвечает за плавный exit.
+
+Убрать `setIsFadingOut(true)` из `handleNavigateBack`.
+
+### 3. Без изменений
+
+- Zoom-in (drilldown) — работает как прежде
+- Фильтры — работают как прежде
+- Логика focusedPath — без изменений
+- Тултипы — без изменений
+
+## Как это работает
+
+```text
+Пользователь нажимает "Наверх":
+  1. focusedPath сокращается → targetRenderDepth уменьшается
+  2. renderDepth обновляется немедленно
+  3. shouldRenderChildren = false для глубоких узлов
+  4. AnimatePresence (всегда смонтирован) видит, что дети удалены → запускает exit
+  5. exit: { opacity: 0, scale: 0.92, duration: 0.3 } — дети плавно исчезают
+  6. Параллельно родители анимируют x/y/width/height к новым координатам
+  
+Результат: дети fade-out, родители плавно перестраиваются — без конфликтов
+```
+
+## Почему это лучше
+
+- Нет ручного управления opacity — используем Framer Motion как задумано
+- Нет временных состояний (`isFadingOut`) с таймерами
+- Нет конкурирующих анимаций (opacity vs геометрия)
+- Меньше кода, проще отладка
+

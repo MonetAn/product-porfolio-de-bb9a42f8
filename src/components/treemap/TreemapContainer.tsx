@@ -203,15 +203,20 @@ const TreemapContainer = ({
       return;
     }
     
-    // If node has children, zoom into it
-    if (node.data.children && node.data.children.length > 0) {
+    // If node is a non-leaf (unit/team/stakeholder), zoom into it
+    const isNonLeaf = node.data.isUnit || node.data.isTeam || node.data.isStakeholder;
+    const hasVisibleChildren = node.data.children && node.data.children.length > 0;
+    
+    if (isNonLeaf) {
       // Auto-enable teams if no checkboxes are active (user hasn't configured manually)
       if (!showTeams && !showInitiatives) {
         onAutoEnableTeams?.();
       }
-      isAnimatingRef.current = true;
-      setTimeout(() => { isAnimatingRef.current = false; }, 700);
-      setFocusedPath(prev => [...prev, node.data.name]);
+      if (hasVisibleChildren) {
+        isAnimatingRef.current = true;
+        setTimeout(() => { isAnimatingRef.current = false; }, 700);
+        setFocusedPath(prev => [...prev, node.data.name]);
+      }
     }
   }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams]);
   

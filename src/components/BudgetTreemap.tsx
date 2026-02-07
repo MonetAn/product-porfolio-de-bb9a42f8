@@ -29,7 +29,6 @@ const BudgetTreemap = ({
   showInitiatives = false,
   onUploadClick,
   selectedQuarters = [],
-  onNodeClick,
   onNavigateBack,
   canNavigateBack = false,
   onInitiativeClick,
@@ -44,7 +43,6 @@ const BudgetTreemap = ({
       data={data}
       showTeams={showTeams}
       showInitiatives={showInitiatives}
-      onNodeClick={onNodeClick}
       onNavigateBack={onNavigateBack}
       canNavigateBack={canNavigateBack}
       onInitiativeClick={onInitiativeClick}

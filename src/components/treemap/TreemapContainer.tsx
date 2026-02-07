@@ -1,4 +1,4 @@
-// Treemap container with Framer Motion animations
+// Treemap container with Framer Motion animations and Flourish-style zoom
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
@@ -59,15 +59,14 @@ const TreemapContainer = ({
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
   
-  // CSS Zoom state for drilldown
-  const [zoomTransform, setZoomTransform] = useState<string>('none');
-  const [isZooming, setIsZooming] = useState(false);
-  const pendingCallbackRef = useRef<(() => void) | null>(null);
+  // Flourish-style zoom: internal focused path (array of node names from root children)
+  const [focusedPath, setFocusedPath] = useState<string[]>([]);
   
   // Track previous state for animation type detection
   const prevDataNameRef = useRef<string | null>(null);
   const prevShowTeamsRef = useRef(showTeams);
   const prevShowInitiativesRef = useRef(showInitiatives);
+  const prevFocusedPathRef = useRef<string[]>([]);
   const isFirstRenderRef = useRef(true);
   
   // Tooltip state with race condition prevention using depth priority
@@ -82,7 +81,12 @@ const TreemapContainer = ({
   const isEmpty = !data.children || data.children.length === 0;
   const lastQuarter = selectedQuarters.length > 0 ? selectedQuarters[selectedQuarters.length - 1] : null;
   
-  // Compute layout using D3
+  // Reset focusedPath when external data changes (filters applied from outside)
+  useEffect(() => {
+    setFocusedPath([]);
+  }, [data]);
+  
+  // Compute layout using D3, with focusedPath for zoom
   const layoutNodes = useTreemapLayout({
     data,
     dimensions,
@@ -90,6 +94,7 @@ const TreemapContainer = ({
     showInitiatives,
     getColor,
     extraDepth,
+    focusedPath,
   });
   
   // Measure container synchronously to avoid flash
@@ -115,7 +120,7 @@ const TreemapContainer = ({
     return () => resizeObserver.disconnect();
   }, []);
   
-  // Detect animation type based on data changes - useLayoutEffect to set before paint
+  // Detect animation type based on data changes
   useLayoutEffect(() => {
     if (isEmpty) return;
     
@@ -125,26 +130,26 @@ const TreemapContainer = ({
       isFirstRenderRef.current = false;
       newAnimationType = 'initial';
     } else if (dimensions.width > 0 && prevDataNameRef.current !== data.name) {
-      // Data root changed - determine if drilldown or navigate-up
       newAnimationType = canNavigateBack ? 'drilldown' : 'navigate-up';
+    } else if (prevFocusedPathRef.current.length !== focusedPath.length) {
+      // Focused path changed — this is a zoom drill-down/up
+      newAnimationType = focusedPath.length > prevFocusedPathRef.current.length ? 'drilldown' : 'navigate-up';
     } else if (prevShowTeamsRef.current !== showTeams || 
                prevShowInitiativesRef.current !== showInitiatives) {
-      // Checkbox filter change - use filter animation
       newAnimationType = 'filter';
     }
     
     prevDataNameRef.current = data.name;
     prevShowTeamsRef.current = showTeams;
     prevShowInitiativesRef.current = showInitiatives;
+    prevFocusedPathRef.current = focusedPath;
     setAnimationType(newAnimationType);
-    
-    // Reset click state removed — no longer needed with CSS zoom
     
     // Show hint briefly
     setShowHint(true);
     const timer = setTimeout(() => setShowHint(false), 3000);
     return () => clearTimeout(timer);
-  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width]);
+  }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, focusedPath]);
   
   // Render depth calculation
   const renderDepth = useMemo(() => {
@@ -154,55 +159,43 @@ const TreemapContainer = ({
     return depth + extraDepth;
   }, [showTeams, showInitiatives, extraDepth]);
   
-  // Node click handler
+  // Node click handler — Flourish-style: zoom into node by updating focusedPath
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
-    if (isZooming) return;
-
-    const callback = () => {
-      if (node.data.isInitiative && onInitiativeClick) {
-        onInitiativeClick(node.data.name);
-      } else if (onNodeClick) {
-        onNodeClick(node.data);
-      }
-    };
-
-    // Calculate CSS zoom transform to fill container with clicked node
-    const scaleX = dimensions.width / node.width;
-    const scaleY = dimensions.height / node.height;
-    const scale = Math.min(scaleX, scaleY);
-    const tx = -node.x0;
-    const ty = -node.y0;
-
-    setZoomTransform(`scale(${scale}) translate(${tx}px, ${ty}px)`);
-    setIsZooming(true);
-    pendingCallbackRef.current = callback;
-
-    setTimeout(() => {
-      setZoomTransform('none');
-      setIsZooming(false);
-      pendingCallbackRef.current?.();
-      pendingCallbackRef.current = null;
-    }, 600);
-  }, [dimensions, onNodeClick, onInitiativeClick, isZooming]);
+    // Initiative click → navigate to Gantt
+    if (node.data.isInitiative && onInitiativeClick) {
+      onInitiativeClick(node.data.name);
+      return;
+    }
+    
+    // If node has children, zoom into it
+    if (node.data.children && node.data.children.length > 0) {
+      setFocusedPath(prev => [...prev, node.data.name]);
+    }
+  }, [onInitiativeClick]);
   
-  // Tooltip handlers - uses mouseover with stopPropagation for reliable child priority
-  // The deepest element receives the event first and stops propagation
+  // Navigate back handler — zoom out one level
+  const handleNavigateBack = useCallback(() => {
+    if (focusedPath.length > 0) {
+      setFocusedPath(prev => prev.slice(0, -1));
+    } else if (onNavigateBack) {
+      onNavigateBack();
+    }
+  }, [focusedPath.length, onNavigateBack]);
+  
+  const canZoomOut = focusedPath.length > 0 || canNavigateBack;
+  
+  // Tooltip handlers
   const handleMouseEnter = useCallback((e: React.MouseEvent, node: TreemapLayoutNode) => {
-    // Update refs synchronously
     hoveredNodeRef.current = node;
     hoveredDepthRef.current = node.depth;
 
-    // Hide any previously shown tooltip immediately if it's a different node
     setTooltipData(prev => (prev && prev.node.key !== node.key ? null : prev));
     
-    // Cancel any pending tooltip update
     if (tooltipTimeoutRef.current !== null) {
       clearTimeout(tooltipTimeoutRef.current);
     }
     
-    // Schedule tooltip update with 5ms debounce
     tooltipTimeoutRef.current = window.setTimeout(() => {
-      // Verify this node is still the hovered one
       if (hoveredNodeRef.current === node) {
         setTooltipData({
           node,
@@ -214,8 +207,6 @@ const TreemapContainer = ({
   }, []);
   
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    // Only move the tooltip if it matches the currently hovered node.
-    // Otherwise the tooltip could visually "stick" to the cursor with stale content.
     setTooltipData(prev => {
       if (!prev) return null;
       if (!hoveredNodeRef.current) return null;
@@ -225,24 +216,20 @@ const TreemapContainer = ({
   }, []);
   
   const handleMouseLeave = useCallback((node?: TreemapLayoutNode) => {
-    // Cancel any pending update
     if (tooltipTimeoutRef.current !== null) {
       clearTimeout(tooltipTimeoutRef.current);
       tooltipTimeoutRef.current = null;
     }
     
-    // If leaving a specific node, only clear if it's the active one
     if (node) {
       if (hoveredNodeRef.current?.key === node.key) {
         hoveredNodeRef.current = null;
         hoveredDepthRef.current = -1;
         setTooltipData(null);
       }
-      // Otherwise ignore — cursor moved to a deeper child
       return;
     }
     
-    // Leaving container — always clear
     hoveredNodeRef.current = null;
     hoveredDepthRef.current = -1;
     setTooltipData(null);
@@ -288,8 +275,8 @@ const TreemapContainer = ({
     <div className="treemap-container" ref={containerRef} onMouseLeave={() => handleMouseLeave()}>
       {/* Navigate back button */}
       <button
-        className={`navigate-back-button ${canNavigateBack ? 'visible' : ''}`}
-        onClick={onNavigateBack}
+        className={`navigate-back-button ${canZoomOut ? 'visible' : ''}`}
+        onClick={handleNavigateBack}
         title="Подняться на уровень выше"
       >
         <ArrowUp size={28} strokeWidth={2.5} />
@@ -308,18 +295,9 @@ const TreemapContainer = ({
         totalValue={layoutNodes.reduce((sum, n) => sum + n.value, 0)}
       />
       
-      {/* Framer Motion treemap rendering with CSS zoom */}
+      {/* Framer Motion treemap rendering */}
       {!isEmpty && dimensions.width > 0 && (
-        <div
-          style={{
-            position: 'relative',
-            width: '100%',
-            height: '100%',
-            transform: zoomTransform,
-            transformOrigin: '0 0',
-            transition: isZooming ? 'transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1)' : 'none',
-          }}
-        >
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
           <AnimatePresence mode="sync">
             {layoutNodes.map(node => (
               <TreemapNode

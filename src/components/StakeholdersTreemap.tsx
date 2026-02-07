@@ -53,7 +53,6 @@ interface StakeholdersTreemapProps {
 
 const StakeholdersTreemap = ({
   data,
-  onNodeClick,
   onNavigateBack,
   canNavigateBack = false,
   selectedQuarters = [],
@@ -66,9 +65,8 @@ const StakeholdersTreemap = ({
   return (
     <TreemapContainer
       data={data}
-      showTeams={true}  // Stakeholders treemap always shows full hierarchy
+      showTeams={true}
       showInitiatives={true}
-      onNodeClick={onNodeClick}
       onNavigateBack={onNavigateBack}
       canNavigateBack={canNavigateBack}
       onInitiativeClick={onInitiativeClick}

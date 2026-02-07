@@ -172,7 +172,7 @@ const TreemapContainer = ({
         const returningNode = prevLastName ? layoutNodes.find(n => n.name === prevLastName) : null;
         if (returningNode) {
           const ar = returningNode.width / returningNode.height;
-          newAnimationType = (ar > 3 || ar < 1/3) ? 'navigate-up-fast' : 'navigate-up';
+          newAnimationType = (ar > 5 || ar < 1/5) ? 'navigate-up-fast' : 'navigate-up';
         } else {
           newAnimationType = 'navigate-up';
         }
@@ -248,7 +248,7 @@ const TreemapContainer = ({
       
       // Detect extreme aspect ratio for fast drilldown
       const aspectRatio = node.width / node.height;
-      const isExtreme = aspectRatio > 3 || aspectRatio < (1 / 3);
+      const isExtreme = aspectRatio > 5 || aspectRatio < (1 / 5);
       
       if (isExtreme) {
         setAnimationType('drilldown-fast');

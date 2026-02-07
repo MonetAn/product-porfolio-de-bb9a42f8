@@ -111,8 +111,9 @@ const Index = () => {
       teamFilter,
       selectedUnits,
       selectedTeams,
-      showTeams,
-      showInitiatives
+      // Always build full tree so zoom can drill into children
+      showTeams: true,
+      showInitiatives: true
     };
 
     const tree = buildBudgetTree(rawData, options);
@@ -122,7 +123,7 @@ const Index = () => {
     setStakeholdersData(stakeholdersTree);
     setCurrentRoot(currentView === 'stakeholders' ? stakeholdersTree : tree);
     setNavigationStack([]);
-  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, showTeams, showInitiatives, currentView]);
+  }, [rawData, selectedQuarters, hideSupport, showOnlyOfftrack, selectedStakeholders, selectedUnits, selectedTeams, currentView]);
 
   useEffect(() => {
     rebuildTree();

@@ -34,6 +34,7 @@ interface TreemapNodeProps {
   showChildren?: boolean;
   renderDepth?: number;
   fadingOut?: boolean;
+  childrenFadingOut?: boolean;
 }
 
 interface TreemapNodeContentProps {
@@ -107,6 +108,7 @@ const TreemapNode = memo(({
   showChildren = true,
   renderDepth = 3,
   fadingOut = false,
+  childrenFadingOut = false,
 }: TreemapNodeProps) => {
   const duration = animationType === 'initial' ? 0 : ANIMATION_DURATIONS[animationType] / 1000;
   const hasChildren = node.children && node.children.length > 0;
@@ -199,7 +201,7 @@ const TreemapNode = memo(({
                 onMouseLeave={onMouseLeave}
                 showChildren={showChildren}
                 renderDepth={renderDepth}
-                fadingOut={fadingOut}
+                fadingOut={fadingOut || childrenFadingOut}
               />
             ))}
           </AnimatePresence>

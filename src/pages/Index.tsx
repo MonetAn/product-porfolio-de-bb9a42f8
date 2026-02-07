@@ -134,6 +134,57 @@ const Index = () => {
   const handleAutoEnableInitiatives = useCallback(() => {
     setShowInitiatives(true);
   }, []);
+
+  // Track manual filter changes to reset treemap zoom
+  const [resetZoomTrigger, setResetZoomTrigger] = useState(0);
+  const isZoomSyncRef = useRef(false); // flag to distinguish zoom-driven filter updates from manual ones
+
+  // Wrap filter setters to detect manual changes and reset zoom
+  const handleManualUnitsChange = useCallback((units: string[]) => {
+    if (!isZoomSyncRef.current) {
+      setResetZoomTrigger(prev => prev + 1);
+    }
+    setSelectedUnits(units);
+  }, []);
+
+  const handleManualTeamsChange = useCallback((teams: string[]) => {
+    if (!isZoomSyncRef.current) {
+      setResetZoomTrigger(prev => prev + 1);
+    }
+    setSelectedTeams(teams);
+  }, []);
+
+  // Handle zoom changes from treemap — sync filters after animation
+  const handleZoomChange = useCallback((path: string[]) => {
+    isZoomSyncRef.current = true;
+    
+    if (path.length === 0) {
+      // Zoomed out to top level — clear filters
+      setSelectedUnits([]);
+      setSelectedTeams([]);
+    } else if (path.length >= 1) {
+      const unitName = path[0];
+      setSelectedUnits([unitName]);
+      
+      // Auto-select all teams for this unit
+      const unitTeams = [...new Set(rawData
+        .filter(r => r.unit === unitName)
+        .map(r => r.team)
+        .filter(Boolean))];
+      
+      if (path.length >= 2) {
+        // Zoomed into a specific team
+        setSelectedTeams([path[1]]);
+      } else {
+        setSelectedTeams(unitTeams);
+      }
+    }
+    
+    // Reset the flag on next tick so subsequent manual changes are detected
+    setTimeout(() => {
+      isZoomSyncRef.current = false;
+    }, 0);
+  }, [rawData]);
   // Process CSV file - shared logic for upload and drag-drop (fallback mode)
   const processCSVFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -439,8 +490,8 @@ const Index = () => {
         teams={teams}
         selectedUnits={selectedUnits}
         selectedTeams={selectedTeams}
-        onUnitsChange={setSelectedUnits}
-        onTeamsChange={setSelectedTeams}
+        onUnitsChange={handleManualUnitsChange}
+        onTeamsChange={handleManualTeamsChange}
         hideSupport={hideSupport}
         onHideSupportChange={setHideSupport}
         showOnlyOfftrack={showOnlyOfftrack}
@@ -502,6 +553,8 @@ const Index = () => {
             clickedNodeName={clickedNodeName}
             onAutoEnableTeams={handleAutoEnableTeams}
             onAutoEnableInitiatives={handleAutoEnableInitiatives}
+            onZoomChange={handleZoomChange}
+            resetZoomTrigger={resetZoomTrigger}
           />
         )}
 
@@ -521,6 +574,8 @@ const Index = () => {
             clickedNodeName={clickedNodeName}
             onAutoEnableTeams={handleAutoEnableTeams}
             onAutoEnableInitiatives={handleAutoEnableInitiatives}
+            onZoomChange={handleZoomChange}
+            resetZoomTrigger={resetZoomTrigger}
           />
         )}
 

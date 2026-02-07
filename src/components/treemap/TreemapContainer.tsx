@@ -187,7 +187,7 @@ const TreemapContainer = ({
       renderDepthTimerRef.current = window.setTimeout(() => {
         setRenderDepth(targetRenderDepth);
         renderDepthTimerRef.current = null;
-      }, 900);
+      }, 800);
     }
     
     return () => {
@@ -227,7 +227,7 @@ const TreemapContainer = ({
           pendingClickRef.current = null;
           handleNodeClick(pending);
         }
-      }, 1100);
+      }, 900);
       // Build full path from node.path (e.g. "UnitA/Team1" -> ['UnitA', 'Team1'])
       const newFocusedPath = node.path.split('/');
       setFocusedPath(newFocusedPath);

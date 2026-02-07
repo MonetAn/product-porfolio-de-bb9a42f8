@@ -75,6 +75,7 @@ const TreemapContainer = ({
   
   // Flourish-style zoom: internal focused path (array of node names from root children)
   const [focusedPath, setFocusedPath] = useState<string[]>([]);
+  const [isFadingOut, setIsFadingOut] = useState(false);
   
   
   // Track previous state for animation type detection
@@ -116,7 +117,13 @@ const TreemapContainer = ({
     }
   }, [resetZoomTrigger, onFocusedPathChange]);
 
-  
+  // Auto-reset isFadingOut after fade animation completes
+  useEffect(() => {
+    if (!isFadingOut) return;
+    const timer = setTimeout(() => setIsFadingOut(false), 250);
+    return () => clearTimeout(timer);
+  }, [isFadingOut]);
+
   // Compute layout using D3, with focusedPath for zoom
   const layoutNodes = useTreemapLayout({
     data,
@@ -280,6 +287,7 @@ const TreemapContainer = ({
   // Navigate back handler — zoom out one level with symmetric auto-disable
   const handleNavigateBack = useCallback(() => {
     if (focusedPath.length > 0) {
+      setIsFadingOut(true);
       const oldLength = focusedPath.length;
       const newPath = focusedPath.slice(0, -1);
       const newLength = newPath.length;
@@ -427,7 +435,7 @@ const TreemapContainer = ({
                 onMouseLeave={handleMouseLeave}
                 showChildren={true}
                 renderDepth={renderDepth}
-                
+                fadingOut={isFadingOut}
               />
             ))}
           </AnimatePresence>

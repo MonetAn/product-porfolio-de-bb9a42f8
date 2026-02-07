@@ -199,7 +199,7 @@ const TreemapNode = memo(({
                 onMouseLeave={onMouseLeave}
                 showChildren={showChildren}
                 renderDepth={renderDepth}
-                fadingOut={fadingOut || (animationType.includes('navigate-up') && node.depth >= 0)}
+                fadingOut={fadingOut}
               />
             ))}
           </AnimatePresence>

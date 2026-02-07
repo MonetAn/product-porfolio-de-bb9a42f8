@@ -67,6 +67,7 @@ const TreemapContainer = ({
   
   // Flourish-style zoom: internal focused path (array of node names from root children)
   const [focusedPath, setFocusedPath] = useState<string[]>([]);
+  const [zoomTargetKey, setZoomTargetKey] = useState<string | null>(null);
   
   // Track previous state for animation type detection
   const prevDataNameRef = useRef<string | null>(null);
@@ -219,9 +220,22 @@ const TreemapContainer = ({
       } else if (node.data.isTeam) {
         if (!showInitiatives) onAutoEnableInitiatives?.();
       }
+      
+      // Detect extreme aspect ratio for crossfade
+      const aspectRatio = node.width / node.height;
+      const isExtreme = aspectRatio > 3 || aspectRatio < (1 / 3);
+      
+      if (isExtreme) {
+        setZoomTargetKey(node.key);
+        setAnimationType('drilldown-crossfade');
+      } else {
+        setZoomTargetKey(null);
+      }
+      
       isAnimatingRef.current = true;
       setTimeout(() => {
         isAnimatingRef.current = false;
+        setZoomTargetKey(null);
         if (pendingClickRef.current) {
           const pending = pendingClickRef.current;
           pendingClickRef.current = null;
@@ -371,6 +385,7 @@ const TreemapContainer = ({
                 onMouseLeave={handleMouseLeave}
                 showChildren={true}
                 renderDepth={renderDepth}
+                zoomTargetKey={zoomTargetKey}
               />
             ))}
           </AnimatePresence>

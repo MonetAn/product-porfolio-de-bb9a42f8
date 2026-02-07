@@ -156,14 +156,38 @@ const TreemapContainer = ({
   }, [data.name, showTeams, showInitiatives, canNavigateBack, isEmpty, dimensions.width, focusedPath]);
   
   // Render depth: base from toggles + extra from focused zoom depth
-  const renderDepth = useMemo(() => {
+  const targetRenderDepth = useMemo(() => {
     let depth = 1;
-    if (showInitiatives) depth = 3; // initiatives implies teams visible
+    if (showInitiatives) depth = 3;
     else if (showTeams) depth = 2;
-    // When zoomed in, ensure we show at least one level of children of focused node
     depth = Math.max(depth, focusedPath.length + 1);
     return depth + extraDepth;
   }, [showTeams, showInitiatives, extraDepth, focusedPath.length]);
+  
+  // Delayed render depth: when decreasing, keep old value during exit animation
+  const [renderDepth, setRenderDepth] = useState(targetRenderDepth);
+  const renderDepthTimerRef = useRef<number | null>(null);
+  
+  useEffect(() => {
+    if (renderDepthTimerRef.current !== null) {
+      clearTimeout(renderDepthTimerRef.current);
+      renderDepthTimerRef.current = null;
+    }
+    
+    if (targetRenderDepth >= renderDepth) {
+      setRenderDepth(targetRenderDepth);
+    } else {
+      // Delay decrease so children animate out with the zoom
+      renderDepthTimerRef.current = window.setTimeout(() => {
+        setRenderDepth(targetRenderDepth);
+        renderDepthTimerRef.current = null;
+      }, 650);
+    }
+    
+    return () => {
+      if (renderDepthTimerRef.current !== null) clearTimeout(renderDepthTimerRef.current);
+    };
+  }, [targetRenderDepth]);
   
   // Node click handler — Flourish-style: zoom into node by updating focusedPath
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {

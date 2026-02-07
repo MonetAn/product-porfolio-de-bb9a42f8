@@ -257,43 +257,10 @@ const Index = () => {
     setCurrentRoot(parent);
   };
 
-  // Handle click on treemap node - select single item in filter and enable corresponding toggle
+  // Handle click on treemap node — no longer used for drill-down (treemap handles zoom internally)
+  // Kept for potential external use but treemap no longer calls this for units/teams
   const handleNodeClick = (node: TreeNode) => {
-    // Store clicked node name for zoom animation
-    // CRITICAL: Do NOT clear via setTimeout - TreemapContainer handles cleanup via onExitComplete
     setClickedNodeName(node.name);
-    
-    if (node.isStakeholder) {
-      // Clicking a stakeholder - filter by this stakeholder and enable Teams toggle
-      setSelectedStakeholders([node.name]);
-      if (!showTeams) setShowTeams(true);
-    } else if (node.isUnit) {
-      // Select this unit and all its teams
-      setSelectedUnits([node.name]);
-      // Auto-select all teams from this unit
-      const teamsFromUnit = [...new Set(
-        rawData
-          .filter(r => r.unit === node.name)
-          .map(r => r.team)
-          .filter(Boolean)
-      )];
-      setSelectedTeams(teamsFromUnit);
-      // Auto-enable Teams toggle
-      if (!showTeams) setShowTeams(true);
-    } else if (node.isTeam) {
-      // Select only this team (keep units as is if single, otherwise reset)
-      if (selectedUnits.length > 1) {
-        // Find the unit this team belongs to
-        const teamUnit = rawData.find(r => r.team === node.name)?.unit;
-        if (teamUnit) {
-          setSelectedUnits([teamUnit]);
-        }
-      }
-      setSelectedTeams([node.name]);
-      // Auto-enable Initiatives toggle
-      if (!showInitiatives) setShowInitiatives(true);
-    }
-    // For initiatives - do nothing (or could navigate to Gantt in future)
   };
 
   // Navigate up one level (for the up arrow button)
@@ -536,7 +503,6 @@ const Index = () => {
             showInitiatives={showInitiatives}
             onUploadClick={() => fileInputRef.current?.click()}
             selectedQuarters={selectedQuarters}
-            onNodeClick={handleNodeClick}
             onNavigateBack={handleNavigateBack}
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0}
             onInitiativeClick={(name) => {
@@ -554,7 +520,6 @@ const Index = () => {
         {currentView === 'stakeholders' && (
           <StakeholdersTreemap
             data={stakeholdersData}
-            onNodeClick={handleNodeClick}
             onNavigateBack={handleNavigateBack}
             canNavigateBack={selectedUnits.length > 0 || selectedTeams.length > 0 || selectedStakeholders.length > 0}
             selectedQuarters={selectedQuarters}

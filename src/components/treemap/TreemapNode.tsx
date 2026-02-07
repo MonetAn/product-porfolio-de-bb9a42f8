@@ -1,5 +1,5 @@
-// Framer Motion treemap node component with clean fade animations
-// Uses layoutId for smooth position transitions
+// Framer Motion treemap node component
+// Animates x, y, width, height for Flourish-style transitions
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { memo } from 'react';
@@ -17,7 +17,6 @@ function getLuminance(hex: string): number {
   return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
 }
 
-// Returns appropriate text color based on background luminance
 function getTextColorClass(bgColor: string): string {
   const luminance = getLuminance(bgColor);
   return luminance > 0.4 ? 'text-gray-900' : 'text-white';
@@ -26,8 +25,8 @@ function getTextColorClass(bgColor: string): string {
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
   animationType: AnimationType;
-  parentX?: number;  // Absolute X of parent (default 0)
-  parentY?: number;  // Absolute Y of parent (default 0)
+  parentX?: number;
+  parentY?: number;
   onClick?: (node: TreemapLayoutNode) => void;
   onMouseEnter?: (e: React.MouseEvent, node: TreemapLayoutNode) => void;
   onMouseMove?: (e: React.MouseEvent) => void;
@@ -42,7 +41,6 @@ interface TreemapNodeContentProps {
   textColorClass: string;
 }
 
-// Node content component
 const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNodeContentProps) => {
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
@@ -50,7 +48,6 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNod
   
   if (node.height < 30) return null;
   
-  // Header style for parent nodes
   if (hasChildren) {
     return (
       <div 
@@ -68,7 +65,6 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNod
     );
   }
   
-  // Centered content for leaf nodes
   return (
     <div className="absolute inset-0 flex items-center justify-center p-1">
       <div className="text-center w-full px-1">
@@ -98,7 +94,6 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNod
 
 TreemapNodeContent.displayName = 'TreemapNodeContent';
 
-// Main node component
 const TreemapNode = memo(({
   node,
   animationType,
@@ -117,11 +112,9 @@ const TreemapNode = memo(({
   const isLeaf = !hasChildren;
   const textColorClass = getTextColorClass(node.color);
   
-  // Calculate relative position from absolute coordinates
   const x = node.x0 - parentX;
   const y = node.y0 - parentY;
   
-  // Build class names
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
   
@@ -136,7 +129,6 @@ const TreemapNode = memo(({
     node.isInitiative && 'is-initiative',
   ].filter(Boolean).join(' ');
 
-  // Variants: exit receives fresh custom from AnimatePresence (fixes stale props)
   const skipInitial = animationType === 'initial';
   const variants = {
     initial: { opacity: 0, scale: 0.92, x, y, width: node.width, height: node.height },
@@ -168,10 +160,10 @@ const TreemapNode = memo(({
         backgroundColor: node.color,
         borderRadius: 4,
         overflow: 'hidden',
-      cursor: 'pointer',
-      transformOrigin: 'center center',
-      zIndex: 1,
-    }}
+        cursor: 'pointer',
+        transformOrigin: 'center center',
+        zIndex: 1,
+      }}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.(node);
@@ -186,10 +178,8 @@ const TreemapNode = memo(({
         onMouseLeave?.(node);
       }}
     >
-      {/* Node content (label + value) */}
       <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
       
-      {/* Nested children */}
       {shouldRenderChildren && showChildren && (
         <div className="absolute inset-0">
           <AnimatePresence mode="sync">

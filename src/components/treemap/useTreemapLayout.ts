@@ -12,6 +12,21 @@ interface UseTreemapLayoutOptions {
   showInitiatives?: boolean;
   getColor?: ColorGetter;
   extraDepth?: number;
+  focusedPath?: string[]; // e.g. ['UnitA'] or ['UnitA', 'Team1']
+}
+
+// Find a node in the D3 hierarchy by path of names
+function findNodeByPath(
+  root: d3.HierarchyRectangularNode<TreeNode>,
+  path: string[]
+): d3.HierarchyRectangularNode<TreeNode> | null {
+  let current = root;
+  for (const name of path) {
+    const child = current.children?.find(c => c.data.name === name);
+    if (!child) return null;
+    current = child;
+  }
+  return current;
 }
 
 // Flatten D3 hierarchy into array of layout nodes
@@ -82,13 +97,52 @@ function flattenHierarchy(
   return result;
 }
 
+// Apply focus transform: scale all coordinates so that focusedNode fills the viewport
+function applyFocusTransform(
+  nodes: TreemapLayoutNode[],
+  focusedNode: d3.HierarchyRectangularNode<TreeNode>,
+  width: number,
+  height: number
+): TreemapLayoutNode[] {
+  const fx0 = focusedNode.x0;
+  const fy0 = focusedNode.y0;
+  const fw = focusedNode.x1 - focusedNode.x0;
+  const fh = focusedNode.y1 - focusedNode.y0;
+  
+  if (fw === 0 || fh === 0) return nodes;
+  
+  const scaleX = width / fw;
+  const scaleY = height / fh;
+  
+  function transformNode(node: TreemapLayoutNode): TreemapLayoutNode {
+    const newX0 = (node.x0 - fx0) * scaleX;
+    const newY0 = (node.y0 - fy0) * scaleY;
+    const newX1 = (node.x1 - fx0) * scaleX;
+    const newY1 = (node.y1 - fy0) * scaleY;
+    
+    return {
+      ...node,
+      x0: newX0,
+      y0: newY0,
+      x1: newX1,
+      y1: newY1,
+      width: newX1 - newX0,
+      height: newY1 - newY0,
+      children: node.children?.map(transformNode),
+    };
+  }
+  
+  return nodes.map(transformNode);
+}
+
 export function useTreemapLayout({
   data,
   dimensions,
   showTeams = false,
   showInitiatives = false,
   getColor = getUnitColor,
-  extraDepth = 0
+  extraDepth = 0,
+  focusedPath = [],
 }: UseTreemapLayoutOptions): TreemapLayoutNode[] {
   return useMemo(() => {
     if (!data.children || data.children.length === 0 || dimensions.width === 0 || dimensions.height === 0) {
@@ -135,14 +189,22 @@ export function useTreemapLayout({
     if (!root.children) return [];
     
     // Flatten to array of layout nodes
-    const layoutNodes: TreemapLayoutNode[] = [];
+    let layoutNodes: TreemapLayoutNode[] = [];
     for (const child of root.children) {
       const nodes = flattenHierarchy(child, 0, getColor, '', renderDepth);
       layoutNodes.push(nodes[0]);
     }
     
+    // Apply focus transform if we have a focused path
+    if (focusedPath.length > 0) {
+      const focusedD3Node = findNodeByPath(root, focusedPath);
+      if (focusedD3Node) {
+        layoutNodes = applyFocusTransform(layoutNodes, focusedD3Node, dimensions.width, dimensions.height);
+      }
+    }
+    
     return layoutNodes;
-  }, [data, dimensions.width, dimensions.height, showTeams, showInitiatives, getColor, extraDepth]);
+  }, [data, dimensions.width, dimensions.height, showTeams, showInitiatives, getColor, extraDepth, focusedPath]);
 }
 
 // Calculate exit direction for a node (used in drilldown animation)

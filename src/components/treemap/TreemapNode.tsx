@@ -141,11 +141,11 @@ const TreemapNode = memo(({
       height: node.height,
       transition: {
         duration,
-        ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number],
+        ease: [0.4, 0, 0.2, 1] as [number, number, number, number],
         scale: { duration: duration * 0.8 },
       },
     },
-    exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
+    exit: { opacity: 0, scale: 0.92, transition: { duration: 0.4 } },
   };
 
   return (

@@ -1,79 +1,47 @@
 
 
-# Автоматический сброс уровней вложенности при zoom-out
+# Плавный exit дочерних элементов при zoom-out
 
-## Идея
+## Проблема
 
-При drill-down система автоматически включает уровни вложенности (Teams, Initiatives). При zoom-out она должна симметрично их выключать -- но только те, что были включены автоматически, а не вручную пользователем.
+При zoom-out дочерние узлы одновременно:
+1. Сжимаются геометрически (layout пересчитывается под новый масштаб)
+2. Исчезают через fade + scale
 
-## Поведение
+Это создаёт эффект "схлопывания в точку" — резко и некрасиво. При zoom-in такой проблемы нет, потому что элементы появляются из маленького в большой — естественное движение.
 
-```text
-Drill-down в юнит:
-  autoEnabled = { teams: true }
-  showTeams = true
+## Решение
 
-Drill-down в команду:
-  autoEnabled = { teams: true, initiatives: true }
-  showTeams = true, showInitiatives = true
-
-Zoom-out на уровень юнита:
-  autoEnabled.initiatives было true → выключаем showInitiatives
-  autoEnabled = { teams: true }
-
-Zoom-out на корень:
-  autoEnabled.teams было true → выключаем showTeams
-  autoEnabled = {}
-
-Если пользователь вручную включил "Команды" (через чекбокс):
-  autoEnabled.teams = false (не помечено как авто)
-  При zoom-out "Команды" НЕ выключаются
-```
+Разделить exit-анимацию по типу: при navigate-up дочерние элементы должны исчезать **быстрее и раньше**, чем родитель завершит сжатие. Также убрать scale из exit при zoom-out — оставить только opacity, чтобы не было двойного сжатия.
 
 ## Технические изменения
 
-### 1. `src/pages/Index.tsx`
+### 1. `src/components/treemap/TreemapNode.tsx`
 
-- Добавить ref `autoEnabledRef = useRef({ teams: false, initiatives: false })`
-- Изменить `handleAutoEnableTeams`:
-  - Если `showTeams` уже true (пользователь включил вручную) -- не помечать как auto
-  - Иначе: `setShowTeams(true)` + `autoEnabledRef.current.teams = true`
-- Аналогично `handleAutoEnableInitiatives`
-- Добавить `handleAutoDisableTeams` и `handleAutoDisableInitiatives`:
-  - Если `autoEnabledRef.current.teams === true` → `setShowTeams(false)`, сбросить флаг
-  - Аналогично для initiatives
-- При ручном переключении чекбокса Teams/Initiatives пользователем -- сбросить соответствующий `autoEnabledRef` флаг в `false`
-- Передать `onAutoDisableTeams` и `onAutoDisableInitiatives` в тримапы
+Сделать exit-вариант зависимым от `animationType`:
+
+- **При `navigate-up` / `navigate-up-fast`**: exit = `{ opacity: 0, transition: { duration: 0.15 } }` — только opacity, быстро (150мс). Без scale — геометрическое сжатие родителя уже обеспечивает визуальный "уход". Элементы просто растворяются, не успевая визуально сколлапсировать.
+- **При остальных типах** (filter, drilldown, etc.): exit остаётся как сейчас — `{ opacity: 0, scale: 0.92, duration: 0.3 }`.
+
+Для этого нужно превратить `variants.exit` в динамическое значение:
+
+```text
+exit: animationType включает 'navigate-up'
+  → { opacity: 0, transition: { duration: 0.15 } }
+  → иначе: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } }
+```
 
 ### 2. `src/components/treemap/TreemapContainer.tsx`
 
-- Добавить пропсы `onAutoDisableTeams?: () => void` и `onAutoDisableInitiatives?: () => void`
-- В `handleNavigateBack`: после изменения `focusedPath`, определить какой уровень покидаем:
-  - Если уходим с глубины 2+ на 1 (покидаем команду) → `onAutoDisableInitiatives?.()`
-  - Если уходим с глубины 1 на 0 (покидаем юнит/стейкхолдер) → `onAutoDisableTeams?.()`
-- Логика определения: сравнить `focusedPath.length` до и после (oldLength vs newLength)
-
-### 3. `src/components/BudgetTreemap.tsx` и `src/components/StakeholdersTreemap.tsx`
-
-- Прокинуть новые пропсы `onAutoDisableTeams` и `onAutoDisableInitiatives`
-
-### 4. Сброс autoEnabled при ручном переключении
-
-- В Index.tsx, при ручном переключении `showTeams` через FilterBar:
-  - `autoEnabledRef.current.teams = false`
-- Аналогично для `showInitiatives`
-- Это гарантирует, что ручной выбор не будет отменён при zoom-out
+Уменьшить задержку `renderDepth` при zoom-out с 800мс до 600мс — дочерние элементы исчезают за 150мс, после чего 600мс достаточно для завершения геометрической анимации родителя (700мс). Это синхронизирует два процесса точнее.
 
 ## Что НЕ меняется
 
-- Анимации zoom-in/out
-- Логика auto-enable при drill-down (только добавляется tracking)
-- Визуальное поведение фильтров как breadcrumbs
-- Кнопка "Наверх"
+- Анимация zoom-in (drilldown)
+- Анимация фильтров
+- Структура компонентов
+- Логика renderDepth (только значение таймера)
 
 ## Результат
 
-- При drill-down уровни появляются автоматически (как сейчас)
-- При zoom-out автоматически включённые уровни убираются -- тримап не перегружается
-- Если пользователь сам включил уровень через чекбокс -- он сохраняется при zoom-out
-
+При zoom-out дочерние элементы мягко растворяются за 150мс, не пытаясь одновременно сжаться — убирается эффект "схлопывания в точку". Переход выглядит как: дети исчезли -> родитель плавно занял новый размер.

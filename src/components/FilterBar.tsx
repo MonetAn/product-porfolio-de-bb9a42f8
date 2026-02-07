@@ -64,6 +64,7 @@ interface FilterBarProps {
   
   // Zoom breadcrumb (visual only, no data effect)
   zoomPath?: string[];
+  zoomActiveTab?: 'budget' | 'stakeholders';
 }
 
 const FilterBar = ({
@@ -101,7 +102,8 @@ const FilterBar = ({
   onCostFilterChange,
   costType = 'period',
   onCostTypeChange,
-  zoomPath = []
+  zoomPath = [],
+  zoomActiveTab = 'budget'
 }: FilterBarProps) => {
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   const [stakeholderMenuOpen, setStakeholderMenuOpen] = useState(false);
@@ -227,9 +229,36 @@ const FilterBar = ({
     return `${selectedQuarters.length} кв.`;
   };
 
+  // Zoom context helpers
+  const getZoomUnitName = () => {
+    if (zoomActiveTab === 'budget') return zoomPath[0] || null;
+    if (zoomActiveTab === 'stakeholders') return zoomPath[1] || null;
+    return null;
+  };
+  const getZoomTeamName = () => {
+    if (zoomActiveTab === 'budget') return zoomPath[1] || null;
+    if (zoomActiveTab === 'stakeholders') return zoomPath[2] || null;
+    return null;
+  };
+  const getZoomStakeholderName = () => {
+    if (zoomActiveTab === 'stakeholders') return zoomPath[0] || null;
+    return null;
+  };
+
+  const isZoomContext = (filterType: 'unit' | 'team' | 'stakeholder') => {
+    if (filterType === 'unit') return selectedUnits.length === 0 && !!getZoomUnitName();
+    if (filterType === 'team') return selectedTeams.length === 0 && !!getZoomTeamName();
+    if (filterType === 'stakeholder') return selectedStakeholders.length === 0 && !!getZoomStakeholderName();
+    return false;
+  };
+
   // Stakeholder label - shorter
   const getStakeholderLabel = () => {
-    if (selectedStakeholders.length === 0) return 'Стейкх.';
+    if (selectedStakeholders.length === 0) {
+      const zoomName = getZoomStakeholderName();
+      if (zoomName) return zoomName.length > 10 ? zoomName.slice(0, 10) + '…' : zoomName;
+      return 'Стейкх.';
+    }
     if (selectedStakeholders.length === 1) {
       const s = selectedStakeholders[0];
       return s.length > 10 ? s.slice(0, 10) + '…' : s;
@@ -239,7 +268,11 @@ const FilterBar = ({
 
   // Unit label - shorter
   const getUnitLabel = () => {
-    if (selectedUnits.length === 0) return 'Юниты';
+    if (selectedUnits.length === 0) {
+      const zoomName = getZoomUnitName();
+      if (zoomName) return zoomName.length > 12 ? zoomName.slice(0, 12) + '...' : zoomName;
+      return 'Юниты';
+    }
     if (selectedUnits.length === 1) {
       const u = selectedUnits[0];
       return u.length > 12 ? u.slice(0, 12) + '...' : u;
@@ -249,7 +282,11 @@ const FilterBar = ({
 
   // Team label - shorter
   const getTeamLabel = () => {
-    if (selectedTeams.length === 0) return 'Команды';
+    if (selectedTeams.length === 0) {
+      const zoomName = getZoomTeamName();
+      if (zoomName) return zoomName.length > 12 ? zoomName.slice(0, 12) + '...' : zoomName;
+      return 'Команды';
+    }
     if (selectedTeams.length === 1) {
       const t = selectedTeams[0];
       return t.length > 12 ? t.slice(0, 12) + '...' : t;
@@ -359,25 +396,20 @@ const FilterBar = ({
     <div className="bg-card border-b border-border fixed top-14 left-0 right-0 z-40">
       {/* Single responsive row */}
       <div className="h-auto min-h-[44px] flex flex-wrap items-center px-4 py-1.5 gap-2">
-        {/* Zoom breadcrumb */}
-        {zoomPath.length > 0 && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground mr-1">
-            <span className="opacity-60">📍</span>
-            {zoomPath.map((segment, i) => (
-              <span key={i} className="flex items-center gap-1">
-                {i > 0 && <span className="opacity-40">›</span>}
-                <span className="font-medium text-foreground/80">{segment}</span>
-              </span>
-            ))}
-          </div>
-        )}
+        {/* Zoom breadcrumb removed — now embedded in filter buttons */}
         {/* Filters Group */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Unit multi-select */}
           <div ref={unitRef} className="relative">
             <button
               onClick={() => setUnitMenuOpen(!unitMenuOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border rounded-md text-xs cursor-pointer hover:border-muted-foreground"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-card border rounded-md text-xs cursor-pointer hover:border-muted-foreground ${
+                isZoomContext('unit')
+                  ? 'border-dashed border-muted-foreground/40 text-foreground/70'
+                  : selectedUnits.length > 0
+                    ? 'bg-primary/10 border-primary/30'
+                    : 'border-border'
+              }`}
             >
               <span className="truncate max-w-[80px]">{getUnitLabel()}</span>
               <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
@@ -410,7 +442,13 @@ const FilterBar = ({
           <div ref={teamRef} className="relative">
             <button
               onClick={() => setTeamMenuOpen(!teamMenuOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border rounded-md text-xs cursor-pointer hover:border-muted-foreground"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-card border rounded-md text-xs cursor-pointer hover:border-muted-foreground ${
+                isZoomContext('team')
+                  ? 'border-dashed border-muted-foreground/40 text-foreground/70'
+                  : selectedTeams.length > 0
+                    ? 'bg-primary/10 border-primary/30'
+                    : 'border-border'
+              }`}
             >
               <span className="truncate max-w-[80px]">{getTeamLabel()}</span>
               <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />
@@ -447,7 +485,13 @@ const FilterBar = ({
           <div ref={stakeholderRef} className="relative">
             <button
               onClick={() => setStakeholderMenuOpen(!stakeholderMenuOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-card border border-border rounded-md text-xs cursor-pointer hover:border-muted-foreground"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-card border rounded-md text-xs cursor-pointer hover:border-muted-foreground ${
+                isZoomContext('stakeholder')
+                  ? 'border-dashed border-muted-foreground/40 text-foreground/70'
+                  : selectedStakeholders.length > 0
+                    ? 'bg-primary/10 border-primary/30'
+                    : 'border-border'
+              }`}
             >
               <span className="truncate max-w-[80px]">{getStakeholderLabel()}</span>
               <ChevronDown size={12} className="text-muted-foreground flex-shrink-0" />

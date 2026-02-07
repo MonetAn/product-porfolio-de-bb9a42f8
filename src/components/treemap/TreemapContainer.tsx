@@ -63,6 +63,7 @@ const TreemapContainer = ({
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
   const isAnimatingRef = useRef(false);
+  const pendingClickRef = useRef<TreemapLayoutNode | null>(null);
   
   // Flourish-style zoom: internal focused path (array of node names from root children)
   const [focusedPath, setFocusedPath] = useState<string[]>([]);
@@ -196,8 +197,11 @@ const TreemapContainer = ({
   
   // Node click handler — Flourish-style: zoom into node by updating focusedPath
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
-    // Block clicks during animation to prevent freezing
-    if (isAnimatingRef.current) return;
+    // Queue click during animation instead of dropping it
+    if (isAnimatingRef.current) {
+      pendingClickRef.current = node;
+      return;
+    }
     
     // Initiative click → navigate to Gantt
     if (node.data.isInitiative && onInitiativeClick) {
@@ -216,7 +220,14 @@ const TreemapContainer = ({
         if (!showInitiatives) onAutoEnableInitiatives?.();
       }
       isAnimatingRef.current = true;
-      setTimeout(() => { isAnimatingRef.current = false; }, 1450);
+      setTimeout(() => {
+        isAnimatingRef.current = false;
+        if (pendingClickRef.current) {
+          const pending = pendingClickRef.current;
+          pendingClickRef.current = null;
+          handleNodeClick(pending);
+        }
+      }, 1100);
       // Build full path from node.path (e.g. "UnitA/Team1" -> ['UnitA', 'Team1'])
       const newFocusedPath = node.path.split('/');
       setFocusedPath(newFocusedPath);

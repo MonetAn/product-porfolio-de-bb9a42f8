@@ -181,9 +181,14 @@ export function useTreemapLayout({
       layoutNodes.push(nodes[0]);
     }
     
-    // Apply focus transform if we have a focused path
+    // Apply focus transform — try full path, then progressively shorter
     if (focusedPath.length > 0) {
-      const focusedD3Node = findNodeByPath(root, focusedPath);
+      let focusedD3Node: d3.HierarchyRectangularNode<TreeNode> | null = null;
+      let validPath = [...focusedPath];
+      while (validPath.length > 0 && !focusedD3Node) {
+        focusedD3Node = findNodeByPath(root, validPath);
+        if (!focusedD3Node) validPath = validPath.slice(0, -1);
+      }
       if (focusedD3Node) {
         layoutNodes = applyFocusTransform(layoutNodes, focusedD3Node, dimensions.width, dimensions.height);
       }

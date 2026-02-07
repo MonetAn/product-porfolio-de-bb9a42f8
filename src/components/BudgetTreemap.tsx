@@ -21,6 +21,7 @@ interface BudgetTreemapProps {
   onResetFilters?: () => void;
   selectedUnitsCount?: number;
   clickedNodeName?: string | null;
+  onAutoEnableTeams?: () => void;
 }
 
 const BudgetTreemap = ({
@@ -36,7 +37,8 @@ const BudgetTreemap = ({
   hasData = false,
   onResetFilters,
   selectedUnitsCount = 0,
-  clickedNodeName = null
+  clickedNodeName = null,
+  onAutoEnableTeams
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
@@ -57,6 +59,7 @@ const BudgetTreemap = ({
       showUploadButton={true}
       onUploadClick={onUploadClick}
       onFileDrop={onFileDrop}
+      onAutoEnableTeams={onAutoEnableTeams}
     />
   );
 };

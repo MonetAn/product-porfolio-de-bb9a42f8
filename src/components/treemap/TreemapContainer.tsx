@@ -30,6 +30,7 @@ interface TreemapContainerProps {
   onUploadClick?: () => void;
   onFileDrop?: (file: File) => void;
   extraDepth?: number;
+  onAutoEnableTeams?: () => void;
 }
 
 const TreemapContainer = ({
@@ -51,6 +52,7 @@ const TreemapContainer = ({
   onUploadClick,
   onFileDrop,
   extraDepth = 0,
+  onAutoEnableTeams,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -202,11 +204,15 @@ const TreemapContainer = ({
     
     // If node has children, zoom into it
     if (node.data.children && node.data.children.length > 0) {
+      // Auto-enable teams if no checkboxes are active (user hasn't configured manually)
+      if (!showTeams && !showInitiatives) {
+        onAutoEnableTeams?.();
+      }
       isAnimatingRef.current = true;
       setTimeout(() => { isAnimatingRef.current = false; }, 700);
       setFocusedPath(prev => [...prev, node.data.name]);
     }
-  }, [onInitiativeClick]);
+  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams]);
   
   // Navigate back handler — zoom out one level
   const handleNavigateBack = useCallback(() => {

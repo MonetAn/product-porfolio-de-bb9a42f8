@@ -49,6 +49,7 @@ interface StakeholdersTreemapProps {
   onResetFilters?: () => void;
   selectedUnitsCount?: number;
   clickedNodeName?: string | null;
+  onAutoEnableTeams?: () => void;
 }
 
 const StakeholdersTreemap = ({
@@ -60,7 +61,8 @@ const StakeholdersTreemap = ({
   onInitiativeClick,
   onResetFilters,
   selectedUnitsCount = 0,
-  clickedNodeName = null
+  clickedNodeName = null,
+  onAutoEnableTeams
 }: StakeholdersTreemapProps) => {
   return (
     <TreemapContainer
@@ -80,6 +82,7 @@ const StakeholdersTreemap = ({
       emptyStateSubtitle="Попробуйте изменить параметры фильтрации или сбросить фильтры"
       showUploadButton={false}
       extraDepth={1}
+      onAutoEnableTeams={onAutoEnableTeams}
     />
   );
 };

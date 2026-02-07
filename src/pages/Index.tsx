@@ -65,6 +65,8 @@ const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   
+  // Track which nesting levels were auto-enabled (vs manually toggled by user)
+  const autoEnabledRef = useRef({ teams: false, initiatives: false });
   
   // Track if quarters were already initialized
   const quartersInitializedRef = useRef(false);
@@ -128,11 +130,32 @@ const Index = () => {
 
   // Auto-enable toggles when zooming into a node (called from TreemapContainer)
   const handleAutoEnableTeams = useCallback(() => {
-    setShowTeams(true);
-  }, []);
+    if (!showTeams) {
+      setShowTeams(true);
+      autoEnabledRef.current.teams = true;
+    }
+  }, [showTeams]);
 
   const handleAutoEnableInitiatives = useCallback(() => {
-    setShowInitiatives(true);
+    if (!showInitiatives) {
+      setShowInitiatives(true);
+      autoEnabledRef.current.initiatives = true;
+    }
+  }, [showInitiatives]);
+
+  // Auto-disable toggles when zooming out (only if they were auto-enabled)
+  const handleAutoDisableTeams = useCallback(() => {
+    if (autoEnabledRef.current.teams) {
+      setShowTeams(false);
+      autoEnabledRef.current.teams = false;
+    }
+  }, []);
+
+  const handleAutoDisableInitiatives = useCallback(() => {
+    if (autoEnabledRef.current.initiatives) {
+      setShowInitiatives(false);
+      autoEnabledRef.current.initiatives = false;
+    }
   }, []);
 
   // Track current zoom path for breadcrumb display (does NOT affect filters/data)
@@ -475,8 +498,8 @@ const Index = () => {
         rawData={rawData}
         showTeams={showTeams}
         showInitiatives={showInitiatives}
-        onShowTeamsChange={setShowTeams}
-        onShowInitiativesChange={setShowInitiatives}
+        onShowTeamsChange={(v) => { setShowTeams(v); if (!v) autoEnabledRef.current.teams = false; else autoEnabledRef.current.teams = false; }}
+        onShowInitiativesChange={(v) => { setShowInitiatives(v); if (!v) autoEnabledRef.current.initiatives = false; else autoEnabledRef.current.initiatives = false; }}
         onOfftrackClick={() => {
           setShowOnlyOfftrack(true);
           setCurrentView('timeline');
@@ -524,6 +547,8 @@ const Index = () => {
             clickedNodeName={clickedNodeName}
             onAutoEnableTeams={handleAutoEnableTeams}
             onAutoEnableInitiatives={handleAutoEnableInitiatives}
+            onAutoDisableTeams={handleAutoDisableTeams}
+            onAutoDisableInitiatives={handleAutoDisableInitiatives}
             onFocusedPathChange={handleFocusedPathChange}
             resetZoomTrigger={resetZoomTrigger}
           />
@@ -545,6 +570,8 @@ const Index = () => {
             clickedNodeName={clickedNodeName}
             onAutoEnableTeams={handleAutoEnableTeams}
             onAutoEnableInitiatives={handleAutoEnableInitiatives}
+            onAutoDisableTeams={handleAutoDisableTeams}
+            onAutoDisableInitiatives={handleAutoDisableInitiatives}
             onFocusedPathChange={handleFocusedPathChange}
             resetZoomTrigger={resetZoomTrigger}
           />

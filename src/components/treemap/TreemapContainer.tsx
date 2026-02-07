@@ -32,6 +32,8 @@ interface TreemapContainerProps {
   extraDepth?: number;
   onAutoEnableTeams?: () => void;
   onAutoEnableInitiatives?: () => void;
+  onAutoDisableTeams?: () => void;
+  onAutoDisableInitiatives?: () => void;
   onFocusedPathChange?: (path: string[]) => void;
   resetZoomTrigger?: number;
 }
@@ -57,6 +59,8 @@ const TreemapContainer = ({
   extraDepth = 0,
   onAutoEnableTeams,
   onAutoEnableInitiatives,
+  onAutoDisableTeams,
+  onAutoDisableInitiatives,
   onFocusedPathChange,
   resetZoomTrigger,
 }: TreemapContainerProps) => {
@@ -273,16 +277,27 @@ const TreemapContainer = ({
     }
   }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onFocusedPathChange]);
   
-  // Navigate back handler — zoom out one level
+  // Navigate back handler — zoom out one level with symmetric auto-disable
   const handleNavigateBack = useCallback(() => {
     if (focusedPath.length > 0) {
+      const oldLength = focusedPath.length;
       const newPath = focusedPath.slice(0, -1);
+      const newLength = newPath.length;
+      
+      // Auto-disable nesting levels symmetrically
+      if (oldLength >= 2 && newLength < 2) {
+        onAutoDisableInitiatives?.();
+      }
+      if (oldLength >= 1 && newLength < 1) {
+        onAutoDisableTeams?.();
+      }
+      
       setFocusedPath(newPath);
       onFocusedPathChange?.(newPath);
     } else if (onNavigateBack) {
       onNavigateBack();
     }
-  }, [focusedPath, onNavigateBack, onFocusedPathChange]);
+  }, [focusedPath, onNavigateBack, onFocusedPathChange, onAutoDisableTeams, onAutoDisableInitiatives]);
   
   const canZoomOut = focusedPath.length > 0 || canNavigateBack;
   

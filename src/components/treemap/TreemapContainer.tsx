@@ -58,8 +58,11 @@ const TreemapContainer = ({
   const [showHint, setShowHint] = useState(true);
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
-  const [lastClickCenter, setLastClickCenter] = useState<{ x: number; y: number } | null>(null);
-  const [clickedNodeKey, setClickedNodeKey] = useState<string | null>(null);
+  
+  // CSS Zoom state for drilldown
+  const [zoomTransform, setZoomTransform] = useState<string>('none');
+  const [isZooming, setIsZooming] = useState(false);
+  const pendingCallbackRef = useRef<(() => void) | null>(null);
   
   // Track previous state for animation type detection
   const prevDataNameRef = useRef<string | null>(null);
@@ -135,11 +138,7 @@ const TreemapContainer = ({
     prevShowInitiativesRef.current = showInitiatives;
     setAnimationType(newAnimationType);
     
-    // Reset click state for non-drilldown animations
-    if (newAnimationType === 'navigate-up' || newAnimationType === 'filter') {
-      setLastClickCenter(null);
-      setClickedNodeKey(null);
-    }
+    // Reset click state removed — no longer needed with CSS zoom
     
     // Show hint briefly
     setShowHint(true);
@@ -157,19 +156,34 @@ const TreemapContainer = ({
   
   // Node click handler
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
-    // Save click center and key for push-out exit animation
-    setLastClickCenter({
-      x: node.x0 + node.width / 2,
-      y: node.y0 + node.height / 2,
-    });
-    setClickedNodeKey(node.key);
+    if (isZooming) return;
 
-    if (node.data.isInitiative && onInitiativeClick) {
-      onInitiativeClick(node.data.name);
-    } else if (onNodeClick) {
-      onNodeClick(node.data);
-    }
-  }, [onNodeClick, onInitiativeClick]);
+    const callback = () => {
+      if (node.data.isInitiative && onInitiativeClick) {
+        onInitiativeClick(node.data.name);
+      } else if (onNodeClick) {
+        onNodeClick(node.data);
+      }
+    };
+
+    // Calculate CSS zoom transform to fill container with clicked node
+    const scaleX = dimensions.width / node.width;
+    const scaleY = dimensions.height / node.height;
+    const scale = Math.min(scaleX, scaleY);
+    const tx = -node.x0;
+    const ty = -node.y0;
+
+    setZoomTransform(`scale(${scale}) translate(${tx}px, ${ty}px)`);
+    setIsZooming(true);
+    pendingCallbackRef.current = callback;
+
+    setTimeout(() => {
+      setZoomTransform('none');
+      setIsZooming(false);
+      pendingCallbackRef.current?.();
+      pendingCallbackRef.current = null;
+    }, 600);
+  }, [dimensions, onNodeClick, onInitiativeClick, isZooming]);
   
   // Tooltip handlers - uses mouseover with stopPropagation for reliable child priority
   // The deepest element receives the event first and stops propagation
@@ -271,7 +285,7 @@ const TreemapContainer = ({
   }, [onFileDrop]);
 
   return (
-    <div className="treemap-container" ref={containerRef} style={{ overflow: animationType === 'drilldown' ? 'visible' : undefined }} onMouseLeave={() => handleMouseLeave()}>
+    <div className="treemap-container" ref={containerRef} onMouseLeave={() => handleMouseLeave()}>
       {/* Navigate back button */}
       <button
         className={`navigate-back-button ${canNavigateBack ? 'visible' : ''}`}
@@ -294,26 +308,34 @@ const TreemapContainer = ({
         totalValue={layoutNodes.reduce((sum, n) => sum + n.value, 0)}
       />
       
-      {/* Framer Motion treemap rendering */}
+      {/* Framer Motion treemap rendering with CSS zoom */}
       {!isEmpty && dimensions.width > 0 && (
-        <AnimatePresence mode="sync" custom={lastClickCenter}>
-          {layoutNodes.map(node => (
-            <TreemapNode
-              key={node.key}
-              node={node}
-              animationType={animationType}
-              clickCenter={lastClickCenter}
-              isHero={node.key === clickedNodeKey}
-              containerDimensions={dimensions}
-              onClick={handleNodeClick}
-              onMouseEnter={handleMouseEnter}
-              onMouseMove={handleMouseMove}
-              onMouseLeave={handleMouseLeave}
-              showChildren={true}
-              renderDepth={renderDepth}
-            />
-          ))}
-        </AnimatePresence>
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            transform: zoomTransform,
+            transformOrigin: '0 0',
+            transition: isZooming ? 'transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1)' : 'none',
+          }}
+        >
+          <AnimatePresence mode="sync">
+            {layoutNodes.map(node => (
+              <TreemapNode
+                key={node.key}
+                node={node}
+                animationType={animationType}
+                onClick={handleNodeClick}
+                onMouseEnter={handleMouseEnter}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeave}
+                showChildren={true}
+                renderDepth={renderDepth}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
       )}
       
       {/* Empty state: No initiatives for selected filters */}

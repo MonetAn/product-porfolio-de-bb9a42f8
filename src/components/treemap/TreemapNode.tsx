@@ -28,9 +28,6 @@ interface TreemapNodeProps {
   animationType: AnimationType;
   parentX?: number;  // Absolute X of parent (default 0)
   parentY?: number;  // Absolute Y of parent (default 0)
-  clickCenter?: { x: number; y: number } | null;
-  isHero?: boolean;
-  containerDimensions?: { width: number; height: number };
   onClick?: (node: TreemapLayoutNode) => void;
   onMouseEnter?: (e: React.MouseEvent, node: TreemapLayoutNode) => void;
   onMouseMove?: (e: React.MouseEvent) => void;
@@ -107,9 +104,6 @@ const TreemapNode = memo(({
   animationType,
   parentX = 0,
   parentY = 0,
-  clickCenter,
-  isHero = false,
-  containerDimensions,
   onClick,
   onMouseEnter,
   onMouseMove,
@@ -159,24 +153,7 @@ const TreemapNode = memo(({
         scale: { duration: duration * 0.8 },
       },
     },
-    exit: (customClickCenter: { x: number; y: number } | null) => {
-      if (customClickCenter && containerDimensions && !isHero) {
-        const nodeCenterX = node.x0 + node.width / 2;
-        const nodeCenterY = node.y0 + node.height / 2;
-        const dx = nodeCenterX - customClickCenter.x;
-        const dy = nodeCenterY - customClickCenter.y;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = Math.max(containerDimensions.width, containerDimensions.height) * 1.5;
-        return {
-          x: x + (dx / distance) * force,
-          y: y + (dy / distance) * force,
-          opacity: 0,
-          scale: 0.8,
-          transition: { duration: 0.7, ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number] },
-        };
-      }
-      return { opacity: 0, scale: 0.92 };
-    },
+    exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
   };
 
   return (
@@ -191,10 +168,10 @@ const TreemapNode = memo(({
         backgroundColor: node.color,
         borderRadius: 4,
         overflow: 'hidden',
-        cursor: 'pointer',
-        transformOrigin: 'center center',
-        zIndex: isHero ? 10 : 1,
-      }}
+      cursor: 'pointer',
+      transformOrigin: 'center center',
+      zIndex: 1,
+    }}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.(node);
@@ -215,7 +192,7 @@ const TreemapNode = memo(({
       {/* Nested children */}
       {shouldRenderChildren && showChildren && (
         <div className="absolute inset-0">
-          <AnimatePresence mode="sync" custom={clickCenter}>
+          <AnimatePresence mode="sync">
             {node.children!.map(child => (
               <TreemapNode
                 key={child.key}
@@ -223,9 +200,6 @@ const TreemapNode = memo(({
                 animationType={animationType}
                 parentX={node.x0}
                 parentY={node.y0}
-                clickCenter={clickCenter}
-                isHero={false}
-                containerDimensions={containerDimensions}
                 onClick={onClick}
                 onMouseEnter={onMouseEnter}
                 onMouseMove={onMouseMove}

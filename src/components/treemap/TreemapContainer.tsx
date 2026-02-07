@@ -58,6 +58,7 @@ const TreemapContainer = ({
   const [showHint, setShowHint] = useState(true);
   const [isDropHovering, setIsDropHovering] = useState(false);
   const dropCounterRef = useRef(0);
+  const isAnimatingRef = useRef(false);
   
   // Flourish-style zoom: internal focused path (array of node names from root children)
   const [focusedPath, setFocusedPath] = useState<string[]>([]);
@@ -81,17 +82,20 @@ const TreemapContainer = ({
   const isEmpty = !data.children || data.children.length === 0;
   const lastQuarter = selectedQuarters.length > 0 ? selectedQuarters[selectedQuarters.length - 1] : null;
   
-  // Reset focusedPath when external data changes (filters applied from outside)
+  // Reset focusedPath only when root data actually changes
+  const dataIdRef = useRef(data.name + '|' + (data.children?.length || 0));
   useEffect(() => {
-    setFocusedPath([]);
+    const newId = data.name + '|' + (data.children?.length || 0);
+    if (dataIdRef.current !== newId) {
+      dataIdRef.current = newId;
+      setFocusedPath([]);
+    }
   }, [data]);
   
   // Compute layout using D3, with focusedPath for zoom
   const layoutNodes = useTreemapLayout({
     data,
     dimensions,
-    showTeams,
-    showInitiatives,
     getColor,
     extraDepth,
     focusedPath,
@@ -154,8 +158,8 @@ const TreemapContainer = ({
   // Render depth: base from toggles + extra from focused zoom depth
   const renderDepth = useMemo(() => {
     let depth = 1;
-    if (showTeams && showInitiatives) depth = 3;
-    else if (showTeams || showInitiatives) depth = 2;
+    if (showInitiatives) depth = 3; // initiatives implies teams visible
+    else if (showTeams) depth = 2;
     // When zoomed in, ensure we show at least one level of children of focused node
     depth = Math.max(depth, focusedPath.length + 1);
     return depth + extraDepth;
@@ -163,6 +167,9 @@ const TreemapContainer = ({
   
   // Node click handler — Flourish-style: zoom into node by updating focusedPath
   const handleNodeClick = useCallback((node: TreemapLayoutNode) => {
+    // Block clicks during animation to prevent freezing
+    if (isAnimatingRef.current) return;
+    
     // Initiative click → navigate to Gantt
     if (node.data.isInitiative && onInitiativeClick) {
       onInitiativeClick(node.data.name);
@@ -171,6 +178,8 @@ const TreemapContainer = ({
     
     // If node has children, zoom into it
     if (node.data.children && node.data.children.length > 0) {
+      isAnimatingRef.current = true;
+      setTimeout(() => { isAnimatingRef.current = false; }, 700);
       setFocusedPath(prev => [...prev, node.data.name]);
     }
   }, [onInitiativeClick]);

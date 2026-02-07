@@ -1,26 +1,20 @@
 
 
-# Обновление таймингов анимаций тримапа
+# Увеличение длительности zoom-in анимации
 
-Замедляем анимации drill-down и zoom-out для более плавного, Flourish-подобного восприятия.
+Увеличиваем только drilldown с 1100мс до 1400мс для более плавного отслеживания пространственного перехода. Остальные анимации без изменений.
 
 ## Изменения
 
-### 1. `src/components/treemap/types.ts` -- новые длительности
+### 1. `src/components/treemap/types.ts`
 
 | Параметр | Было | Стало |
 |---|---|---|
-| drilldown | 800ms | **1100ms** |
-| navigate-up | 650ms | **900ms** |
-| filter | 650ms | **750ms** |
-| resize | 420ms | 420ms (без изменений) |
+| drilldown | 1100ms | **1400ms** |
+| navigate-up | 900ms | без изменений |
+| filter | 750ms | без изменений |
 
-### 2. `src/components/treemap/TreemapNode.tsx` -- новая easing-кривая и exit duration
+### 2. `src/components/treemap/TreemapContainer.tsx`
 
-- Easing: `[0.25, 0.1, 0.25, 1]` → **`[0.4, 0, 0.2, 1]`**
-- Exit transition duration: `0.3` → **`0.4`**
-
-### 3. `src/components/treemap/TreemapContainer.tsx` -- увеличить guard timeout
-
-- `isAnimatingRef` timeout: `700ms` → **`1150ms`**
+Guard timeout (`isAnimatingRef`): 1150ms -> **1450ms**
 

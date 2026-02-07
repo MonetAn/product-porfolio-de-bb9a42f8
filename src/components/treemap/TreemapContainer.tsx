@@ -32,6 +32,8 @@ interface TreemapContainerProps {
   extraDepth?: number;
   onAutoEnableTeams?: () => void;
   onAutoEnableInitiatives?: () => void;
+  onZoomChange?: (path: string[]) => void;
+  resetZoomTrigger?: number;
 }
 
 const TreemapContainer = ({
@@ -55,6 +57,8 @@ const TreemapContainer = ({
   extraDepth = 0,
   onAutoEnableTeams,
   onAutoEnableInitiatives,
+  onZoomChange,
+  resetZoomTrigger = 0,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -97,6 +101,15 @@ const TreemapContainer = ({
       setFocusedPath([]);
     }
   }, [data]);
+  
+  // Reset zoom when external filters change manually
+  const prevResetTriggerRef = useRef(resetZoomTrigger);
+  useEffect(() => {
+    if (prevResetTriggerRef.current !== resetZoomTrigger) {
+      prevResetTriggerRef.current = resetZoomTrigger;
+      setFocusedPath([]);
+    }
+  }, [resetZoomTrigger]);
   
   // Compute layout using D3, with focusedPath for zoom
   const layoutNodes = useTreemapLayout({
@@ -245,6 +258,8 @@ const TreemapContainer = ({
       isAnimatingRef.current = true;
       setTimeout(() => {
         isAnimatingRef.current = false;
+        // Sync filters after animation completes
+        onZoomChange?.(newFocusedPath);
         if (pendingClickRef.current) {
           const pending = pendingClickRef.current;
           pendingClickRef.current = null;
@@ -255,16 +270,21 @@ const TreemapContainer = ({
       const newFocusedPath = node.path.split('/');
       setFocusedPath(newFocusedPath);
     }
-  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams]);
+  }, [onInitiativeClick, showTeams, showInitiatives, onAutoEnableTeams, onZoomChange]);
   
   // Navigate back handler — zoom out one level
   const handleNavigateBack = useCallback(() => {
     if (focusedPath.length > 0) {
-      setFocusedPath(prev => prev.slice(0, -1));
+      const newPath = focusedPath.slice(0, -1);
+      setFocusedPath(newPath);
+      // Sync filters after animation
+      setTimeout(() => {
+        onZoomChange?.(newPath);
+      }, 900);
     } else if (onNavigateBack) {
       onNavigateBack();
     }
-  }, [focusedPath.length, onNavigateBack]);
+  }, [focusedPath, onNavigateBack, onZoomChange]);
   
   const canZoomOut = focusedPath.length > 0 || canNavigateBack;
   

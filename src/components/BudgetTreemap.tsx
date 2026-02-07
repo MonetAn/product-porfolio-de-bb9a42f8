@@ -23,6 +23,8 @@ interface BudgetTreemapProps {
   clickedNodeName?: string | null;
   onAutoEnableTeams?: () => void;
   onAutoEnableInitiatives?: () => void;
+  onZoomChange?: (path: string[]) => void;
+  resetZoomTrigger?: number;
 }
 
 const BudgetTreemap = ({
@@ -40,7 +42,9 @@ const BudgetTreemap = ({
   selectedUnitsCount = 0,
   clickedNodeName = null,
   onAutoEnableTeams,
-  onAutoEnableInitiatives
+  onAutoEnableInitiatives,
+  onZoomChange,
+  resetZoomTrigger
 }: BudgetTreemapProps) => {
   return (
     <TreemapContainer
@@ -63,6 +67,8 @@ const BudgetTreemap = ({
       onFileDrop={onFileDrop}
       onAutoEnableTeams={onAutoEnableTeams}
       onAutoEnableInitiatives={onAutoEnableInitiatives}
+      onZoomChange={onZoomChange}
+      resetZoomTrigger={resetZoomTrigger}
     />
   );
 };

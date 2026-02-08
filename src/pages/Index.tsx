@@ -551,6 +551,7 @@ const Index = () => {
             onAutoDisableInitiatives={handleAutoDisableInitiatives}
             onFocusedPathChange={handleFocusedPathChange}
             resetZoomTrigger={resetZoomTrigger}
+            initialFocusedPath={zoomPath}
           />
         )}
 
@@ -576,6 +577,7 @@ const Index = () => {
             resetZoomTrigger={resetZoomTrigger}
             showTeams={showTeams}
             showInitiatives={showInitiatives}
+            initialFocusedPath={zoomPath}
           />
         )}
 

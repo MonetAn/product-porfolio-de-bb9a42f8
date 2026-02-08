@@ -36,6 +36,7 @@ interface TreemapContainerProps {
   onAutoDisableInitiatives?: () => void;
   onFocusedPathChange?: (path: string[]) => void;
   resetZoomTrigger?: number;
+  initialFocusedPath?: string[];
 }
 
 const TreemapContainer = ({
@@ -63,6 +64,7 @@ const TreemapContainer = ({
   onAutoDisableInitiatives,
   onFocusedPathChange,
   resetZoomTrigger,
+  initialFocusedPath,
 }: TreemapContainerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -74,7 +76,7 @@ const TreemapContainer = ({
   const pendingClickRef = useRef<TreemapLayoutNode | null>(null);
   
   // Flourish-style zoom: internal focused path (array of node names from root children)
-  const [focusedPath, setFocusedPath] = useState<string[]>([]);
+  const [focusedPath, setFocusedPath] = useState<string[]>(initialFocusedPath || []);
   
   
   // Track previous state for animation type detection

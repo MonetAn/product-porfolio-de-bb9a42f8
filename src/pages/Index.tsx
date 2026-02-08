@@ -574,6 +574,8 @@ const Index = () => {
             onAutoDisableInitiatives={handleAutoDisableInitiatives}
             onFocusedPathChange={handleFocusedPathChange}
             resetZoomTrigger={resetZoomTrigger}
+            showTeams={showTeams}
+            showInitiatives={showInitiatives}
           />
         )}
 

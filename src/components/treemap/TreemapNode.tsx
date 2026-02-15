@@ -244,7 +244,7 @@ const TreemapNode = memo(({
         initial={false}
         animate={textFadeAnimate}
         transition={textFadeTransition}
-        style={{ position: 'relative', zIndex: 2 }}
+        style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}
       >
         <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
       </motion.div>

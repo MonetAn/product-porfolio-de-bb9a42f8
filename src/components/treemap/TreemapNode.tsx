@@ -1,8 +1,9 @@
 // Framer Motion treemap node component
 // Animates x, y, width, height for Flourish-style transitions
+// Text fades out during large movements and fades back in after
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { memo } from 'react';
+import { memo, useRef, useEffect } from 'react';
 import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS } from './types';
 import { formatBudget } from '@/lib/dataManager';
 
@@ -20,6 +21,16 @@ function getLuminance(hex: string): number {
 function getTextColorClass(bgColor: string): string {
   const luminance = getLuminance(bgColor);
   return luminance > 0.4 ? 'text-gray-900' : 'text-white';
+}
+
+// Size category for font: determines when fade is needed on category change
+type SizeCategory = 'hidden' | 'tiny' | 'small' | 'normal';
+
+function getSizeCategory(width: number, height: number): SizeCategory {
+  if (height < 30) return 'hidden';
+  if (width < 60 || height < 40) return 'tiny';
+  if (width < 100 || height < 60) return 'small';
+  return 'normal';
 }
 
 interface TreemapNodeProps {
@@ -46,7 +57,10 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNod
   const isSmall = node.width < 100 || node.height < 60;
   const hasChildren = node.children && node.children.length > 0;
   
-  if (node.height < 30) return null;
+  // Instead of returning null, render invisible content so fade-in can animate
+  if (node.height < 30) {
+    return <div style={{ opacity: 0 }} aria-hidden />;
+  }
   
   if (hasChildren) {
     return (
@@ -117,6 +131,37 @@ const TreemapNode = memo(({
   
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
+
+  // --- Text fade logic ---
+  const cx = x + node.width / 2;
+  const cy = y + node.height / 2;
+  const currentCategory = getSizeCategory(node.width, node.height);
+
+  const prevPosRef = useRef({ cx, cy, w: node.width, h: node.height, cat: currentCategory });
+  const animIdRef = useRef(0);
+
+  const prev = prevPosRef.current;
+  const displacement = Math.sqrt((cx - prev.cx) ** 2 + (cy - prev.cy) ** 2);
+  const sizeChange = Math.max(
+    Math.abs(node.width - prev.w),
+    Math.abs(node.height - prev.h)
+  ) / Math.max(prev.w, prev.h, 1);
+  const categoryChanged = currentCategory !== prev.cat;
+
+  const needsTextFade = animationType !== 'initial' && (
+    displacement > 50 || sizeChange > 0.3 || categoryChanged
+  );
+
+  if (needsTextFade) {
+    animIdRef.current += 1;
+  }
+
+  useEffect(() => {
+    prevPosRef.current = { cx, cy, w: node.width, h: node.height, cat: currentCategory };
+  }, [cx, cy, node.width, node.height, currentCategory]);
+
+  const fadeKey = needsTextFade ? `fade-${animIdRef.current}` : 'stable';
+  // --- End text fade logic ---
   
   const classNames = [
     'treemap-node',
@@ -149,6 +194,21 @@ const TreemapNode = memo(({
     exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
   };
 
+  // Asymmetric text fade: fast out (10%), clean zone (65%), slow in (25%)
+  const textFadeTransition = needsTextFade
+    ? {
+        opacity: {
+          duration,
+          times: [0, 0.1, 0.75, 1],
+          ease: 'easeInOut' as const,
+        },
+      }
+    : { opacity: { duration: 0 } };
+
+  const textFadeAnimate = needsTextFade
+    ? { opacity: [0, 0, 0, 1] }
+    : { opacity: 1 };
+
   return (
     <motion.div
       variants={variants}
@@ -179,7 +239,15 @@ const TreemapNode = memo(({
         onMouseLeave?.(node);
       }}
     >
-      <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
+      <motion.div
+        key={fadeKey}
+        initial={false}
+        animate={textFadeAnimate}
+        transition={textFadeTransition}
+        style={{ position: 'relative', zIndex: 2 }}
+      >
+        <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
+      </motion.div>
       
       <AnimatePresence mode="sync">
         {shouldRenderChildren && showChildren &&

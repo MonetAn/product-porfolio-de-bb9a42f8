@@ -3,7 +3,7 @@
 // Text fades out during large movements and fades back in after
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { memo, useRef, useEffect } from 'react';
+import { memo, useRef, useEffect, useState } from 'react';
 import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS } from './types';
 import { formatBudget } from '@/lib/dataManager';
 
@@ -23,15 +23,8 @@ function getTextColorClass(bgColor: string): string {
   return luminance > 0.4 ? 'text-gray-900' : 'text-white';
 }
 
-// Size category for font: determines when fade is needed on category change
-type SizeCategory = 'hidden' | 'tiny' | 'small' | 'normal';
-
-function getSizeCategory(width: number, height: number): SizeCategory {
-  if (height < 30) return 'hidden';
-  if (width < 60 || height < 40) return 'tiny';
-  if (width < 100 || height < 60) return 'small';
-  return 'normal';
-}
+// Threshold for considering movement "significant" enough to hide text
+const MOVEMENT_THRESHOLD = 10;
 
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
@@ -132,39 +125,55 @@ const TreemapNode = memo(({
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
 
-  // --- Text fade logic ---
-  const cx = x + node.width / 2;
-  const cy = y + node.height / 2;
-  const currentCategory = getSizeCategory(node.width, node.height);
-
-  const prevPosRef = useRef({ cx, cy, w: node.width, h: node.height, cat: currentCategory });
-  const animIdRef = useRef(0);
+  // --- Text fade logic: state-based sequential fade-out → move → fade-in ---
+  const prevPosRef = useRef({ x, y, w: node.width, h: node.height });
   const isFirstMountRef = useRef(true);
-  useEffect(() => { isFirstMountRef.current = false; }, []);
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Start hidden if mounting during animation (not initial load)
+  const [textVisible, setTextVisible] = useState(animationType === 'initial');
 
   const prev = prevPosRef.current;
-  const displacement = Math.sqrt((cx - prev.cx) ** 2 + (cy - prev.cy) ** 2);
+  const displacement = Math.sqrt((x - prev.x) ** 2 + (y - prev.y) ** 2);
   const sizeChange = Math.max(
     Math.abs(node.width - prev.w),
     Math.abs(node.height - prev.h)
-  ) / Math.max(prev.w, prev.h, 1);
-  const categoryChanged = currentCategory !== prev.cat;
-
-  const needsTextFade = animationType !== 'initial' && (
-    displacement > 50 || sizeChange > 0.3 || categoryChanged || isFirstMountRef.current
   );
 
-  if (needsTextFade) {
-    animIdRef.current += 1;
-  }
+  const hasMoved = displacement > MOVEMENT_THRESHOLD || sizeChange > MOVEMENT_THRESHOLD;
 
   useEffect(() => {
-    prevPosRef.current = { cx, cy, w: node.width, h: node.height, cat: currentCategory };
-  }, [cx, cy, node.width, node.height, currentCategory]);
+    // Skip initial load — text is already visible
+    if (animationType === 'initial') {
+      setTextVisible(true);
+      prevPosRef.current = { x, y, w: node.width, h: node.height };
+      isFirstMountRef.current = false;
+      return;
+    }
 
-  const fadeKey = needsTextFade ? `fade-${animIdRef.current}` : 'stable';
+    const shouldHide = hasMoved || isFirstMountRef.current;
+    isFirstMountRef.current = false;
+
+    if (!shouldHide) {
+      prevPosRef.current = { x, y, w: node.width, h: node.height };
+      return;
+    }
+
+    // Hide text immediately
+    setTextVisible(false);
+
+    // Show text after animation completes (with small buffer)
+    clearTimeout(fadeTimerRef.current);
+    fadeTimerRef.current = setTimeout(() => {
+      setTextVisible(true);
+    }, duration * 1000 + 50);
+
+    prevPosRef.current = { x, y, w: node.width, h: node.height };
+
+    return () => clearTimeout(fadeTimerRef.current);
+  }, [x, y, node.width, node.height, animationType, duration, hasMoved]);
   // --- End text fade logic ---
-  
+
   const classNames = [
     'treemap-node',
     `depth-${node.depth}`,
@@ -196,21 +205,6 @@ const TreemapNode = memo(({
     exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
   };
 
-  // Text stays hidden for 90% of animation, fades in only at the very end
-  const textFadeTransition = needsTextFade
-    ? {
-        opacity: {
-          duration,
-          times: [0, 0.05, 0.9, 1],
-          ease: 'easeOut' as const,
-        },
-      }
-    : { opacity: { duration: 0 } };
-
-  const textFadeAnimate = needsTextFade
-    ? { opacity: [0, 0, 0, 1] }
-    : { opacity: 1 };
-
   return (
     <motion.div
       variants={variants}
@@ -241,15 +235,18 @@ const TreemapNode = memo(({
         onMouseLeave?.(node);
       }}
     >
-      <motion.div
-        key={fadeKey}
-        initial={false}
-        animate={textFadeAnimate}
-        transition={textFadeTransition}
-        style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none' }}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 2,
+          pointerEvents: 'none',
+          opacity: textVisible ? 1 : 0,
+          transition: textVisible ? 'opacity 0.25s ease-in' : 'opacity 0.1s ease-out',
+        }}
       >
         <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
-      </motion.div>
+      </div>
       
       <AnimatePresence mode="sync">
         {shouldRenderChildren && showChildren &&

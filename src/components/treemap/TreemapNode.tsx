@@ -139,6 +139,8 @@ const TreemapNode = memo(({
 
   const prevPosRef = useRef({ cx, cy, w: node.width, h: node.height, cat: currentCategory });
   const animIdRef = useRef(0);
+  const isFirstMountRef = useRef(true);
+  useEffect(() => { isFirstMountRef.current = false; }, []);
 
   const prev = prevPosRef.current;
   const displacement = Math.sqrt((cx - prev.cx) ** 2 + (cy - prev.cy) ** 2);
@@ -149,7 +151,7 @@ const TreemapNode = memo(({
   const categoryChanged = currentCategory !== prev.cat;
 
   const needsTextFade = animationType !== 'initial' && (
-    displacement > 50 || sizeChange > 0.3 || categoryChanged
+    displacement > 50 || sizeChange > 0.3 || categoryChanged || isFirstMountRef.current
   );
 
   if (needsTextFade) {

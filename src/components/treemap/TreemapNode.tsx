@@ -127,6 +127,7 @@ const TreemapNode = memo(({
 
   // --- Text fade logic: state-based sequential fade-out → move → fade-in ---
   const prevPosRef = useRef({ x, y, w: node.width, h: node.height });
+  const prevAnimTypeRef = useRef(animationType);
   const isFirstMountRef = useRef(true);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -139,20 +140,21 @@ const TreemapNode = memo(({
     Math.abs(node.width - prev.w),
     Math.abs(node.height - prev.h)
   );
-
   const hasMoved = displacement > MOVEMENT_THRESHOLD || sizeChange > MOVEMENT_THRESHOLD;
+  const animTypeChanged = animationType !== prevAnimTypeRef.current;
 
   useEffect(() => {
-    // Skip initial load — text is already visible
     if (animationType === 'initial') {
       setTextVisible(true);
       prevPosRef.current = { x, y, w: node.width, h: node.height };
+      prevAnimTypeRef.current = animationType;
       isFirstMountRef.current = false;
       return;
     }
 
-    const shouldHide = hasMoved || isFirstMountRef.current;
+    const shouldHide = hasMoved || isFirstMountRef.current || animTypeChanged;
     isFirstMountRef.current = false;
+    prevAnimTypeRef.current = animationType;
 
     if (!shouldHide) {
       prevPosRef.current = { x, y, w: node.width, h: node.height };
@@ -162,7 +164,7 @@ const TreemapNode = memo(({
     // Hide text immediately
     setTextVisible(false);
 
-    // Show text after animation completes (with small buffer)
+    // Show text after animation completes
     clearTimeout(fadeTimerRef.current);
     fadeTimerRef.current = setTimeout(() => {
       setTextVisible(true);
@@ -171,7 +173,7 @@ const TreemapNode = memo(({
     prevPosRef.current = { x, y, w: node.width, h: node.height };
 
     return () => clearTimeout(fadeTimerRef.current);
-  }, [x, y, node.width, node.height, animationType, duration, hasMoved]);
+  }, [x, y, node.width, node.height, animationType, duration, hasMoved, animTypeChanged]);
   // --- End text fade logic ---
 
   const classNames = [
@@ -242,7 +244,7 @@ const TreemapNode = memo(({
           zIndex: 2,
           pointerEvents: 'none',
           opacity: textVisible ? 1 : 0,
-          transition: textVisible ? 'opacity 0.25s ease-in' : 'opacity 0.1s ease-out',
+          transition: textVisible ? 'opacity 0.15s ease-in' : 'opacity 0.08s ease-out',
         }}
       >
         <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />

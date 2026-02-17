@@ -194,13 +194,13 @@ const TreemapNode = memo(({
     exit: { opacity: 0, scale: 0.92, transition: { duration: 0.3 } },
   };
 
-  // Asymmetric text fade: fast out (10%), clean zone (65%), slow in (25%)
+  // Text stays hidden for 90% of animation, fades in only at the very end
   const textFadeTransition = needsTextFade
     ? {
         opacity: {
           duration,
-          times: [0, 0.1, 0.75, 1],
-          ease: 'easeInOut' as const,
+          times: [0, 0.05, 0.9, 1],
+          ease: 'easeOut' as const,
         },
       }
     : { opacity: { duration: 0 } };

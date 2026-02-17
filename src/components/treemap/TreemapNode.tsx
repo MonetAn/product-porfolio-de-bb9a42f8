@@ -1,9 +1,8 @@
 // Framer Motion treemap node component
 // Animates x, y, width, height for Flourish-style transitions
-// Text fades out during large movements and fades back in after
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { memo, useRef, useEffect, useState } from 'react';
+import { memo } from 'react';
 import { TreemapLayoutNode, AnimationType, ANIMATION_DURATIONS } from './types';
 import { formatBudget } from '@/lib/dataManager';
 
@@ -22,9 +21,6 @@ function getTextColorClass(bgColor: string): string {
   const luminance = getLuminance(bgColor);
   return luminance > 0.4 ? 'text-gray-900' : 'text-white';
 }
-
-// Threshold for considering movement "significant" enough to hide text
-const MOVEMENT_THRESHOLD = 10;
 
 interface TreemapNodeProps {
   node: TreemapLayoutNode;
@@ -50,10 +46,7 @@ const TreemapNodeContent = memo(({ node, showValue, textColorClass }: TreemapNod
   const isSmall = node.width < 100 || node.height < 60;
   const hasChildren = node.children && node.children.length > 0;
   
-  // Instead of returning null, render invisible content so fade-in can animate
-  if (node.height < 30) {
-    return <div style={{ opacity: 0 }} aria-hidden />;
-  }
+  if (node.height < 30) return null;
   
   if (hasChildren) {
     return (
@@ -124,58 +117,7 @@ const TreemapNode = memo(({
   
   const isTiny = node.width < 60 || node.height < 40;
   const isSmall = node.width < 100 || node.height < 60;
-
-  // --- Text fade logic: state-based sequential fade-out → move → fade-in ---
-  const prevPosRef = useRef({ x, y, w: node.width, h: node.height });
-  const prevAnimTypeRef = useRef(animationType);
-  const isFirstMountRef = useRef(true);
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  // Start hidden if mounting during animation (not initial load)
-  const [textVisible, setTextVisible] = useState(animationType === 'initial');
-
-  const prev = prevPosRef.current;
-  const displacement = Math.sqrt((x - prev.x) ** 2 + (y - prev.y) ** 2);
-  const sizeChange = Math.max(
-    Math.abs(node.width - prev.w),
-    Math.abs(node.height - prev.h)
-  );
-  const hasMoved = displacement > MOVEMENT_THRESHOLD || sizeChange > MOVEMENT_THRESHOLD;
-  const animTypeChanged = animationType !== prevAnimTypeRef.current;
-
-  useEffect(() => {
-    if (animationType === 'initial') {
-      setTextVisible(true);
-      prevPosRef.current = { x, y, w: node.width, h: node.height };
-      prevAnimTypeRef.current = animationType;
-      isFirstMountRef.current = false;
-      return;
-    }
-
-    const shouldHide = hasMoved || isFirstMountRef.current || animTypeChanged;
-    isFirstMountRef.current = false;
-    prevAnimTypeRef.current = animationType;
-
-    if (!shouldHide) {
-      prevPosRef.current = { x, y, w: node.width, h: node.height };
-      return;
-    }
-
-    // Hide text immediately
-    setTextVisible(false);
-
-    // Show text after animation completes
-    clearTimeout(fadeTimerRef.current);
-    fadeTimerRef.current = setTimeout(() => {
-      setTextVisible(true);
-    }, duration * 1000 + 50);
-
-    prevPosRef.current = { x, y, w: node.width, h: node.height };
-
-    return () => clearTimeout(fadeTimerRef.current);
-  }, [x, y, node.width, node.height, animationType, duration, hasMoved, animTypeChanged]);
-  // --- End text fade logic ---
-
+  
   const classNames = [
     'treemap-node',
     `depth-${node.depth}`,
@@ -237,18 +179,7 @@ const TreemapNode = memo(({
         onMouseLeave?.(node);
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          zIndex: 2,
-          pointerEvents: 'none',
-          opacity: textVisible ? 1 : 0,
-          transition: textVisible ? 'opacity 0.15s ease-in' : 'opacity 0.08s ease-out',
-        }}
-      >
-        <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
-      </div>
+      <TreemapNodeContent node={node} showValue={!shouldRenderChildren} textColorClass={textColorClass} />
       
       <AnimatePresence mode="sync">
         {shouldRenderChildren && showChildren &&

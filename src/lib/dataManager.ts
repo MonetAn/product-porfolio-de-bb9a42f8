@@ -101,24 +101,56 @@ export function convertFromDB(dbRows: AdminDataRow[]): {
 }
 
 // ===== CSV PARSING =====
-export function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
+
+// RFC 4180-compliant CSV tokenizer: handles multiline quoted fields
+function parseCSVToRows(text: string): string[][] {
+  const rows: string[][] = [];
+  const fields: string[] = [];
   let current = '';
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
+  // Normalize line endings
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i];
+
     if (char === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && normalized[i + 1] === '"') {
+        current += '"'; // escaped quote
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
+      fields.push(current.trim());
       current = '';
+    } else if (char === '\n' && !inQuotes) {
+      fields.push(current.trim());
+      current = '';
+      if (fields.some(f => f.length > 0)) {
+        rows.push([...fields]);
+      }
+      fields.length = 0;
     } else {
       current += char;
     }
   }
-  result.push(current.trim());
-  return result;
+
+  // Handle last row (no trailing newline)
+  if (current || fields.length > 0) {
+    fields.push(current.trim());
+    if (fields.some(f => f.length > 0)) {
+      rows.push([...fields]);
+    }
+  }
+
+  return rows;
+}
+
+// Keep for backward compatibility
+export function parseCSVLine(line: string): string[] {
+  return parseCSVToRows(line)[0] || [];
 }
 
 export function parseNumber(value: string | undefined): number {
@@ -167,18 +199,18 @@ export function parseCSV(text: string): {
   availableQuarters: string[];
   stakeholderCombinations: string[];
 } {
-  const lines = text.split('\n').filter(line => line.trim());
-  if (lines.length < 2) {
+  const rows = parseCSVToRows(text);
+  if (rows.length < 2) {
     return { rawData: [], availableYears: [], availableQuarters: [], stakeholderCombinations: [] };
   }
 
-  const headers = parseCSVLine(lines[0]);
+  const headers = rows[0];
   const { years: availableYears, quarters: availableQuarters } = detectPeriodsFromHeaders(headers);
 
   const rawData: RawDataRow[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
+  for (let i = 1; i < rows.length; i++) {
+    const values = rows[i];
     if (values.length < 5) continue;
 
     const row: RawDataRow = {

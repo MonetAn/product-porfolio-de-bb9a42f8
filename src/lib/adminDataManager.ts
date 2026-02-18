@@ -46,29 +46,51 @@ export interface AdminDataRow {
 }
 
 // ===== CSV PARSING UTILITIES =====
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
+
+// RFC 4180-compliant CSV tokenizer: handles multiline quoted fields
+function parseCSVToRows(text: string): string[][] {
+  const rows: string[][] = [];
+  const fields: string[] = [];
   let current = '';
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
+  // Normalize line endings
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  for (let i = 0; i < normalized.length; i++) {
+    const char = normalized[i];
+
     if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
+      if (inQuotes && normalized[i + 1] === '"') {
+        current += '"'; // escaped quote
         i++;
       } else {
         inQuotes = !inQuotes;
       }
     } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
+      fields.push(current.trim());
       current = '';
+    } else if (char === '\n' && !inQuotes) {
+      fields.push(current.trim());
+      current = '';
+      if (fields.some(f => f.length > 0)) {
+        rows.push([...fields]);
+      }
+      fields.length = 0;
     } else {
       current += char;
     }
   }
-  result.push(current.trim());
-  return result;
+
+  // Handle last row (no trailing newline)
+  if (current || fields.length > 0) {
+    fields.push(current.trim());
+    if (fields.some(f => f.length > 0)) {
+      rows.push([...fields]);
+    }
+  }
+
+  return rows;
 }
 
 function parseNumber(value: string | undefined): number {
@@ -105,12 +127,12 @@ export function parseAdminCSV(text: string): {
   quarters: string[];
   originalHeaders: string[];
 } {
-  const lines = text.split('\n').filter(line => line.trim());
-  if (lines.length < 2) {
+  const rows = parseCSVToRows(text);
+  if (rows.length < 2) {
     return { data: [], quarters: [], originalHeaders: [] };
   }
 
-  const headers = parseCSVLine(lines[0]);
+  const headers = rows[0];
   const quarters = detectPeriodsFromHeaders(headers);
   const data: AdminDataRow[] = [];
 
@@ -124,8 +146,8 @@ export function parseAdminCSV(text: string): {
   const docLinkIdx = headers.findIndex(h => h.toLowerCase().includes('documentation') || h.toLowerCase().includes('doc link'));
   const stakeholdersIdx = headers.findIndex(h => h.toLowerCase().includes('stakeholder') || h.toLowerCase() === 'стейкхолдеры');
 
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
+  for (let i = 1; i < rows.length; i++) {
+    const values = rows[i];
     if (values.length < 4) continue;
 
     // Parse stakeholders list from CSV (comma-separated)

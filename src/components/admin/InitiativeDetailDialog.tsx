@@ -36,6 +36,161 @@ const RequiredLabel = ({ children, className = '' }: { children: React.ReactNode
   </Label>
 );
 
+// Hook for local field state with save-on-blur
+function useBlurField<T extends string | number>(
+  externalValue: T,
+  onSave: (value: T) => void
+) {
+  const [localValue, setLocalValue] = useState<T>(externalValue);
+
+  // Sync when external value changes (e.g. different initiative opened)
+  useEffect(() => {
+    setLocalValue(externalValue);
+  }, [externalValue]);
+
+  const handleChange = (value: T) => setLocalValue(value);
+  const handleBlur = () => onSave(localValue);
+
+  return { value: localValue, onChange: handleChange, onBlur: handleBlur };
+}
+
+interface QuarterFieldsProps {
+  initiativeId: string;
+  quarter: string;
+  qData: AdminQuarterData;
+  allData: AdminDataRow[];
+  initiative: AdminDataRow;
+  onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
+}
+
+const QuarterFields = ({ initiativeId, quarter, qData, allData, initiative, onQuarterDataChange }: QuarterFieldsProps) => {
+  const save = (field: keyof AdminQuarterData) => (value: string | number | boolean) =>
+    onQuarterDataChange(initiativeId, quarter, field, value);
+
+  const otherCosts = useBlurField(qData.otherCosts, save('otherCosts'));
+  const metricPlan = useBlurField(qData.metricPlan, save('metricPlan'));
+  const metricFact = useBlurField(qData.metricFact, save('metricFact'));
+  const comment = useBlurField(qData.comment, save('comment'));
+  const effort = useBlurField(qData.effortCoefficient || 0, save('effortCoefficient'));
+
+  const totalCost = qData.cost + qData.otherCosts;
+  const teamEffort = validateTeamQuarterEffort(allData, initiative.unit, initiative.team, quarter);
+
+  const formatCurrency = (value: number) => {
+    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
+    if (value >= 1000) return `${(value / 1000).toFixed(0)}K ₽`;
+    return `${value} ₽`;
+  };
+
+  return (
+    <div
+      className={`rounded-lg border p-4 space-y-4 ${
+        qData.onTrack ? 'border-border' : 'border-destructive/50 bg-destructive/5'
+      }`}
+    >
+      {/* Quarter Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h4 className="font-semibold text-lg">{quarter}</h4>
+          {qData.support && (
+            <Badge variant="secondary" className="text-xs">Поддержка</Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="font-medium">{formatCurrency(totalCost)}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-sm">On-Track</Label>
+            <Switch
+              checked={qData.onTrack}
+              onCheckedChange={(checked) => onQuarterDataChange(initiativeId, quarter, 'onTrack', checked)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Effort Coefficient */}
+      <div className="space-y-2 p-3 rounded-md bg-muted/30">
+        <Label className="text-xs text-muted-foreground">Коэффициент трудозатрат</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            value={effort.value || ''}
+            onChange={(e) => effort.onChange(parseInt(e.target.value) || 0)}
+            onBlur={effort.onBlur}
+            min={0}
+            max={100}
+            className="w-20 h-8"
+          />
+          <span className="text-xs text-muted-foreground">%</span>
+        </div>
+        <div className={`text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
+          Команда {initiative.team} в {quarter}: {teamEffort.total}% из 100%
+          {!teamEffort.isValid && ' ⚠ Превышение!'}
+        </div>
+      </div>
+
+      {/* Quarter Fields */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Cost (read-only) */}
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Стоимость (из CSV)</Label>
+          <Input value={formatCurrency(qData.cost)} disabled className="bg-muted/50" />
+        </div>
+
+        {/* Other Costs */}
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Доп. расходы</Label>
+          <Input
+            type="number"
+            value={otherCosts.value || ''}
+            onChange={(e) => otherCosts.onChange(parseFloat(e.target.value) || 0)}
+            onBlur={otherCosts.onBlur}
+            placeholder="0"
+          />
+        </div>
+
+        {/* Metric Plan */}
+        <div className="space-y-1">
+          <RequiredLabel className="text-xs text-muted-foreground">План метрики</RequiredLabel>
+          <Textarea
+            value={metricPlan.value}
+            onChange={(e) => metricPlan.onChange(e.target.value)}
+            onBlur={metricPlan.onBlur}
+            placeholder="Планируемое значение метрики..."
+            className={`min-h-[60px] resize-y ${!qData.metricPlan?.trim() ? 'ring-2 ring-amber-400' : ''}`}
+          />
+        </div>
+
+        {/* Metric Fact */}
+        <div className="space-y-1">
+          <RequiredLabel className="text-xs text-muted-foreground">Факт метрики</RequiredLabel>
+          <Textarea
+            value={metricFact.value}
+            onChange={(e) => metricFact.onChange(e.target.value)}
+            onBlur={metricFact.onBlur}
+            placeholder="Фактическое значение метрики..."
+            className={`min-h-[60px] resize-y ${!qData.metricFact?.trim() ? 'ring-2 ring-amber-400' : ''}`}
+          />
+        </div>
+      </div>
+
+      {/* Comment */}
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">Комментарий</Label>
+        <Textarea
+          value={comment.value}
+          onChange={(e) => comment.onChange(e.target.value)}
+          onBlur={comment.onBlur}
+          placeholder="Комментарии к кварталу..."
+          className="min-h-[80px] resize-y"
+        />
+      </div>
+    </div>
+  );
+};
+
 interface InitiativeDetailDialogProps {
   initiative: AdminDataRow | null;
   allData: AdminDataRow[];
@@ -55,26 +210,26 @@ const InitiativeDetailDialog = ({
   onDataChange,
   onQuarterDataChange,
 }: InitiativeDetailDialogProps) => {
-  // Use local state to track stakeholders for immediate UI feedback
   const [localStakeholders, setLocalStakeholders] = useState<string[]>([]);
-  
-  // Sync local state with initiative when dialog opens or initiative changes
+
+  // Top-level text fields with save-on-blur
+  const [localName, setLocalName] = useState('');
+  const [localDescription, setLocalDescription] = useState('');
+  const [localDocLink, setLocalDocLink] = useState('');
+
   useEffect(() => {
     if (initiative) {
       setLocalStakeholders(initiative.stakeholdersList || []);
+      setLocalName(initiative.initiative || '');
+      setLocalDescription(initiative.description || '');
+      setLocalDocLink(initiative.documentationLink || '');
     }
-  }, [initiative?.id, initiative?.stakeholdersList]);
-  
+  }, [initiative?.id]);
+
   if (!initiative) return null;
 
-  const formatCurrency = (value: number) => {
-    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M ₽`;
-    if (value >= 1000) return `${(value / 1000).toFixed(0)}K ₽`;
-    return `${value} ₽`;
-  };
-
   const handleStakeholderToggle = (stakeholder: string, checked: boolean) => {
-    const newList = checked 
+    const newList = checked
       ? [...localStakeholders, stakeholder]
       : localStakeholders.filter(s => s !== stakeholder);
     setLocalStakeholders(newList);
@@ -92,8 +247,9 @@ const InitiativeDetailDialog = ({
           </div>
           <DialogTitle className="text-xl">
             <Input
-              value={initiative.initiative}
-              onChange={(e) => onDataChange(initiative.id, 'initiative', e.target.value)}
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              onBlur={() => onDataChange(initiative.id, 'initiative', localName)}
               className="text-xl font-semibold border-none px-0 h-auto focus-visible:ring-0"
               placeholder="Название инициативы"
             />
@@ -103,14 +259,13 @@ const InitiativeDetailDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-
         <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-4">
           {/* Initiative Type */}
           <div className="space-y-2">
             <RequiredLabel>Тип инициативы</RequiredLabel>
             <TooltipProvider delayDuration={100}>
-              <Select 
-                value={initiative.initiativeType || ''} 
+              <Select
+                value={initiative.initiativeType || ''}
                 onValueChange={(v) => onDataChange(initiative.id, 'initiativeType', v)}
               >
                 <SelectTrigger className={`w-full focus:ring-0 focus-visible:ring-0 ${!initiative.initiativeType ? 'ring-2 ring-amber-400' : ''}`}>
@@ -137,7 +292,7 @@ const InitiativeDetailDialog = ({
             </TooltipProvider>
           </div>
 
-          {/* Stakeholders Multi-select */}
+          {/* Stakeholders */}
           <div className="space-y-2">
             <RequiredLabel>Стейкхолдеры</RequiredLabel>
             <div className={`flex flex-wrap gap-2 p-2 rounded-md transition-all ${
@@ -151,8 +306,8 @@ const InitiativeDetailDialog = ({
                     type="button"
                     onClick={() => handleStakeholderToggle(stakeholder, !isSelected)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border cursor-pointer transition-all text-sm ${
-                      isSelected 
-                        ? 'bg-primary text-primary-foreground border-primary shadow-sm' 
+                      isSelected
+                        ? 'bg-primary text-primary-foreground border-primary shadow-sm'
                         : 'bg-background hover:bg-muted border-border'
                     }`}
                   >
@@ -168,8 +323,9 @@ const InitiativeDetailDialog = ({
           <div className="space-y-2">
             <RequiredLabel>Описание</RequiredLabel>
             <Textarea
-              value={initiative.description}
-              onChange={(e) => onDataChange(initiative.id, 'description', e.target.value)}
+              value={localDescription}
+              onChange={(e) => setLocalDescription(e.target.value)}
+              onBlur={() => onDataChange(initiative.id, 'description', localDescription)}
               placeholder="Подробное описание инициативы..."
               className={`min-h-[100px] resize-y ${!initiative.description?.trim() ? 'ring-2 ring-amber-400' : ''}`}
             />
@@ -180,8 +336,9 @@ const InitiativeDetailDialog = ({
             <Label className="text-sm font-medium">Ссылка на документацию</Label>
             <div className="flex gap-2">
               <Input
-                value={initiative.documentationLink}
-                onChange={(e) => onDataChange(initiative.id, 'documentationLink', e.target.value)}
+                value={localDocLink}
+                onChange={(e) => setLocalDocLink(e.target.value)}
+                onBlur={() => onDataChange(initiative.id, 'documentationLink', localDocLink)}
                 placeholder="https://..."
                 className="flex-1"
               />
@@ -200,10 +357,9 @@ const InitiativeDetailDialog = ({
 
           <Separator />
 
-          {/* Quarters - Vertical Timeline */}
+          {/* Quarters */}
           <div className="space-y-4">
             <Label className="text-sm font-medium">Квартальные данные</Label>
-            
             <div className="space-y-4">
               {quarters.map((quarter) => {
                 const qData = initiative.quarterlyData[quarter] || {
@@ -217,129 +373,16 @@ const InitiativeDetailDialog = ({
                   effortCoefficient: 0
                 };
 
-                const totalCost = qData.cost + qData.otherCosts;
-                const effortValue = qData.effortCoefficient || 0;
-                const teamEffort = validateTeamQuarterEffort(allData, initiative.unit, initiative.team, quarter);
-
                 return (
-                  <div 
-                    key={quarter} 
-                    className={`rounded-lg border p-4 space-y-4 ${
-                      qData.onTrack ? 'border-border' : 'border-destructive/50 bg-destructive/5'
-                    }`}
-                  >
-                    {/* Quarter Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <h4 className="font-semibold text-lg">{quarter}</h4>
-                        {qData.support && (
-                          <Badge variant="secondary" className="text-xs">Поддержка</Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-4">
-                        {/* Cost display */}
-                        <div className="text-right">
-                          <div className="font-medium">{formatCurrency(totalCost)}</div>
-                        </div>
-                        
-                        {/* OnTrack toggle */}
-                        <div className="flex items-center gap-2">
-                          <Label className="text-sm">On-Track</Label>
-                          <Switch
-                            checked={qData.onTrack}
-                            onCheckedChange={(checked) => 
-                              onQuarterDataChange(initiative.id, quarter, 'onTrack', checked)
-                            }
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Effort Coefficient - inside quarter */}
-                    <div className="space-y-2 p-3 rounded-md bg-muted/30">
-                      <Label className="text-xs text-muted-foreground">Коэффициент трудозатрат</Label>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          value={effortValue || ''}
-                          onChange={(e) => onQuarterDataChange(initiative.id, quarter, 'effortCoefficient', parseInt(e.target.value) || 0)}
-                          min={0}
-                          max={100}
-                          className="w-20 h-8"
-                        />
-                        <span className="text-xs text-muted-foreground">%</span>
-                      </div>
-                      <div className={`text-xs ${teamEffort.isValid ? 'text-muted-foreground' : 'text-red-600'}`}>
-                        Команда {initiative.team} в {quarter}: {teamEffort.total}% из 100%
-                        {!teamEffort.isValid && ' ⚠ Превышение!'}
-                      </div>
-                    </div>
-
-                    {/* Quarter Fields */}
-                    <div className="grid grid-cols-2 gap-4">
-                      {/* Cost (read-only) */}
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Стоимость (из CSV)</Label>
-                        <Input
-                          value={formatCurrency(qData.cost)}
-                          disabled
-                          className="bg-muted/50"
-                        />
-                      </div>
-
-                      {/* Other Costs (editable) */}
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Доп. расходы</Label>
-                        <Input
-                          type="number"
-                          value={qData.otherCosts || ''}
-                          onChange={(e) => 
-                            onQuarterDataChange(initiative.id, quarter, 'otherCosts', parseFloat(e.target.value) || 0)
-                          }
-                          placeholder="0"
-                        />
-                      </div>
-
-                      {/* Metric Plan */}
-                      <div className="space-y-1">
-                        <RequiredLabel className="text-xs text-muted-foreground">План метрики</RequiredLabel>
-                        <Textarea
-                          value={qData.metricPlan}
-                          onChange={(e) => 
-                            onQuarterDataChange(initiative.id, quarter, 'metricPlan', e.target.value)
-                          }
-                          placeholder="Планируемое значение метрики..."
-                          className={`min-h-[60px] resize-y ${!qData.metricPlan?.trim() ? 'ring-2 ring-amber-400' : ''}`}
-                        />
-                      </div>
-
-                      {/* Metric Fact */}
-                      <div className="space-y-1">
-                        <RequiredLabel className="text-xs text-muted-foreground">Факт метрики</RequiredLabel>
-                        <Textarea
-                          value={qData.metricFact}
-                          onChange={(e) => 
-                            onQuarterDataChange(initiative.id, quarter, 'metricFact', e.target.value)
-                          }
-                          placeholder="Фактическое значение метрики..."
-                          className={`min-h-[60px] resize-y ${!qData.metricFact?.trim() ? 'ring-2 ring-amber-400' : ''}`}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Comment - full width */}
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Комментарий</Label>
-                      <Textarea
-                        value={qData.comment}
-                        onChange={(e) => 
-                          onQuarterDataChange(initiative.id, quarter, 'comment', e.target.value)
-                        }
-                        placeholder="Комментарии к кварталу..."
-                        className="min-h-[80px] resize-y"
-                      />
-                    </div>
-                  </div>
+                  <QuarterFields
+                    key={quarter}
+                    initiativeId={initiative.id}
+                    quarter={quarter}
+                    qData={qData}
+                    allData={allData}
+                    initiative={initiative}
+                    onQuarterDataChange={onQuarterDataChange}
+                  />
                 );
               })}
             </div>

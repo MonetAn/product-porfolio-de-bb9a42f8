@@ -67,9 +67,8 @@ const Admin = () => {
 
   // Data modification handlers
   const handleDataChange = useCallback((id: string, field: keyof AdminDataRow, value: string | string[] | number) => {
-    // Determine delay based on field type
-    const delay = typeof value === 'string' ? 1000 : 
-                  Array.isArray(value) ? 0 : 500;
+    // Arrays (stakeholders) save immediately, text/number fields use short debounce
+    const delay = Array.isArray(value) ? 0 : 300;
     updateInitiative(id, field, value, delay);
   }, [updateInitiative]);
 

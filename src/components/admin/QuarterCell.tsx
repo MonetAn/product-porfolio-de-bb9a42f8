@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Wrench, Lock, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -55,7 +55,22 @@ const QuarterCell = ({
   };
 
   const totalCost = data.cost + data.otherCosts;
-  const effortValue = data.effortCoefficient || 0;
+
+  // Local state for save-on-blur fields
+  const [localEffort, setLocalEffort] = useState(data.effortCoefficient || 0);
+  const [localMetricPlan, setLocalMetricPlan] = useState(data.metricPlan || '');
+  const [localMetricFact, setLocalMetricFact] = useState(data.metricFact || '');
+  const [localOtherCosts, setLocalOtherCosts] = useState(data.otherCosts || 0);
+  const [localComment, setLocalComment] = useState(data.comment || '');
+
+  // Sync local state when external data changes (e.g. different row)
+  useEffect(() => { setLocalEffort(data.effortCoefficient || 0); }, [data.effortCoefficient]);
+  useEffect(() => { setLocalMetricPlan(data.metricPlan || ''); }, [data.metricPlan]);
+  useEffect(() => { setLocalMetricFact(data.metricFact || ''); }, [data.metricFact]);
+  useEffect(() => { setLocalOtherCosts(data.otherCosts || 0); }, [data.otherCosts]);
+  useEffect(() => { setLocalComment(data.comment || ''); }, [data.comment]);
+
+  const effortValue = localEffort;
 
   // Check if required fields are missing
   const missingFields = getMissingFields(data);
@@ -124,7 +139,8 @@ const QuarterCell = ({
                   <Input
                     type="number"
                     value={effortValue || ''}
-                    onChange={(e) => onChange('effortCoefficient', parseInt(e.target.value) || 0)}
+                    onChange={(e) => setLocalEffort(parseInt(e.target.value) || 0)}
+                    onBlur={() => onChange('effortCoefficient', localEffort)}
                     onClick={(e) => e.stopPropagation()}
                     onFocus={(e) => effortValue === 0 && e.target.select()}
                     min={0}
@@ -220,8 +236,9 @@ const QuarterCell = ({
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">План метрики</span>
                   <Input
-                    value={data.metricPlan}
-                    onChange={(e) => onChange('metricPlan', e.target.value)}
+                    value={localMetricPlan}
+                    onChange={(e) => setLocalMetricPlan(e.target.value)}
+                    onBlur={() => onChange('metricPlan', localMetricPlan)}
                     onClick={(e) => e.stopPropagation()}
                     className="h-7 text-sm"
                     placeholder="..."
@@ -232,22 +249,24 @@ const QuarterCell = ({
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Факт метрики</span>
                   <Input
-                    value={data.metricFact}
-                    onChange={(e) => onChange('metricFact', e.target.value)}
+                    value={localMetricFact}
+                    onChange={(e) => setLocalMetricFact(e.target.value)}
+                    onBlur={() => onChange('metricFact', localMetricFact)}
                     onClick={(e) => e.stopPropagation()}
                     className="h-7 text-sm"
                     placeholder="..."
                   />
                 </div>
 
-                {/* Other Costs - team field */}
+                {/* Other Costs */}
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Доп. расходы</span>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
-                      value={data.otherCosts || ''}
-                      onChange={(e) => onChange('otherCosts', parseFloat(e.target.value) || 0)}
+                      value={localOtherCosts || ''}
+                      onChange={(e) => setLocalOtherCosts(parseFloat(e.target.value) || 0)}
+                      onBlur={() => onChange('otherCosts', localOtherCosts)}
                       onClick={(e) => e.stopPropagation()}
                       className="h-7 text-sm flex-1"
                       placeholder="0"
@@ -256,12 +275,13 @@ const QuarterCell = ({
                   </div>
                 </div>
 
-                {/* Comment - team field */}
+                {/* Comment */}
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Комментарий</span>
                   <Input
-                    value={data.comment}
-                    onChange={(e) => onChange('comment', e.target.value)}
+                    value={localComment}
+                    onChange={(e) => setLocalComment(e.target.value)}
+                    onBlur={() => onChange('comment', localComment)}
                     onClick={(e) => e.stopPropagation()}
                     className="h-7 text-sm"
                     placeholder="..."

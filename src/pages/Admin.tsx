@@ -34,6 +34,7 @@ const Admin = () => {
     updateInitiative, 
     updateQuarterData, 
     createInitiative, 
+    deleteInitiative,
     syncStatus,
     pendingChanges,
     retry 
@@ -127,6 +128,20 @@ const Admin = () => {
       console.error('Failed to create initiative:', err);
     }
   }, [quarters, createInitiative, toast]);
+
+  // Delete initiative handler
+  const handleDeleteInitiative = useCallback(async (id: string) => {
+    const initiative = rawData.find(r => r.id === id);
+    try {
+      await deleteInitiative(id);
+      toast({
+        title: 'Инициатива удалена',
+        description: initiative ? `«${initiative.initiative}» удалена` : 'Инициатива удалена',
+      });
+    } catch (err) {
+      console.error('Failed to delete initiative:', err);
+    }
+  }, [rawData, deleteInitiative, toast]);
 
   // Export handlers
   const handleDownloadAll = useCallback(() => {
@@ -243,6 +258,7 @@ const Admin = () => {
                   onDataChange={handleDataChange}
                   onQuarterDataChange={handleQuarterDataChange}
                   onAddInitiative={() => setNewDialogOpen(true)}
+                  onDeleteInitiative={handleDeleteInitiative}
                   modifiedIds={new Set()}
                   hideUnitTeamColumns={hideUnitTeamColumns}
                 />

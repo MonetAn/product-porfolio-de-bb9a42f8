@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, ExternalLink, Pencil, Eye, EyeOff, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Plus, ExternalLink, Pencil, Eye, EyeOff, AlertCircle, AlertTriangle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -18,6 +18,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import QuarterCell from './QuarterCell';
 import InitiativeDetailDialog from './InitiativeDetailDialog';
@@ -32,6 +42,7 @@ interface InitiativeTableProps {
   onDataChange: (id: string, field: keyof AdminDataRow, value: string | string[] | number) => void;
   onQuarterDataChange: (id: string, quarter: string, field: keyof AdminQuarterData, value: string | number | boolean) => void;
   onAddInitiative: () => void;
+  onDeleteInitiative: (id: string) => Promise<void>;
   modifiedIds: Set<string>;
   hideUnitTeamColumns?: boolean;
 }
@@ -64,12 +75,15 @@ const InitiativeTable = ({
   onDataChange,
   onQuarterDataChange,
   onAddInitiative,
+  onDeleteInitiative,
   modifiedIds,
   hideUnitTeamColumns = false
 }: InitiativeTableProps) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedView, setExpandedView] = useState(false);
   const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(new Set());
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const toggleRowExpanded = (id: string) => {
     setExpandedRowIds(prev => {
@@ -85,12 +99,30 @@ const InitiativeTable = ({
 
   // Find the current initiative from data to ensure we always have fresh data
   const selectedInitiative = selectedId ? data.find(row => row.id === selectedId) || null : null;
+  const deleteTargetRow = deleteConfirmId ? data.find(row => row.id === deleteConfirmId) || null : null;
 
   // Calculate effort sums for each quarter (for filtered data)
   const quarterEffortSums = getTeamQuarterEffortSums(allData, selectedUnits, selectedTeams, quarters);
 
   const handleRowClick = (row: AdminDataRow) => {
     setSelectedId(row.id);
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setDeleteConfirmId(id);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmId) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteInitiative(deleteConfirmId);
+      setDeleteConfirmId(null);
+      if (selectedId === deleteConfirmId) setSelectedId(null);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (data.length === 0) {
@@ -198,13 +230,20 @@ const InitiativeTable = ({
                   key={row.id} 
                   className={`group ${row.isNew ? 'bg-primary/5' : ''} ${rowIncomplete ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''} hover:bg-muted/50 cursor-pointer`}
                 >
-                  {/* Row edit button with compact warning indicator */}
+                  {/* Row action buttons: edit + delete */}
                   <TableCell 
-                    className="sticky left-0 bg-card z-10 p-2 cursor-pointer"
+                    className="sticky left-0 bg-card z-10 p-2"
                     onClick={() => handleRowClick(row)}
                   >
                     <div className="flex items-center gap-1">
-                      <Pencil size={14} className="opacity-0 group-hover:opacity-100 text-muted-foreground group-hover:text-primary transition-all flex-shrink-0" />
+                      <Pencil size={14} className="opacity-0 group-hover:opacity-100 text-muted-foreground group-hover:text-primary transition-all flex-shrink-0 cursor-pointer" />
+                      <button
+                        onClick={(e) => handleDeleteClick(e, row.id)}
+                        className="opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 text-muted-foreground hover:text-destructive p-0.5 rounded"
+                        title="Удалить инициативу"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                       {initiativeIncomplete && (
                         <div className="flex items-center gap-0.5 text-amber-600 dark:text-amber-500">
                           <AlertTriangle size={12} className="flex-shrink-0" />
@@ -389,6 +428,34 @@ const InitiativeTable = ({
         onDataChange={onDataChange}
         onQuarterDataChange={onQuarterDataChange}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить инициативу?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы удаляете инициативу{' '}
+              <span className="font-semibold text-foreground">
+                «{deleteTargetRow?.initiative}»
+              </span>
+              {deleteTargetRow && ` (${deleteTargetRow.unit} / ${deleteTargetRow.team})`}.
+              <br />
+              Это действие необратимо — данные будут удалены из базы.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Удаление...' : 'Удалить'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

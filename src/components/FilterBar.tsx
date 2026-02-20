@@ -48,6 +48,9 @@ interface FilterBarProps {
   
   // Hide nesting toggles (for Timeline view)
   hideNestingToggles?: boolean;
+
+  // Current view (to show total cost only on treemap tabs)
+  currentView?: 'budget' | 'stakeholders' | 'timeline';
   
   // Reset filters
   onResetFilters?: () => void;
@@ -94,6 +97,7 @@ const FilterBar = ({
   hideNestingToggles = false,
   onResetFilters,
   hasActiveFilters = false,
+  currentView = 'budget',
   // Cost filter props
   costSortOrder = 'none',
   onCostSortOrderChange,
@@ -833,6 +837,12 @@ const FilterBar = ({
 
         {/* KPIs - compact */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Total cost - only on treemap tabs */}
+          {(currentView === 'budget' || currentView === 'stakeholders') && (
+            <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
+              <span className="font-bold">{formatBudgetCompact(totals.budget)}</span>
+            </div>
+          )}
           <div className="px-2 py-1 bg-secondary rounded text-[11px] font-medium whitespace-nowrap">
             <span className="font-bold">{totals.count}</span> иниц.
           </div>

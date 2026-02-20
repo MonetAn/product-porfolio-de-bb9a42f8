@@ -543,12 +543,13 @@ const colorPalette = [
 
 // Explicit colors for units that might have hash collisions
 const explicitUnitColors: Record<string, string> = {
-  'FAP': '#E67A3D',           // Тыквенный оранж
-  'TechPlatform': '#4A7DD7',  // Насыщенный синий
-  'Data Office': '#D4852C',   // Янтарь (избегаем коллизии с FAP)
+  'FAP': '#E67A3D',              // Тыквенный оранж
+  'TechPlatform': '#4A7DD7',     // Насыщенный синий
+  'Data Office': '#D4852C',      // Янтарь
+  'Client Platform': '#2D9B6A',  // Тёмный изумруд
 };
 
-const unitColors: Record<string, string> = {};
+const unitColors: Record<string, string> = { ...explicitUnitColors };
 let unitColorIndex = 0;
 
 export function hashString(str: string): number {

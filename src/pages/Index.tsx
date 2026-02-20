@@ -520,6 +520,7 @@ const Index = () => {
         onCostTypeChange={setCostType}
         zoomPath={currentView !== 'timeline' ? zoomPath : []}
         zoomActiveTab={currentView === 'stakeholders' ? 'stakeholders' : 'budget'}
+        currentView={currentView}
       />
 
       {/* Main Content - full height without padding for immersive treemap */}

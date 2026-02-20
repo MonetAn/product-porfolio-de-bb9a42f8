@@ -541,12 +541,15 @@ const colorPalette = [
   '#8B6AAF',  // Аметист
 ];
 
-// Explicit colors for units that might have hash collisions
+// Explicit colors for all known units — guaranteed unique, no auto-generation collisions
 const explicitUnitColors: Record<string, string> = {
-  'FAP': '#E67A3D',              // Тыквенный оранж
-  'TechPlatform': '#4A7DD7',     // Насыщенный синий
-  'Data Office': '#D4852C',      // Янтарь
-  'Client Platform': '#2D9B6A',  // Тёмный изумруд
+  'Drinkit':          '#4A7DD7',  // Насыщенный синий (закреплён)
+  'Tech Platform':    '#7B5FA8',  // Глубокий фиолетовый
+  'Data Office':      '#D4852C',  // Янтарь
+  'FAP':              '#E67A3D',  // Тыквенный оранж
+  'Client Platform':  '#2D9B6A',  // Тёмный изумруд
+  'App&Web':          '#C44E89',  // Глубокий розовый
+  'B2B Pizza':        '#4A90B8',  // Стальной синий
 };
 
 const unitColors: Record<string, string> = { ...explicitUnitColors };
@@ -663,12 +666,13 @@ function generateExtendedColor(index: number, palette: string[]): string {
 
 export function getUnitColor(unitName: string): string {
   if (!unitColors[unitName]) {
-    // Check for explicit color first
-    if (explicitUnitColors[unitName]) {
-      unitColors[unitName] = explicitUnitColors[unitName];
-    } else {
-      unitColors[unitName] = generateExtendedColor(unitColorIndex++, colorPalette);
-    }
+    // Auto-generate, skipping colors already used by explicit assignments
+    const usedColors = new Set(Object.values(explicitUnitColors));
+    let color: string;
+    do {
+      color = generateExtendedColor(unitColorIndex++, colorPalette);
+    } while (usedColors.has(color));
+    unitColors[unitName] = color;
   }
   return unitColors[unitName];
 }
